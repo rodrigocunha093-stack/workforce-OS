@@ -1246,14 +1246,46 @@ async function applyClientState(summary, user) {
   };
   refreshCoverageLoads(summary, summary.storeConfig.pdvs);
 
-  if (state.employees.length >= 4) {
+  if (state.employees.length >= 1) {
     const originals = ['Lucila', 'Edvania', 'Samara', 'Jane'];
-    const replacements = state.employees.slice(0, 4).map((employee) => employee.nome);
-    const names = Object.fromEntries(originals.map((original, index) => [original, replacements[index]]));
+    const employeeNames = state.employees.map((employee) => employee.nome);
+    const names = Object.fromEntries(originals.map((original, index) => [original, employeeNames[index] || original]));
+
+    // Renomear escalas existentes para os primeiros 4 nomes
     Object.values(summary.staffSchedule).flat().forEach((person) => { person.nome = names[person.nome] || person.nome; });
     Object.values(summary.weeklyScenarioSchedule).forEach((scenario) => {
       scenario.people = Object.fromEntries(Object.entries(scenario.people).map(([name, shifts]) => [names[name] || name, shifts]));
     });
+
+    // Para operadoras 5+, gerar escalas baseadas nos templates existentes (ciclando)
+    if (state.employees.length > 4) {
+      const extraEmployees = state.employees.slice(4);
+      Object.values(summary.weeklyScenarioSchedule).forEach((scenario) => {
+        const templates = Object.values(scenario.people);
+        extraEmployees.forEach((employee, idx) => {
+          // Pega template alternando entre os 4 existentes
+          const baseTemplate = templates[idx % templates.length];
+          // Rotaciona dia de folga para distribuir
+          const rotated = [...baseTemplate.slice(idx + 1), ...baseTemplate.slice(0, idx + 1)];
+          scenario.people[employee.nome] = rotated;
+        });
+      });
+
+      // Adicionar nas escalas diárias também
+      Object.keys(summary.staffSchedule).forEach((dayKey) => {
+        const existingSchedule = summary.staffSchedule[dayKey];
+        extraEmployees.forEach((employee, idx) => {
+          const template = existingSchedule[idx % existingSchedule.length];
+          if (template) {
+            summary.staffSchedule[dayKey].push({
+              ...template,
+              nome: employee.nome
+            });
+          }
+        });
+      });
+    }
+
     summary.sundayRotation.forEach((item) => {
       item.folga = item.folga.map((name) => names[name] || name);
       item.trabalhando = item.trabalhando.map((name) => names[name] || name);
