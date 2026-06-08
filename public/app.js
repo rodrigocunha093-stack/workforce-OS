@@ -1521,15 +1521,62 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     });
 
     const optimizeButton = document.getElementById('optimizeCoverage');
+    const saveOptimizationButton = document.getElementById('saveOptimization');
     if (optimizeButton) {
       optimizeButton.onclick = () => {
         coverageAdjustmentMode = !coverageAdjustmentMode;
         optimizeButton.classList.toggle('active', coverageAdjustmentMode);
-        optimizeButton.textContent = coverageAdjustmentMode ? 'Ver escala original' : 'Recalcular críticos';
+        optimizeButton.textContent = coverageAdjustmentMode ? 'Voltar à escala original' : 'Otimização IA · Blue Yonder';
+        if (saveOptimizationButton) saveOptimizationButton.hidden = !coverageAdjustmentMode;
         renderCoverage(data);
         showToast(coverageAdjustmentMode
-          ? 'Horários críticos recalculados até o limite de PDVs e equipe.'
+          ? 'Otimização IA aplicada: déficits cobertos respeitando PDVs e equipe disponível.'
           : 'Escala original restaurada.');
+      };
+    }
+    if (saveOptimizationButton) {
+      saveOptimizationButton.onclick = async () => {
+        if (!coverageAdjustmentMode) return;
+        // Coletar dados otimizados de todos os dias
+        const optimizedCoverage = {};
+        Object.keys(data.dailyCoverage).forEach((dayKey) => {
+          const cfg = data.dailyCoverage[dayKey];
+          if (cfg.closed) return;
+          const dayIndex = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].indexOf(dayKey);
+          const weeklyPeople = data.weeklyScenarioSchedule[currentCoverageScenario].people;
+          const availableWorkers = Object.values(weeklyPeople).filter((shifts) => shifts[dayIndex] !== 'Folga').length;
+          const baseRows = cfg.rows.map((row) => ({
+            ...row,
+            [currentCoverageScenario]: Math.min(Number(row[currentCoverageScenario]), availableWorkers)
+          }));
+          const adjustedRows = applyCoverageAdjustment(baseRows, currentCoverageScenario, availableWorkers);
+          optimizedCoverage[dayKey] = adjustedRows.map((row) => ({
+            hora: row.hora,
+            atual: row[currentCoverageScenario],
+            ajusteAutomatico: row.ajusteAutomatico
+          }));
+        });
+        try {
+          const response = await fetch('/api/save-optimization', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scenario: currentCoverageScenario, optimizedCoverage })
+          });
+          const result = await response.json();
+          if (result.ok) {
+            showToast('Otimização salva! Próximo acesso já carregará a escala otimizada.');
+            saveOptimizationButton.disabled = true;
+            saveOptimizationButton.textContent = 'Otimização salva ✓';
+            setTimeout(() => {
+              saveOptimizationButton.disabled = false;
+              saveOptimizationButton.textContent = 'Salvar otimização';
+            }, 3000);
+          } else {
+            showToast('Erro ao salvar: ' + (result.error || 'tente novamente'));
+          }
+        } catch (error) {
+          showToast('Erro ao salvar otimização.');
+        }
       };
     }
 

@@ -1605,6 +1605,26 @@ async function applyClientState(summary, user) {
   if (state.employees.length >= 1) {
     recalculateCoverageFromSchedules(summary, Number(profile.quantidadePdvs || 3));
   }
+
+  // APLICAR otimização salva (se houver)
+  if (state.optimizedCoverage) {
+    summary.optimizationSavedAt = state.optimizedCoverage.savedAt;
+    ['atual', 'transicao', 'final'].forEach(scenario => {
+      const dayMap = state.optimizedCoverage[scenario];
+      if (!dayMap) return;
+      Object.entries(dayMap).forEach(([dayKey, optimizedRows]) => {
+        if (!summary.dailyCoverage[dayKey] || !Array.isArray(optimizedRows)) return;
+        summary.dailyCoverage[dayKey].rows.forEach((row) => {
+          const opt = optimizedRows.find(o => o.hora === row.hora);
+          if (opt) {
+            row[scenario] = opt.atual;
+            row.ajusteAutomatico = opt.ajusteAutomatico;
+          }
+        });
+      });
+    });
+  }
+
   refreshCoverageLoads(summary, summary.storeConfig.pdvs);
   const dates = [...new Set(state.salesRows.map((row) => row.data))].sort();
   const representedDays = representedSalesDays(state.salesRows);
@@ -1906,6 +1926,32 @@ const server = http.createServer(async (req, res) => {
       if (user) await audit(user.id, 'Logout realizado');
       await clearSession(res, req);
       return json(res, { ok: true });
+    })();
+    return;
+  }
+  if (req.url === '/api/save-optimization' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login para salvar otimização.');
+        const body = await readJsonBody(req);
+        const scenario = String(body.scenario || 'atual');
+        const optimizedCoverage = body.optimizedCoverage || {};
+
+        if (!['atual', 'transicao', 'final'].includes(scenario)) {
+          throw new Error('Cenário inválido.');
+        }
+
+        const state = await loadClientState(user.id);
+        state.optimizedCoverage = state.optimizedCoverage || {};
+        state.optimizedCoverage[scenario] = optimizedCoverage;
+        state.optimizedCoverage.savedAt = new Date().toISOString();
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.id, state);
+        await audit(user.id, 'OPTIMIZATION_SAVED', { scenario, ip: requestIp(req) });
+        return json(res, { ok: true, savedAt: state.optimizedCoverage.savedAt });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
     })();
     return;
   }

@@ -1378,6 +1378,22 @@ i.red { background: var(--red); }
   font-weight: 800;
 }
 
+.optimize-button.save-optimization {
+  color: #fff;
+  background: linear-gradient(135deg, #2563eb, #1e40af);
+  border-color: #1e40af;
+}
+
+.optimize-button.save-optimization:hover {
+  background: linear-gradient(135deg, #1e40af, #1e3a8a);
+}
+
+.optimize-button.save-optimization:disabled {
+  background: #10b981;
+  border-color: #10b981;
+  cursor: default;
+}
+
 .scenario-filter {
   display: flex;
   gap: 5px;
