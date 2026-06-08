@@ -936,6 +936,48 @@ function generateOperatorShift(startHour, endHour) {
   return `${formatScheduleHour(startHour)}-${formatScheduleHour(endHour)} · ${duration}h`;
 }
 
+function countWorkersAtHour(hourStart, hourEnd, dayIndex, people) {
+  let count = 0;
+  Object.values(people).forEach(shifts => {
+    const shift = shifts[dayIndex];
+    if (!shift || shift === 'Folga') return;
+    const match = shift.match(/^(\d{1,2}):?(\d{0,2})\s*-\s*(\d{1,2}):?(\d{0,2})/);
+    if (!match) return;
+    const start = Number(match[1]);
+    const end = Number(match[3]);
+    // Operadora cobre essa hora se trabalha durante ela
+    if (start <= hourStart && end > hourStart) count++;
+  });
+  return count;
+}
+
+function recalculateCoverageFromSchedules(summary, pdvs) {
+  const dayKeyMap = { monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4, saturday: 5, sunday: 6 };
+
+  Object.entries(summary.dailyCoverage).forEach(([dayKey, day]) => {
+    const dayIndex = dayKeyMap[dayKey];
+    if (dayIndex === undefined || day.closed) return;
+
+    day.rows.forEach(row => {
+      const [startStr, endStr] = row.hora.split('-');
+      const hourStart = Number(startStr);
+      const hourEnd = Number(endStr);
+
+      ['atual', 'transicao', 'final'].forEach(scenarioKey => {
+        const scenario = summary.weeklyScenarioSchedule[scenarioKey];
+        if (!scenario) return;
+        const workers = countWorkersAtHour(hourStart, hourEnd, dayIndex, scenario.people);
+        // Demanda atual da hora, ou 0 se desconhecida
+        const demanda = Number(row.demanda || 0);
+        // Caixas a abrir = min(operadoras trabalhando, PDVs, max(demanda, 1))
+        // Mas se há demanda alta, abre até o limite dos PDVs
+        const idealCaixas = Math.max(demanda, 1);
+        row[scenarioKey] = Math.min(workers, pdvs, idealCaixas);
+      });
+    });
+  });
+}
+
 function generateScheduleByProfile(profile, employees, targetHours = 44, targetDaysOff = 1) {
   const segSex = parseStoreHours(profile.horarioSegSex);
   const sabado = parseStoreHours(profile.horarioSabado);
@@ -1355,6 +1397,10 @@ async function applyClientState(summary, user) {
       const targetDaysOff = scenario.targetDaysOff || 1;
       scenario.people = generateScheduleByProfile(profile, state.employees, targetHours, targetDaysOff);
     });
+
+    // RECALCULAR cobertura horária baseada nas novas escalas e PDVs
+    const pdvs = Number(profile.quantidadePdvs || 3);
+    recalculateCoverageFromSchedules(summary, pdvs);
 
     summary.sundayRotation.forEach((item) => {
       item.folga = item.folga.map((name) => names[name] || name);
