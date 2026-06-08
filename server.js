@@ -936,6 +936,80 @@ function generateOperatorShift(startHour, endHour) {
   return `${formatScheduleHour(startHour)}-${formatScheduleHour(endHour)} · ${duration}h`;
 }
 
+function updateAllTabsWithImportedData(summary, profile, employees) {
+  const employeeNames = employees.map(e => e.nome);
+  const sundayClosed = sundayIsClosed(profile);
+
+  // === AUDITORIA ===
+  // Calcular dias trabalho, folgas, horas/mês baseado nas escalas geradas
+  summary.audit = employees.map((emp, idx) => {
+    const targetHours = 44; // 6x1 padrão
+    const targetDaysOff = sundayClosed ? 1 : 1;
+    const diasTrabalho = (7 - targetDaysOff) * 4.33; // semanas/mês
+    const folgas = targetDaysOff * 4.33;
+    const horasMes = targetHours * 4.33;
+    return {
+      nome: emp.nome,
+      sexo: (emp.sexo || 'feminino').toLowerCase(),
+      diasTrabalho: Math.round(diasTrabalho),
+      folgas: Math.round(folgas),
+      domingosTrabalhados: sundayClosed ? 0 : Math.floor(idx / 2),
+      domingosFolga: sundayClosed ? 4 : 4 - Math.floor(idx / 2),
+      horasMes: Number(horasMes.toFixed(2)),
+      status: horasMes > 180 ? 'Atencao' : 'OK'
+    };
+  });
+
+  // === DOMINGOS - ROTAÇÃO ===
+  if (sundayClosed) {
+    summary.sundayRotation = [];
+  } else {
+    // Gerar 4 domingos de rotação
+    const sundayDates = ['2026-06-07', '2026-06-14', '2026-06-21', '2026-06-28'];
+    const minSunday = Math.max(2, Math.floor(employees.length / 2));
+    summary.sundayRotation = sundayDates.map((date, weekIdx) => {
+      const trabalhando = [];
+      const folga = [];
+      employees.forEach((emp, idx) => {
+        // Rotação: cada operadora trabalha 3 de cada 4 domingos
+        if ((idx + weekIdx) % 4 === 0) {
+          folga.push(emp.nome);
+        } else {
+          trabalhando.push(emp.nome);
+        }
+      });
+      return {
+        data: date,
+        folga,
+        trabalhando,
+        alerta: `Mínimo domingo = ${minSunday} pessoas para cobertura adequada.`
+      };
+    });
+  }
+
+  // === RESILIÊNCIA - PESSOAS ===
+  summary.resilience.people = employees.map((emp, idx) => ({
+    nome: emp.nome,
+    skills: {
+      caixa: 3,
+      abertura: idx % 2 === 0 ? 3 : 2,
+      fechamento: idx % 3 === 0 ? 3 : 2,
+      sangria: idx === 0 || idx === 1 ? 3 : 1,
+      lideranca: idx === 0 ? 3 : 2,
+      apoio: 3
+    },
+    validado: false
+  }));
+
+  // === FINANCEIRO ===
+  const salaries = employees.map(e => Number(e.salario || 0)).filter(s => s > 0);
+  if (salaries.length) {
+    summary.financial.assumptions.salarioBaseMensal = Math.round(salaries.reduce((sum, s) => sum + s, 0) / salaries.length);
+  }
+  summary.financial.assumptions.quantidadeOperadores = employees.length;
+  summary.financial.assumptions.regimeTributario = profile.regimeTributario || summary.financial.assumptions.regimeTributario;
+}
+
 function regenerateCoverageHours(summary, profile) {
   const segSex = parseStoreHours(profile.horarioSegSex);
   const sabado = parseStoreHours(profile.horarioSabado);
@@ -1460,6 +1534,9 @@ async function applyClientState(summary, user) {
         });
       });
     }
+
+    // ATUALIZAR TODAS as abas com dados importados/configurados
+    updateAllTabsWithImportedData(summary, profile, state.employees);
 
     // REGENERAR faixas horárias do dailyCoverage com base no horário da loja
     regenerateCoverageHours(summary, profile);
