@@ -1606,11 +1606,11 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
       if (!file) return;
       const parsed = parseEmployeesCsv(await file.text());
       pendingEmployees = parsed.rows;
-      document.getElementById('confirmEmployeesImport').disabled = parsed.rows.length < 4;
+      document.getElementById('confirmEmployeesImport').disabled = parsed.rows.length < 1;
       document.getElementById('employeesImportPreview').innerHTML = `
         <strong>${parsed.rows.length} colaboradores validos</strong>
         <span>${parsed.rows.filter((row) => normalizeHeader(row.setor) === 'caixa').length} identificados no setor Caixa · ${parsed.errors.length} rejeições</span>
-        ${parsed.rows.length < 4 ? '<small>A implantação atual exige pelo menos quatro pessoas.</small>' : '<small>Arquivo pronto para importacao.</small>'}
+        ${parsed.rows.length < 1 ? '<small>Importe ao menos uma operadora válida.</small>' : '<small>Arquivo pronto para importacao.</small>'}
       `;
     };
 

@@ -1678,7 +1678,7 @@ const server = http.createServer(async (req, res) => {
           funcao: sanitizeString(String(row.funcao || '')).slice(0, 50)
         }));
 
-        if (validRows.length < 4) throw new Error('Importe ao menos quatro operadoras para a implantação atual.');
+        if (validRows.length < 1) throw new Error('Importe ao menos uma operadora válida.');
 
         const state = await loadClientState(user.id);
         state.employees = validRows;
