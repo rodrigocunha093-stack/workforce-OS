@@ -74,13 +74,13 @@ async function deleteSession(token) {
 
 async function saveClientData(userId, data) {
   try {
-    await pool.query(
+    const result = await pool.query(
       'INSERT INTO clients (userId, data, updatedAt) VALUES ($1, $2, NOW()) ON CONFLICT (userId) DO UPDATE SET data = $2, updatedAt = NOW()',
       [userId, JSON.stringify(data)]
     );
-    return true;
+    return result.rowCount > 0;
   } catch (error) {
-    console.error('DB Error:', error);
+    console.error('DB Error on saveClientData:', error.message, { userId, dataSize: JSON.stringify(data).length });
     return false;
   }
 }

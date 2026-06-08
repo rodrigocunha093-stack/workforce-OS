@@ -1544,8 +1544,13 @@ const server = http.createServer(async (req, res) => {
 
         const secured = await hashPassword(password);
         const newUser = { id: crypto.randomUUID(), name, email, passwordSalt: secured.salt, passwordHash: secured.hash, inviteCode: PILOT_INVITE_CODE };
-        await dbSupabase.createUser(newUser);
-        await saveClientState(newUser.id, defaultClientState());
+
+        const userCreated = await dbSupabase.createUser(newUser);
+        if (!userCreated) throw new Error('Erro ao criar usuário. Tente novamente.');
+
+        const stateCreated = await saveClientState(newUser.id, defaultClientState());
+        if (!stateCreated) throw new Error('Erro ao configurar perfil. Tente novamente.');
+
         await createSession(res, req, newUser.id);
         await audit(newUser.id, 'ACCOUNT_CREATED', { email, ip: requestIp(req) });
         return json(res, { ok: true, user: { name, email } });
