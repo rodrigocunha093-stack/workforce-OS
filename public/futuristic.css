@@ -535,3 +535,144 @@ button[type="submit"], .submit-button, .primary-action {
   color: #fcd34d !important;
   border: 1px solid rgba(251,191,36,0.3) !important;
 }
+
+/* ============================================================
+   OVERRIDE GLOBAL — todos os cards brancos viram glass escuro
+   ============================================================ */
+.enterprise-card,
+.weekly-strength-summary article,
+.weekly-strength-card,
+.benchmark-card,
+.sector-kpis article,
+.core-sector-card,
+.example-steps div,
+.evolution-row,
+.cashier-load-panel,
+.staff-card,
+.commission-score,
+.commission-dimensions,
+.finance-kpis article,
+.finance-scenario,
+.resilience-kpis article,
+.coverage-row,
+.coverage-summary > div,
+.coverage-summary div,
+.icoc-table,
+.icoc-table-row,
+.icoc-metric,
+.icoc-kpi,
+.sector-card,
+.audit-row,
+.audit-card,
+.controller-card,
+.memory-card,
+.commission-dimension,
+.sector-library-row,
+.calendar-day,
+.drawer-score,
+.cashier-load-grid > *,
+.cashier-metric,
+.staff-schedule-grid > *,
+.sunday-card,
+.scenario-card,
+.resilience-action,
+.resilience-actions article,
+.controllerActions article,
+[id="controllerActions"] article,
+.action-card,
+[class*="-kpis"] article,
+[class*="-summary"] article,
+[class*="-summary"] > div,
+[class*="-card"],
+[class*="-row"]:not(.skill-head):not(.coverage-head):not(.weekly-head) {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: var(--fx-border) !important;
+  color: var(--fx-text) !important;
+}
+
+/* Texto dentro desses cards */
+.enterprise-card *,
+.weekly-strength-summary article *,
+.weekly-strength-card *,
+.benchmark-card *,
+.cashier-load-panel *,
+.staff-card *,
+.finance-kpis article *,
+.coverage-row *,
+.coverage-summary div *,
+.icoc-table-row *,
+.icoc-metric *,
+.audit-row *,
+.controller-card *,
+.memory-card *,
+[class*="-card"] *,
+[class*="-summary"] article * {
+  color: var(--fx-text);
+}
+
+/* Strong/valores grandes sempre brancos puros */
+.enterprise-card strong,
+.weekly-strength-card strong,
+.weekly-strength-summary strong,
+.benchmark-card strong,
+.coverage-summary strong,
+.icoc-metric strong,
+.icoc-kpi strong,
+.cashier-metric strong,
+[class*="-card"] strong,
+[class*="-summary"] strong {
+  color: #f1f5f9 !important;
+  font-weight: 700;
+}
+
+/* Small/labels secundários */
+.enterprise-card small,
+.weekly-strength-card small,
+.weekly-strength-summary small,
+.benchmark-card small,
+.coverage-summary small,
+[class*="-card"] small,
+[class*="-summary"] small,
+[class*="-card"] span,
+[class*="-summary"] span {
+  color: var(--fx-text-dim) !important;
+}
+
+/* Tabela de cobertura: linhas alternadas sutis */
+.coverage-row { background: rgba(255,255,255,0.025) !important; }
+.coverage-row:nth-child(even) { background: rgba(255,255,255,0.045) !important; }
+.coverage-number, .coverage-hour, .coverage-balance { color: var(--fx-text) !important; }
+
+/* Status de cobertura coloridos */
+.coverage-status.covered, .coverage-balance.covered { color: #6ee7b7 !important; }
+.coverage-status.critical, .coverage-balance.critical { color: #fca5a5 !important; }
+.coverage-status.high, .coverage-balance.high { color: #fcd34d !important; }
+.coverage-status.support, .coverage-balance.support { color: #93c5fd !important; }
+
+/* ICOC tabela */
+.icoc-table-row { background: rgba(255,255,255,0.025) !important; }
+.icoc-table-row:nth-child(even) { background: rgba(255,255,255,0.045) !important; }
+.icoc-table-head, .icoc-table-row.head {
+  background: rgba(255,255,255,0.03) !important;
+  color: var(--fx-text-dim) !important;
+}
+
+/* Banner amarelo de aviso (impacto financeiro) */
+.tab > article:first-child[style*="amber"],
+.finance-alert, .warning-strip {
+  background: rgba(251,191,36,0.10) !important;
+  border-color: rgba(251,191,36,0.3) !important;
+}
+
+/* Pills de status dentro de cards */
+.pill, .status-pill, .tag {
+  background: rgba(255,255,255,0.08) !important;
+}
+.pill.ok, .status-ok { background: rgba(52,211,153,0.18) !important; color: #6ee7b7 !important; }
+.pill.warn, .status-warn { background: rgba(251,191,36,0.18) !important; color: #fcd34d !important; }
+.pill.bad, .status-bad { background: rgba(248,113,113,0.18) !important; color: #fca5a5 !important; }
+
+/* Botões "Revisar" e similares */
+.audit-status, .weekly-status, [class*="revisar"] {
+  color: var(--fx-text) !important;
+}
