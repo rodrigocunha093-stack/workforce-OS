@@ -13,13 +13,22 @@ async function getUser(email) {
       .from('users')
       .select('*')
       .eq('email', email)
-      .single();
+      .maybeSingle();
 
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
       console.error('DB Error on getUser:', error.message);
       return null;
     }
-    return data || null;
+    if (!data) return null;
+    return {
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      passwordHash: data.passwordhash,
+      passwordSalt: data.passwordsalt,
+      inviteCode: data.invitecode,
+      createdAt: data.createdat
+    };
   } catch (error) {
     console.error('DB Error on getUser:', error.message);
     return null;
@@ -32,13 +41,22 @@ async function getUserById(id) {
       .from('users')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
       console.error('DB Error on getUserById:', error.message);
       return null;
     }
-    return data || null;
+    if (!data) return null;
+    return {
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      passwordHash: data.passwordhash,
+      passwordSalt: data.passwordsalt,
+      inviteCode: data.invitecode,
+      createdAt: data.createdat
+    };
   } catch (error) {
     console.error('DB Error on getUserById:', error.message);
     return null;
@@ -53,20 +71,20 @@ async function createUser(user) {
         id: user.id,
         name: user.name,
         email: user.email,
-        passwordHash: user.passwordHash,
-        passwordSalt: user.passwordSalt,
-        inviteCode: user.inviteCode || null
+        passwordhash: user.passwordHash,
+        passwordsalt: user.passwordSalt,
+        invitecode: user.inviteCode || null
       }])
       .select();
 
     if (error) {
-      console.error('DB Error on createUser:', error.code, error.message, { email: user.email });
+      console.error('DB Error on createUser:', error.code, error.message, error.hint, { email: user.email });
       return false;
     }
     console.log('User created:', user.email);
     return true;
   } catch (error) {
-    console.error('DB Error on createUser:', error.message);
+    console.error('DB Error on createUser exception:', error.message);
     return false;
   }
 }
@@ -77,8 +95,8 @@ async function saveSession(token, userId, expiresAt) {
       .from('sessions')
       .upsert([{
         token,
-        userId,
-        expiresAt: new Date(expiresAt).toISOString()
+        userid: userId,
+        expiresat: new Date(expiresAt).toISOString()
       }]);
 
     if (error) {
@@ -98,14 +116,19 @@ async function getSession(token) {
       .from('sessions')
       .select('*')
       .eq('token', token)
-      .gt('expiresAt', new Date().toISOString())
-      .single();
+      .gt('expiresat', new Date().toISOString())
+      .maybeSingle();
 
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
       console.error('DB Error on getSession:', error.message);
       return null;
     }
-    return data || null;
+    if (!data) return null;
+    return {
+      token: data.token,
+      userId: data.userid,
+      expiresAt: data.expiresat
+    };
   } catch (error) {
     console.error('DB Error on getSession:', error.message);
     return null;
@@ -135,10 +158,10 @@ async function saveClientData(userId, data) {
     const { error } = await supabase
       .from('clients')
       .upsert([{
-        userId,
+        userid: userId,
         data,
-        updatedAt: new Date().toISOString()
-      }]);
+        updatedat: new Date().toISOString()
+      }], { onConflict: 'userid' });
 
     if (error) {
       console.error('DB Error on saveClientData:', error.message, { userId });
@@ -156,10 +179,10 @@ async function getClientData(userId) {
     const { data, error } = await supabase
       .from('clients')
       .select('data')
-      .eq('userId', userId)
-      .single();
+      .eq('userid', userId)
+      .maybeSingle();
 
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
       console.error('DB Error on getClientData:', error.message);
       return null;
     }
@@ -175,7 +198,7 @@ async function auditLog(userId, action, detail) {
     const { error } = await supabase
       .from('audit')
       .insert([{
-        userId,
+        userid: userId,
         action,
         detail
       }]);
