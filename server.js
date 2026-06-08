@@ -18,6 +18,15 @@ const sessions = new Map();
 const attempts = new Map();
 const PILOT_INVITE_CODE = process.env.PILOT_INVITE_CODE || 'PILOTO-CX-2026';
 
+// Cenários por semana do mês
+const CENARIOS_SEMANAS = {
+  1: { nome: 'Semana 1 (1-7)', demanda: 485, itens: 5.8, ticket: 50.50 },
+  2: { nome: 'Semana 2 (8-14)', demanda: 495, itens: 6.0, ticket: 51.50 },
+  3: { nome: 'Semana 3 (15-21)', demanda: 500, itens: 6.0, ticket: 51.80 },
+  4: { nome: 'Semana 4 (22-28) - PROMOCAO', demanda: 525, itens: 6.5, ticket: 55.00 },
+  5: { nome: 'Semana 5 (29-05) - PICO', demanda: 545, itens: 7.0, ticket: 58.80 }
+};
+
 function backupFile(filePath) {
   if (!fs.existsSync(filePath)) return;
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
@@ -1417,6 +1426,9 @@ const server = http.createServer(async (req, res) => {
       }
     })();
     return;
+  }
+  if (req.url === '/api/cenarios' && req.method === 'GET') {
+    return json(res, { ok: true, cenarios: CENARIOS_SEMANAS });
   }
   if (req.url === '/api/auth/logout' && req.method === 'POST') {
     (async () => {
