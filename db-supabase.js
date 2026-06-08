@@ -30,13 +30,14 @@ async function getUserById(id) {
 
 async function createUser(user) {
   try {
-    await pool.query(
+    const result = await pool.query(
       'INSERT INTO users (id, name, email, passwordHash, passwordSalt, inviteCode) VALUES ($1, $2, $3, $4, $5, $6)',
       [user.id, user.name, user.email, user.passwordHash, user.passwordSalt, user.inviteCode || null]
     );
-    return true;
+    console.log('User created:', user.email, '- rows affected:', result.rowCount);
+    return result.rowCount > 0;
   } catch (error) {
-    console.error('DB Error:', error);
+    console.error('DB Error on createUser:', error.code, error.message, { email: user.email });
     return false;
   }
 }
