@@ -1457,7 +1457,15 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ ok: false, error: error.message }));
   }
   const user = await authenticatedUser(req);
-  if (req.url === '/api/summary') return json(res, await summaryFromDatabase(user));
+  if (req.url === '/api/summary') {
+    try {
+      const summary = await summaryFromDatabase(user);
+      return json(res, summary);
+    } catch (error) {
+      console.error('ERROR in /api/summary:', error.message, error.stack);
+      return json(res, { error: error.message, stack: error.stack }, 500);
+    }
+  }
   if (req.url.match(/^\/api\/summary\/week\/\d+$/)) {
     const weekNumber = Number(req.url.split('/').pop());
     if (weekNumber >= 1 && weekNumber <= 5) {
