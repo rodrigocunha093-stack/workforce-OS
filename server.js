@@ -190,7 +190,7 @@ async function loadClientState(userId) {
 }
 
 async function saveClientState(userId, state) {
-  await dbSupabase.saveClientData(userId, state);
+  return await dbSupabase.saveClientData(userId, state);
 }
 
 async function loadUsers() {
