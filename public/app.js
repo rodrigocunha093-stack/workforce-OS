@@ -1153,7 +1153,7 @@ function parseSalesCsv(text, fallbackDate = '', representedDays = 1) {
 }
 
 function parseEmployeesCsv(text) {
-  const lines = text.replace(/^\uFEFF/, '').split(/\r\n/).filter((line) => line.trim());
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) return { rows: [], errors: ['Arquivo sem colaboradores.'] };
   const delimiter = (lines[0].match(/;/g) || []).length >= (lines[0].match(/,/g) || []).length ? ';' : ',';
   const headers = lines[0].split(delimiter).map(normalizeHeader);
