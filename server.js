@@ -949,6 +949,10 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
   const shiftHours = 8; // 8h por dia padrão
   const numShifts = Math.max(1, Math.ceil(segSexDuration / 4));
 
+  // Quando loja fecha no domingo, o domingo já conta como 1 folga
+  // Folgas adicionais necessárias = targetDaysOff - 1 (se sundayClosed)
+  const additionalDaysOff = sundayClosed ? Math.max(0, targetDaysOff - 1) : targetDaysOff;
+
   const result = {};
   employees.forEach((emp, idx) => {
     // Distribuir turnos: par começa na abertura, ímpar mais tarde
@@ -960,14 +964,17 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
     const sabStartHour = sabado.open + (idx % numShifts) * Math.floor((sabadoDuration - shiftHours) / Math.max(1, numShifts - 1));
     const sabEndHour = Math.min(sabado.close, sabStartHour + shiftHours);
 
-    // Folga rotativa: NUNCA em sexta (4) ou sábado (5) - dias de alto movimento
-    // Dias permitidos: segunda(0), terça(1), quarta(2), quinta(3), domingo(6)
-    const folgaDaysAllowed = sundayClosed ? [0, 1, 2, 3] : [0, 1, 2, 3, 6];
-    const folgaDayIndex = folgaDaysAllowed[idx % folgaDaysAllowed.length];
+    // Folgas adicionais durante a semana: NUNCA em sexta (4) ou sábado (5)
+    // Dias permitidos para folga adicional: segunda(0), terça(1), quarta(2), quinta(3)
+    const folgaDaysAllowed = [0, 1, 2, 3];
+    const additionalFolgaDays = [];
+    for (let i = 0; i < additionalDaysOff; i++) {
+      additionalFolgaDays.push(folgaDaysAllowed[(idx + i) % folgaDaysAllowed.length]);
+    }
 
     const shifts = [];
     for (let day = 0; day < 7; day++) {
-      if (day === folgaDayIndex) {
+      if (additionalFolgaDays.includes(day)) {
         shifts.push('Folga');
       } else if (day === 5) {
         // Sábado
@@ -982,7 +989,7 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
           shifts.push('Folga');
         }
       } else {
-        // Segunda a sexta
+        // Segunda a sexta (exceto sábado=5 que já tratamos acima)
         shifts.push(generateOperatorShift(startHour, endHour));
       }
     }
