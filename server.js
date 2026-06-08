@@ -1007,8 +1007,13 @@ function buildOptimizationSavings(salesRows, profile, employees, summary) {
     }))
     .sort((a, b) => a.hora.localeCompare(b.hora));
 
+  // Contar faixas com rotação excessiva (média acima dos PDVs)
+  const rotacaoExcessiva = hourlyComparison.filter(h => h.atualMedia > pdvLimit).length;
+
   return {
     periodo: `${numDays} dias analisados`,
+    pdvs: pdvLimit,
+    rotacaoExcessiva,
     custoHora: Number(costPerHour.toFixed(2)),
     operacaoReal: {
       caixasHoraMes: Math.round(actualHoursMonth),

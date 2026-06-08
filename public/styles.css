@@ -1566,6 +1566,28 @@ i.red { background: var(--red); }
   line-height: 1.5;
 }
 
+.savings-insight {
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: #fef3c7;
+  border-left: 4px solid #f59e0b;
+  border-radius: 6px;
+}
+
+.savings-insight strong {
+  display: block;
+  color: #b45309;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+.savings-insight p {
+  margin: 0;
+  font-size: 13px;
+  color: #78350f;
+  line-height: 1.5;
+}
+
 .skill-matrix-actions {
   margin-top: 12px;
   display: flex;

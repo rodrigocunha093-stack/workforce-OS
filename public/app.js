@@ -725,19 +725,25 @@ function renderOptimizationSavings(data) {
       <article class="savings-card actual">
         <small>📊 Como a loja OPEROU</small>
         <strong>${s.operacaoReal.caixasHoraMes.toLocaleString('pt-BR')}h</strong>
-        <span>caixas-hora/mês</span>
+        <span>operadoras-hora/mês</span>
         <div class="savings-cost">${money(s.operacaoReal.custoMes)}/mês</div>
       </article>
       <div class="savings-arrow">→</div>
       <article class="savings-card optimal">
         <small>✨ Operação OTIMIZADA</small>
         <strong>${s.operacaoOtimizada.caixasHoraMes.toLocaleString('pt-BR')}h</strong>
-        <span>caixas-hora/mês</span>
+        <span>operadoras-hora/mês</span>
         <div class="savings-cost">${money(s.operacaoOtimizada.custoMes)}/mês</div>
       </article>
     </div>
 
-    <div class="savings-detail-head">Comparativo por faixa horária (média de caixas abertos)</div>
+    ${s.rotacaoExcessiva ? `
+    <div class="savings-insight">
+      <strong>⚠️ Rotação excessiva detectada</strong>
+      <p>Em ${s.rotacaoExcessiva} faixas horárias, mais operadoras passaram pela frente de caixa do que os ${s.pdvs} PDVs disponíveis. Isso indica troca de turno, intervalos e rotação durante o expediente — cada operadora que loga no PDV gera custo/hora, mesmo trabalhando parte da hora.</p>
+    </div>` : ''}
+
+    <div class="savings-detail-head">Comparativo por faixa horária (média de operadoras ativas)</div>
     <div class="savings-hourly">
       <div class="savings-hour-row savings-hour-head">
         <span>Hora</span><span>Operou</span><span>Ótimo</span><span>Diferença</span>
@@ -745,7 +751,7 @@ function renderOptimizationSavings(data) {
       ${s.hourlyComparison.map(h => `
         <div class="savings-hour-row">
           <span>${h.hora}</span>
-          <span>${h.atualMedia}</span>
+          <span>${h.atualMedia}${h.atualMedia > s.pdvs ? ' ⚠️' : ''}</span>
           <span>${h.otimoMedia}</span>
           <span class="${h.diferenca > 0 ? 'savings-excess' : h.diferenca < 0 ? 'savings-deficit' : 'savings-ok'}">${h.diferenca > 0 ? '+' : ''}${h.diferenca}</span>
         </div>
@@ -753,7 +759,7 @@ function renderOptimizationSavings(data) {
     </div>
 
     <div class="savings-footnote">
-      <small>💡 <b>Como funciona:</b> Custo por hora de caixa = ${money(s.custoHora)}. A economia vem de ajustar a quantidade de caixas abertos à demanda real de cada hora (menos caixas ociosos, mantendo a cobertura). Valores positivos na diferença indicam horas com caixas em excesso.</small>
+      <small>💡 <b>Como funciona:</b> O VRSoft registra cada operadora que emitiu cupom na hora (operadoras únicas, não caixas simultâneos). Com ${s.pdvs} PDVs, valores acima de ${s.pdvs} (⚠️) indicam rotação/troca de turno. Custo por operadora-hora = ${money(s.custoHora)}. A economia vem de dedicar operadoras a períodos cheios em vez de rotação dispersa, mantendo a cobertura da demanda real.</small>
     </div>
   `;
 }
