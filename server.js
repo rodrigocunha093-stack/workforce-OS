@@ -7,6 +7,7 @@ const dbSupabase = require('./db-supabase');
 
 const PORT = process.env.PORT || 4173;
 const PUBLIC = path.join(__dirname, 'public');
+const BUILD_VERSION = '2.0-supabase-js';
 const DATA_DIR = path.join(__dirname, 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const CLIENTS_DIR = path.join(DATA_DIR, 'clients');
