@@ -410,3 +410,128 @@ label { color: var(--fx-text-dim); }
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ============================================================
+   CONTRASTE — força texto claro em todas as superfícies escuras
+   ============================================================ */
+
+/* Valores grandes (números, R$) sempre claros */
+.kpi strong,
+.panel strong,
+.scenario-card strong,
+.finance-scenario strong,
+.finance-metrics strong,
+.finance-metrics div,
+.split-metrics strong,
+.split-metrics div,
+.metric-row strong,
+.metric-row span,
+.finance-kpis strong,
+.finance-kpis article strong {
+  color: var(--fx-text) !important;
+}
+
+/* Labels e textos secundários */
+.kpi small, .kpi span,
+.panel small,
+.scenario-card small, .scenario-card span,
+.finance-scenario small, .finance-scenario span,
+.finance-metrics small,
+.split-metrics small,
+.metric-row,
+.finance-kpis small, .finance-kpis span {
+  color: var(--fx-text-dim) !important;
+}
+
+/* Métricas internas: caixinhas com fundo translúcido */
+.finance-metrics > div,
+.split-metrics > div,
+.metric-row,
+.scenario-card .metric-row {
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+}
+
+/* Hero panel banner de aviso (era amarelo claro) */
+.hero-panel + .panel,
+.warning-banner,
+.alert-banner {
+  color: var(--fx-text);
+}
+
+/* Faixa de aviso amarela do topo financeiro */
+[class*="finance"] [class*="banner"],
+.finance-warning,
+.tab > p,
+.tab > .note {
+  color: var(--fx-text-dim) !important;
+}
+
+/* Decision card, finance decision */
+.finance-decision,
+.finance-decision strong,
+.finance-decision p,
+.finance-decision span,
+.finance-decision b {
+  color: var(--fx-text) !important;
+}
+
+.finance-decision {
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid var(--fx-border) !important;
+  border-radius: 12px;
+}
+
+/* Aside premissas */
+aside, .finance-aside, .assumptions-aside {
+  background: rgba(255,255,255,0.03) !important;
+  border: 1px solid var(--fx-border) !important;
+  border-radius: 12px;
+  color: var(--fx-text-dim);
+}
+
+aside small, aside p { color: var(--fx-text-dim) !important; }
+aside h3, aside strong { color: var(--fx-text) !important; }
+
+/* Catch-all: qualquer h1-h4 dentro de painel/card claro */
+.panel h1, .panel h2, .panel h4,
+.scenario-card h2, .scenario-card h4 {
+  color: var(--fx-text) !important;
+}
+
+/* Banner de aviso amarelo (impacto financeiro topo) */
+.finance-banner, .info-strip, .tab-banner {
+  background: rgba(251,191,36,0.10) !important;
+  border: 1px solid rgba(251,191,36,0.3) !important;
+  color: #fcd34d !important;
+}
+
+/* Tabelas finance scenario - métricas com valor escuro */
+.finance-scenario .finance-metrics div small { color: var(--fx-text-dim) !important; }
+.finance-scenario .finance-metrics div strong { color: var(--fx-text) !important; }
+
+/* Submit/primary buttons mantêm gradiente */
+button[type="submit"], .submit-button, .primary-action {
+  background: var(--fx-grad-primary) !important;
+  color: #051014 !important;
+  border: none !important;
+  border-radius: 8px !important;
+  font-weight: 700 !important;
+}
+
+/* finance-impact box */
+.finance-impact {
+  background: rgba(255,255,255,0.03) !important;
+  border-radius: 8px;
+}
+.finance-impact span, .finance-impact small { color: var(--fx-text-dim) !important; }
+.finance-impact strong { color: var(--fx-text) !important; }
+.finance-impact.negative { border-left: 3px solid var(--fx-red); }
+.finance-impact.neutral { border-left: 3px solid var(--fx-teal); }
+
+/* Premissas editáveis pill no topo direito */
+.soft-pill {
+  background: rgba(251,191,36,0.15) !important;
+  color: #fcd34d !important;
+  border: 1px solid rgba(251,191,36,0.3) !important;
+}
