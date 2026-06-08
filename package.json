@@ -9,6 +9,7 @@
     "migrate:apply": "node migrate-local-to-postgres.js --apply"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.108.0",
     "pg": "^8.16.3"
   }
 }

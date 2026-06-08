@@ -1,108 +1,192 @@
-const { Pool } = require('pg');
+const { createClient } = require('@supabase/supabase-js');
 
-const pool = new Pool({
-  host: process.env.PGHOST,
-  port: Number(process.env.PGPORT || 5432),
-  database: process.env.PGDATABASE,
-  user: process.env.PGUSER,
-  password: process.env.PGPASSWORD,
-  ssl: process.env.NODE_ENV === 'production' ? true : { rejectUnauthorized: false }
+const supabaseUrl = 'https://megimevuyjaevilogepe.supabase.co';
+const supabaseKey = process.env.SUPABASE_KEY || 'sb_publishable_xFO7xF4gyy3VVQFLfGos-w_X2j9eBlv';
+
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: { persistSession: false }
 });
 
 async function getUser(email) {
   try {
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-    return result.rows[0] || null;
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('DB Error on getUser:', error.message);
+      return null;
+    }
+    return data || null;
   } catch (error) {
-    console.error('DB Error:', error);
+    console.error('DB Error on getUser:', error.message);
     return null;
   }
 }
 
 async function getUserById(id) {
   try {
-    const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
-    return result.rows[0] || null;
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('DB Error on getUserById:', error.message);
+      return null;
+    }
+    return data || null;
   } catch (error) {
+    console.error('DB Error on getUserById:', error.message);
     return null;
   }
 }
 
 async function createUser(user) {
   try {
-    const result = await pool.query(
-      'INSERT INTO users (id, name, email, passwordHash, passwordSalt, inviteCode) VALUES ($1, $2, $3, $4, $5, $6)',
-      [user.id, user.name, user.email, user.passwordHash, user.passwordSalt, user.inviteCode || null]
-    );
-    console.log('User created:', user.email, '- rows affected:', result.rowCount);
-    return result.rowCount > 0;
+    const { data, error } = await supabase
+      .from('users')
+      .insert([{
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        passwordHash: user.passwordHash,
+        passwordSalt: user.passwordSalt,
+        inviteCode: user.inviteCode || null
+      }])
+      .select();
+
+    if (error) {
+      console.error('DB Error on createUser:', error.code, error.message, { email: user.email });
+      return false;
+    }
+    console.log('User created:', user.email);
+    return true;
   } catch (error) {
-    console.error('DB Error on createUser:', error.code, error.message, { email: user.email });
+    console.error('DB Error on createUser:', error.message);
     return false;
   }
 }
 
 async function saveSession(token, userId, expiresAt) {
   try {
-    await pool.query(
-      'INSERT INTO sessions (token, userId, expiresAt) VALUES ($1, $2, $3) ON CONFLICT (token) DO UPDATE SET userId = $2, expiresAt = $3',
-      [token, userId, new Date(expiresAt)]
-    );
+    const { error } = await supabase
+      .from('sessions')
+      .upsert([{
+        token,
+        userId,
+        expiresAt: new Date(expiresAt).toISOString()
+      }]);
+
+    if (error) {
+      console.error('DB Error on saveSession:', error.message);
+      return false;
+    }
     return true;
   } catch (error) {
-    console.error('DB Error:', error);
+    console.error('DB Error on saveSession:', error.message);
     return false;
   }
 }
 
 async function getSession(token) {
   try {
-    const result = await pool.query('SELECT * FROM sessions WHERE token = $1 AND expiresAt > NOW()', [token]);
-    return result.rows[0] || null;
+    const { data, error } = await supabase
+      .from('sessions')
+      .select('*')
+      .eq('token', token)
+      .gt('expiresAt', new Date().toISOString())
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('DB Error on getSession:', error.message);
+      return null;
+    }
+    return data || null;
   } catch (error) {
+    console.error('DB Error on getSession:', error.message);
     return null;
   }
 }
 
 async function deleteSession(token) {
   try {
-    await pool.query('DELETE FROM sessions WHERE token = $1', [token]);
+    const { error } = await supabase
+      .from('sessions')
+      .delete()
+      .eq('token', token);
+
+    if (error) {
+      console.error('DB Error on deleteSession:', error.message);
+      return false;
+    }
     return true;
   } catch (error) {
+    console.error('DB Error on deleteSession:', error.message);
     return false;
   }
 }
 
 async function saveClientData(userId, data) {
   try {
-    const result = await pool.query(
-      'INSERT INTO clients (userId, data, updatedAt) VALUES ($1, $2, NOW()) ON CONFLICT (userId) DO UPDATE SET data = $2, updatedAt = NOW()',
-      [userId, JSON.stringify(data)]
-    );
-    return result.rowCount > 0;
+    const { error } = await supabase
+      .from('clients')
+      .upsert([{
+        userId,
+        data,
+        updatedAt: new Date().toISOString()
+      }]);
+
+    if (error) {
+      console.error('DB Error on saveClientData:', error.message, { userId });
+      return false;
+    }
+    return true;
   } catch (error) {
-    console.error('DB Error on saveClientData:', error.message, { userId, dataSize: JSON.stringify(data).length });
+    console.error('DB Error on saveClientData:', error.message);
     return false;
   }
 }
 
 async function getClientData(userId) {
   try {
-    const result = await pool.query('SELECT data FROM clients WHERE userId = $1', [userId]);
-    return result.rows[0] ? JSON.parse(result.rows[0].data) : null;
+    const { data, error } = await supabase
+      .from('clients')
+      .select('data')
+      .eq('userId', userId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('DB Error on getClientData:', error.message);
+      return null;
+    }
+    return data ? data.data : null;
   } catch (error) {
+    console.error('DB Error on getClientData:', error.message);
     return null;
   }
 }
 
 async function auditLog(userId, action, detail) {
   try {
-    await pool.query(
-      'INSERT INTO audit (userId, action, detail) VALUES ($1, $2, $3)',
-      [userId, action, JSON.stringify(detail)]
-    );
+    const { error } = await supabase
+      .from('audit')
+      .insert([{
+        userId,
+        action,
+        detail
+      }]);
+
+    if (error) {
+      console.error('DB Error on auditLog:', error.message);
+      return false;
+    }
     return true;
   } catch (error) {
+    console.error('DB Error on auditLog:', error.message);
     return false;
   }
 }
