@@ -1471,10 +1471,6 @@ async function applyClientState(summary, user) {
       scenario.people = generateScheduleByProfile(profile, state.employees, targetHours, targetDaysOff);
     });
 
-    // RECALCULAR cobertura horária baseada nas novas escalas e PDVs
-    const pdvs = Number(profile.quantidadePdvs || 3);
-    recalculateCoverageFromSchedules(summary, pdvs);
-
     summary.sundayRotation.forEach((item) => {
       item.folga = item.folga.map((name) => names[name] || name);
       item.trabalhando = item.trabalhando.map((name) => names[name] || name);
@@ -1487,6 +1483,10 @@ async function applyClientState(summary, user) {
 
   if (!state.salesRows.length) {
     summary.metadata.periodoAmostra = `${summary.metadata.periodoAmostra} (demonstração)`;
+    if (state.employees.length >= 1) {
+      recalculateCoverageFromSchedules(summary, Number(profile.quantidadePdvs || 3));
+      refreshCoverageLoads(summary, summary.storeConfig.pdvs);
+    }
     return summary;
   }
   const grouped = {};
@@ -1524,6 +1524,10 @@ async function applyClientState(summary, user) {
     });
     summary.dailyCoverage[dayKey].source = `Importação guiada · ${Object.values(hours).reduce((sum, rows) => sum + rows.length, 0)} faixas`;
   });
+  // RECALCULAR caixas ativos depois da demanda ter sido aplicada
+  if (state.employees.length >= 1) {
+    recalculateCoverageFromSchedules(summary, Number(profile.quantidadePdvs || 3));
+  }
   refreshCoverageLoads(summary, summary.storeConfig.pdvs);
   const dates = [...new Set(state.salesRows.map((row) => row.data))].sort();
   const representedDays = representedSalesDays(state.salesRows);
