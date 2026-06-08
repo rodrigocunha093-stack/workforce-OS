@@ -1149,8 +1149,8 @@ function refreshCoverageLoads(summary, pdvLimit) {
   });
 }
 
-function applyClientState(summary, user) {
-  const state = loadClientState(user.id);
+async function applyClientState(summary, user) {
+  const state = await loadClientState(user.id);
   const profile = state.profile || defaultClientState().profile;
   const requiredDayKeys = requiredOperationalDayKeys(profile);
   const importedDayKeys = new Set(state.salesRows.map((row) => dayKeys[new Date(`${row.data}T12:00:00`).getDay()]));
