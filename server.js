@@ -936,6 +936,76 @@ function generateOperatorShift(startHour, endHour) {
   return `${formatScheduleHour(startHour)}-${formatScheduleHour(endHour)} · ${duration}h`;
 }
 
+function regenerateCoverageHours(summary, profile) {
+  const segSex = parseStoreHours(profile.horarioSegSex);
+  const sabado = parseStoreHours(profile.horarioSabado);
+  const sundayClosed = sundayIsClosed(profile);
+  const domingo = sundayClosed ? null : parseStoreHours(profile.horarioDomingo);
+
+  function buildRows(open, close) {
+    const rows = [];
+    for (let h = open; h < close; h++) {
+      rows.push({
+        hora: `${String(h).padStart(2, '0')}-${String(h + 1).padStart(2, '0')}`,
+        atual: 0,
+        transicao: 0,
+        final: 0,
+        demanda: null
+      });
+    }
+    return rows;
+  }
+
+  // Manter referências originais para preservar dados de demanda importados
+  const oldDailyCoverage = summary.dailyCoverage;
+
+  // Aplicar para cada dia
+  ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].forEach(dayKey => {
+    if (summary.dailyCoverage[dayKey]) {
+      const newRows = buildRows(segSex.open, segSex.close);
+      // Preservar demanda das rows antigas se existir
+      newRows.forEach(newRow => {
+        const oldRow = oldDailyCoverage[dayKey].rows.find(r => r.hora === newRow.hora);
+        if (oldRow && oldRow.demanda != null) {
+          Object.assign(newRow, oldRow);
+        }
+      });
+      summary.dailyCoverage[dayKey].rows = newRows;
+      summary.dailyCoverage[dayKey].note = `Loja aberta ${formatScheduleHour(segSex.open)}h-${formatScheduleHour(segSex.close)}h`;
+    }
+  });
+
+  if (summary.dailyCoverage.saturday) {
+    const newRows = buildRows(sabado.open, sabado.close);
+    newRows.forEach(newRow => {
+      const oldRow = oldDailyCoverage.saturday.rows.find(r => r.hora === newRow.hora);
+      if (oldRow && oldRow.demanda != null) {
+        Object.assign(newRow, oldRow);
+      }
+    });
+    summary.dailyCoverage.saturday.rows = newRows;
+    summary.dailyCoverage.saturday.note = `Sábado: loja aberta ${formatScheduleHour(sabado.open)}h-${formatScheduleHour(sabado.close)}h`;
+  }
+
+  if (summary.dailyCoverage.sunday) {
+    if (sundayClosed) {
+      summary.dailyCoverage.sunday.closed = true;
+      summary.dailyCoverage.sunday.rows = [];
+      summary.dailyCoverage.sunday.note = 'Loja fechada aos domingos.';
+    } else if (domingo) {
+      const newRows = buildRows(domingo.open, domingo.close);
+      newRows.forEach(newRow => {
+        const oldRow = oldDailyCoverage.sunday.rows.find(r => r.hora === newRow.hora);
+        if (oldRow && oldRow.demanda != null) {
+          Object.assign(newRow, oldRow);
+        }
+      });
+      summary.dailyCoverage.sunday.rows = newRows;
+      summary.dailyCoverage.sunday.note = `Domingo: loja aberta ${formatScheduleHour(domingo.open)}h-${formatScheduleHour(domingo.close)}h`;
+    }
+  }
+}
+
 function countWorkersAtHour(hourStart, hourEnd, dayIndex, people) {
   let count = 0;
   Object.values(people).forEach(shifts => {
@@ -1390,6 +1460,9 @@ async function applyClientState(summary, user) {
         });
       });
     }
+
+    // REGENERAR faixas horárias do dailyCoverage com base no horário da loja
+    regenerateCoverageHours(summary, profile);
 
     // GERAR ESCALAS DINÂMICAS baseadas no horário da loja
     Object.entries(summary.weeklyScenarioSchedule).forEach(([scenarioKey, scenario]) => {
