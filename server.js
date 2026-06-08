@@ -1297,32 +1297,45 @@ function summaryForWeek(baseSummary, weekNumber) {
   summary.metadata.semanaLabel = week.nome;
   summary.metadata.demandaMediaSemana = week.demanda_media;
 
-  // Aplicar demanda da semana ao sábado (major day)
+  // Aplicar dados reais da semana ao sábado
   if (summary.dailyCoverage && summary.dailyCoverage.saturday) {
+    let totalMinutosNecessarios = 0;
+
     summary.dailyCoverage.saturday.rows.forEach((row) => {
       const hora = row.hora.split('-')[0];
       const chaveHora = `${String(hora).padStart(2, '0')}:00`;
       const clientesSemana = week.clientes_por_hora[chaveHora] || 0;
 
       if (clientesSemana > 0) {
-        row.demanda = Math.ceil(clientesSemana / 7);
+        // Usar clientes reais como "demanda" para cálculo
         row.cargaCaixa = cashierLoadForHour(
           row.hora,
-          row.demanda,
-          summary.dailyCoverage.saturday.rows.reduce((sum, r) => sum + (r.demanda || 0), 0),
+          clientesSemana,
+          3,
           'saturday',
-          summary.storeConfig?.pdvs || 3
+          summary.storeConfig?.pdvs || 3,
+          clientesSemana,
+          week.itens_cupom,
+          null
         );
+
+        if (row.cargaCaixa) {
+          row.demanda = clientesSemana;
+          totalMinutosNecessarios += row.cargaCaixa.minutosNecessarios || 0;
+        }
+      } else {
+        row.demanda = 0;
+        row.cargaCaixa = null;
       }
     });
-  }
 
-  // Atualizar metadados de demanda
-  const totalDemandaSemana = summary.dailyCoverage?.saturday?.rows?.reduce((sum, row) => sum + (row.demanda || 0), 0) || 0;
-  if (summary.scenarios) {
-    summary.scenarios.forEach((scenario) => {
-      scenario.caixaNecessario = Math.round(totalDemandaSemana);
-    });
+    // Atualizar capacidade semanal
+    if (summary.scenarios) {
+      const caixasNecessarias = Math.ceil(totalMinutosNecessarios / 60);
+      summary.scenarios.forEach((scenario) => {
+        scenario.caixaNecessario = caixasNecessarias;
+      });
+    }
   }
 
   return summary;
