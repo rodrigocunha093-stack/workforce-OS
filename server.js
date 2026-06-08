@@ -960,8 +960,10 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
     const sabStartHour = sabado.open + (idx % numShifts) * Math.floor((sabadoDuration - shiftHours) / Math.max(1, numShifts - 1));
     const sabEndHour = Math.min(sabado.close, sabStartHour + shiftHours);
 
-    // Folga rotativa: Maria=Dom, Ana=Dom, Lucia=Seg, Jane=Ter, Pedro=Sab, João=Sex
-    const folgaDayIndex = idx === 0 || idx === 1 ? 6 : (idx - 1) % 7;
+    // Folga rotativa: NUNCA em sexta (4) ou sábado (5) - dias de alto movimento
+    // Dias permitidos: segunda(0), terça(1), quarta(2), quinta(3), domingo(6)
+    const folgaDaysAllowed = sundayClosed ? [0, 1, 2, 3] : [0, 1, 2, 3, 6];
+    const folgaDayIndex = folgaDaysAllowed[idx % folgaDaysAllowed.length];
 
     const shifts = [];
     for (let day = 0; day < 7; day++) {
