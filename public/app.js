@@ -697,6 +697,65 @@ function renderFinance(data) {
       <div><span>Contratação indicada agora: <b>nao</b></span><span>Economia comprovada: <b>${money(0)}</b></span><span>Risco a monitorar: <b>capacidade auxiliar</b></span></div>
     </div>
   `;
+
+  renderOptimizationSavings(data);
+}
+
+function renderOptimizationSavings(data) {
+  const el = document.getElementById('optimizationSavings');
+  if (!el) return;
+  const s = data.optimizationSavings;
+  if (!s) {
+    el.innerHTML = '<div class="summary-empty"><strong>Importe vendas para calcular economia</strong><span>A análise compara como a loja operou (caixas abertos) com o cenário otimizado pela demanda real.</span></div>';
+    return;
+  }
+
+  const positiveSavings = s.economia.valorMes > 0;
+  el.innerHTML = `
+    <div class="savings-hero ${positiveSavings ? 'savings-positive' : 'savings-neutral'}">
+      <div class="savings-main">
+        <small>Economia mensal potencial</small>
+        <strong>${money(s.economia.valorMes)}</strong>
+        <span>${money(s.economia.valorAno)}/ano · ${s.economia.percentual}% de redução em caixas-hora</span>
+      </div>
+      <div class="savings-badge">${s.periodo}</div>
+    </div>
+
+    <div class="savings-compare">
+      <article class="savings-card actual">
+        <small>📊 Como a loja OPEROU</small>
+        <strong>${s.operacaoReal.caixasHoraMes.toLocaleString('pt-BR')}h</strong>
+        <span>caixas-hora/mês</span>
+        <div class="savings-cost">${money(s.operacaoReal.custoMes)}/mês</div>
+      </article>
+      <div class="savings-arrow">→</div>
+      <article class="savings-card optimal">
+        <small>✨ Operação OTIMIZADA</small>
+        <strong>${s.operacaoOtimizada.caixasHoraMes.toLocaleString('pt-BR')}h</strong>
+        <span>caixas-hora/mês</span>
+        <div class="savings-cost">${money(s.operacaoOtimizada.custoMes)}/mês</div>
+      </article>
+    </div>
+
+    <div class="savings-detail-head">Comparativo por faixa horária (média de caixas abertos)</div>
+    <div class="savings-hourly">
+      <div class="savings-hour-row savings-hour-head">
+        <span>Hora</span><span>Operou</span><span>Ótimo</span><span>Diferença</span>
+      </div>
+      ${s.hourlyComparison.map(h => `
+        <div class="savings-hour-row">
+          <span>${h.hora}</span>
+          <span>${h.atualMedia}</span>
+          <span>${h.otimoMedia}</span>
+          <span class="${h.diferenca > 0 ? 'savings-excess' : h.diferenca < 0 ? 'savings-deficit' : 'savings-ok'}">${h.diferenca > 0 ? '+' : ''}${h.diferenca}</span>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="savings-footnote">
+      <small>💡 <b>Como funciona:</b> Custo por hora de caixa = ${money(s.custoHora)}. A economia vem de ajustar a quantidade de caixas abertos à demanda real de cada hora (menos caixas ociosos, mantendo a cobertura). Valores positivos na diferença indicam horas com caixas em excesso.</small>
+    </div>
+  `;
 }
 
 function resilienceAnalysis(resilience, absentName = null) {

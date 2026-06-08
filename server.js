@@ -936,6 +936,98 @@ function generateOperatorShift(startHour, endHour) {
   return `${formatScheduleHour(startHour)}-${formatScheduleHour(endHour)} · ${duration}h`;
 }
 
+function buildOptimizationSavings(salesRows, profile, employees, summary) {
+  if (!salesRows || !salesRows.length) return null;
+
+  // Custo médio por hora de operador
+  const salaries = employees.map(e => Number(e.salario || 0)).filter(s => s > 0);
+  const avgSalary = salaries.length ? salaries.reduce((s, v) => s + v, 0) / salaries.length : 1650;
+  const encargos = 0.68; // 68% encargos+benefícios padrão
+  const monthlyCostPerOperator = avgSalary * (1 + encargos);
+  const hoursPerMonth = 220; // 44h/semana * 4.33 ≈ 190h trabalhadas, mas 220h é base CLT
+  const costPerHour = monthlyCostPerOperator / hoursPerMonth;
+
+  // Analisar dados reais por hora
+  const pdvLimit = Number(profile.quantidadePdvs || 3);
+  let totalActualHours = 0;      // Caixas-hora que a empresa REALMENTE abriu
+  let totalOptimalHours = 0;     // Caixas-hora otimizado (baseado em demanda real)
+  let totalDemandHours = 0;      // Demanda real total
+  const daysSet = new Set();
+  const hourDetail = {};
+
+  salesRows.forEach(row => {
+    daysSet.add(row.data);
+    const dayKey = dayKeys[new Date(`${row.data}T12:00:00`).getDay()];
+    const dayType = dayKey === 'saturday' ? 'saturday' : dayKey === 'sunday' ? 'sunday' : 'weekday';
+    const actualOperators = Number(row.operadores || 0);
+
+    // Calcular ótimo baseado na demanda real (cupons, itens, minutos)
+    const carga = cashierLoadForHour(
+      `${row.horaInicio.slice(0, 2)}-${row.horaFim.slice(0, 2)}`,
+      demandFromCoupons(row.cupons),
+      actualOperators,
+      dayType,
+      pdvLimit,
+      row.cupons,
+      row.itensMedios,
+      row.minutosAtendimento
+    );
+    const optimal = carga ? carga.operadoresRecomendados : 1;
+
+    totalActualHours += actualOperators;
+    totalOptimalHours += optimal;
+    totalDemandHours += demandFromCoupons(row.cupons);
+
+    const hourKey = `${row.horaInicio.slice(0, 2)}-${row.horaFim.slice(0, 2)}`;
+    hourDetail[hourKey] = hourDetail[hourKey] || { actual: 0, optimal: 0, count: 0 };
+    hourDetail[hourKey].actual += actualOperators;
+    hourDetail[hourKey].optimal += optimal;
+    hourDetail[hourKey].count += 1;
+  });
+
+  const numDays = daysSet.size || 1;
+  // Projetar para o mês (assumindo dados representam padrão mensal)
+  const monthMultiplier = 30 / numDays;
+
+  const actualHoursMonth = totalActualHours * monthMultiplier;
+  const optimalHoursMonth = totalOptimalHours * monthMultiplier;
+  const savedHoursMonth = Math.max(0, actualHoursMonth - optimalHoursMonth);
+
+  const actualCostMonth = actualHoursMonth * costPerHour;
+  const optimalCostMonth = optimalHoursMonth * costPerHour;
+  const savingsMonth = actualCostMonth - optimalCostMonth;
+
+  // Distribuição por hora (média)
+  const hourlyComparison = Object.entries(hourDetail)
+    .map(([hora, d]) => ({
+      hora,
+      atualMedia: Number((d.actual / d.count).toFixed(1)),
+      otimoMedia: Number((d.optimal / d.count).toFixed(1)),
+      diferenca: Number(((d.actual - d.optimal) / d.count).toFixed(1))
+    }))
+    .sort((a, b) => a.hora.localeCompare(b.hora));
+
+  return {
+    periodo: `${numDays} dias analisados`,
+    custoHora: Number(costPerHour.toFixed(2)),
+    operacaoReal: {
+      caixasHoraMes: Math.round(actualHoursMonth),
+      custoMes: Math.round(actualCostMonth)
+    },
+    operacaoOtimizada: {
+      caixasHoraMes: Math.round(optimalHoursMonth),
+      custoMes: Math.round(optimalCostMonth)
+    },
+    economia: {
+      caixasHoraMes: Math.round(savedHoursMonth),
+      valorMes: Math.round(savingsMonth),
+      valorAno: Math.round(savingsMonth * 12),
+      percentual: actualHoursMonth ? Math.round((savedHoursMonth / actualHoursMonth) * 100) : 0
+    },
+    hourlyComparison
+  };
+}
+
 function updateAllTabsWithImportedData(summary, profile, employees, savedSkillMatrix = null) {
   const employeeNames = employees.map(e => e.nome);
   const sundayClosed = sundayIsClosed(profile);
@@ -1640,6 +1732,8 @@ async function applyClientState(summary, user) {
     scenario.caixaNecessario = weeklyDemand;
   });
   summary.monthlyWeekAnalysis = buildMonthlyWeekAnalysis(summary, state.salesRows);
+  // ANÁLISE DE ECONOMIA: operação real vs otimizada
+  summary.optimizationSavings = buildOptimizationSavings(state.salesRows, profile, state.employees, summary);
   const finalCapacity = operators * 40;
   const finalSurplus = finalCapacity - weeklyDemand;
   summary.decisionMemory.recommendations[0].dados = [`${operators} operadoras`, `${weeklyDemand} caixas-hora semanais`, `${finalCapacity}h de capacidade no cenário mais restritivo`];
