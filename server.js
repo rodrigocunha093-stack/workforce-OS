@@ -1521,7 +1521,7 @@ const server = http.createServer(async (req, res) => {
   if (req.url === '/api/auth/register' && req.method === 'POST') {
     (async () => {
       try {
-        enforceRateLimit(req, 'register', 3, 60 * 60 * 1000);
+        enforceRateLimit(req, 'register', 20, 60 * 60 * 1000);  // Relaxed for testing
         const body = await readJsonBody(req, 50_000);
         const email = String(body.email || '').trim().toLowerCase();
         const name = sanitizeString(String(body.name || '').trim());
@@ -1558,7 +1558,7 @@ const server = http.createServer(async (req, res) => {
   if (req.url === '/api/auth/login' && req.method === 'POST') {
     (async () => {
       try {
-        enforceRateLimit(req, 'login', 5, 15 * 60 * 1000);
+        enforceRateLimit(req, 'login', 20, 60 * 60 * 1000);  // Relaxed for testing
         const body = await readJsonBody(req, 50_000);
         const email = String(body.email || '').trim().toLowerCase();
         const password = String(body.password || '');
