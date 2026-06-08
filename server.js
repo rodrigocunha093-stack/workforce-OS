@@ -114,16 +114,48 @@ function requireSameOrigin(req) {
 }
 
 function enforceRateLimit(req, action, maxAttempts = 8, windowMs = 15 * 60 * 1000) {
-  const key = `${action}:${requestIp(req)}`;
+  const ip = requestIp(req);
+  const key = `${action}:${ip}`;
   const now = Date.now();
   const current = attempts.get(key) || [];
   const recent = current.filter((time) => now - time < windowMs);
-  if (recent.length >= maxAttempts) throw new Error('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
+
+  if (recent.length >= maxAttempts) {
+    audit(null, 'RATE_LIMIT_EXCEEDED', { action, ip, attempts: recent.length });
+    throw new Error('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
+  }
+
   recent.push(now);
   attempts.set(key, recent);
 }
 
+function securityHeaders(res) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'");
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+}
+
 loadSessions();
+
+function validateEmail(email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return email && email.length <= 255 && emailRegex.test(email);
+}
+
+function validatePassword(password) {
+  return password && password.length >= 8 && password.length <= 128;
+}
+
+function validateName(name) {
+  return name && name.length >= 2 && name.length <= 100 && /^[\w\s\-áéíóúàâêôãõç]+$/i.test(name);
+}
+
+function sanitizeString(str) {
+  return String(str).slice(0, 1000).replace(/[<>"']/g, '');
+}
 
 function defaultClientState() {
   return {
@@ -860,12 +892,17 @@ const data = {
   ]
 };
 
-function json(res, payload) {
-  res.writeHead(200, {
+function json(res, payload, statusCode = 200) {
+  res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'no-store',
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
     'X-Content-Type-Options': 'nosniff',
-    'X-Frame-Options': 'DENY'
+    'X-Frame-Options': 'DENY',
+    'X-XSS-Protection': '1; mode=block',
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'geolocation=(), microphone=(), camera=()'
   });
   res.end(JSON.stringify(payload));
 }
@@ -1433,15 +1470,13 @@ const server = http.createServer(async (req, res) => {
   if (req.url === '/api/auth/status') return json(res, { authenticated: Boolean(user), user: user ? { name: user.name, email: user.email } : null });
   if (req.url === '/api/account/activity') {
     if (!user) {
-      res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
-      return res.end(JSON.stringify({ ok: false, error: 'Faça login para visualizar atividades.' }));
+      return json(res, { ok: false, error: 'Faça login para visualizar atividades.' }, 401);
     }
     return json(res, { ok: true, activities: loadAudit(user.id).slice(0, 20), backups: fs.existsSync(BACKUP_DIR) ? fs.readdirSync(BACKUP_DIR).filter((file) => file.startsWith(user.id)).length : 0, persistence: await db.appPersistenceStatus() });
   }
   if (req.url === '/api/account/export') {
     if (!user) {
-      res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
-      return res.end(JSON.stringify({ ok: false, error: 'Faça login para exportar seus dados.' }));
+      return json(res, { ok: false, error: 'Faça login para exportar seus dados.' }, 401);
     }
     audit(user.id, 'Dados exportados');
     const payload = {
@@ -1477,35 +1512,45 @@ const server = http.createServer(async (req, res) => {
       saveUsers(users);
       [...sessions.entries()].filter(([, session]) => session.userId === user.id).forEach(([key]) => sessions.delete(key));
       createSession(res, req, user.id);
-      audit(user.id, 'Senha alterada');
+      await audit(user.id, 'PASSWORD_CHANGED', { ip: requestIp(req) });
       return json(res, { ok: true });
     } catch (error) {
-      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-      return res.end(JSON.stringify({ ok: false, error: error.message }));
+      return json(res, { ok: false, error: error.message }, 400);
     }
   }
   if (req.url === '/api/auth/register' && req.method === 'POST') {
     (async () => {
       try {
-        enforceRateLimit(req, 'register', 5);
+        enforceRateLimit(req, 'register', 3, 60 * 60 * 1000);
         const body = await readJsonBody(req, 50_000);
         const email = String(body.email || '').trim().toLowerCase();
-        const name = String(body.name || '').trim();
+        const name = sanitizeString(String(body.name || '').trim());
         const password = String(body.password || '');
-        if (String(body.inviteCode || '').trim() !== PILOT_INVITE_CODE) throw new Error('Código de convite inválido.');
-        if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 8) throw new Error('Informe nome, e-mail válido e senha com pelo menos 8 caracteres.');
+        const inviteCode = sanitizeString(String(body.inviteCode || '').trim());
+
+        if (!validateEmail(email)) throw new Error('Dados inválidos. Verifique e tente novamente.');
+        if (!validateName(name)) throw new Error('Dados inválidos. Verifique e tente novamente.');
+        if (!validatePassword(password)) throw new Error('Dados inválidos. Verifique e tente novamente.');
+        if (inviteCode !== PILOT_INVITE_CODE) {
+          await audit(null, 'INVALID_INVITE_CODE', { email, ip: requestIp(req) });
+          throw new Error('Dados inválidos. Verifique e tente novamente.');
+        }
+
         const existingUser = await dbSupabase.getUser(email);
-        if (existingUser) throw new Error('Este e-mail já possui uma conta.');
+        if (existingUser) {
+          await audit(null, 'DUPLICATE_REGISTRATION_ATTEMPT', { email, ip: requestIp(req) });
+          throw new Error('Dados inválidos. Verifique e tente novamente.');
+        }
+
         const secured = await hashPassword(password);
         const newUser = { id: crypto.randomUUID(), name, email, passwordSalt: secured.salt, passwordHash: secured.hash, inviteCode: PILOT_INVITE_CODE };
         await dbSupabase.createUser(newUser);
         await saveClientState(newUser.id, defaultClientState());
         await createSession(res, req, newUser.id);
-        await audit(newUser.id, 'Conta criada', { email });
+        await audit(newUser.id, 'ACCOUNT_CREATED', { email, ip: requestIp(req) });
         return json(res, { ok: true, user: { name, email } });
       } catch (error) {
-        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-        return res.end(JSON.stringify({ ok: false, error: error.message }));
+        return json(res, { ok: false, error: error.message }, 400);
       }
     })();
     return;
@@ -1513,17 +1558,26 @@ const server = http.createServer(async (req, res) => {
   if (req.url === '/api/auth/login' && req.method === 'POST') {
     (async () => {
       try {
-        enforceRateLimit(req, 'login', 8);
+        enforceRateLimit(req, 'login', 5, 15 * 60 * 1000);
         const body = await readJsonBody(req, 50_000);
         const email = String(body.email || '').trim().toLowerCase();
+        const password = String(body.password || '');
+
+        if (!validateEmail(email) || !validatePassword(password)) {
+          throw new Error('E-mail ou senha inválidos.');
+        }
+
         const userMatch = await dbSupabase.getUser(email);
-        if (!userMatch || !(await verifyPassword(String(body.password || ''), userMatch))) throw new Error('E-mail ou senha inválidos.');
+        if (!userMatch || !(await verifyPassword(password, userMatch))) {
+          await audit(null, 'FAILED_LOGIN_ATTEMPT', { email, ip: requestIp(req) });
+          throw new Error('E-mail ou senha inválidos.');
+        }
+
         await createSession(res, req, userMatch.id);
-        await audit(userMatch.id, 'Login realizado', { ip: requestIp(req) });
+        await audit(userMatch.id, 'LOGIN_SUCCESS', { ip: requestIp(req) });
         return json(res, { ok: true, user: { name: userMatch.name, email: userMatch.email } });
       } catch (error) {
-        res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
-        return res.end(JSON.stringify({ ok: false, error: error.message }));
+        return json(res, { ok: false, error: error.message }, 401);
       }
     })();
     return;
@@ -1544,15 +1598,22 @@ const server = http.createServer(async (req, res) => {
       try {
         if (!user) throw new Error('Faça login para configurar sua loja.');
         const body = await readJsonBody(req);
+
+        // Validar dados de entrada
+        if (body.profile) {
+          if (body.profile.empresa) body.profile.empresa = sanitizeString(body.profile.empresa).slice(0, 100);
+          if (body.profile.loja) body.profile.loja = sanitizeString(body.profile.loja).slice(0, 100);
+          if (body.profile.cnpj) body.profile.cnpj = String(body.profile.cnpj).slice(0, 20);
+        }
+
         const state = await loadClientState(user.id);
         state.profile = { ...state.profile, ...body.profile };
         state.updatedAt = new Date().toISOString();
         await saveClientState(user.id, state);
-        await audit(user.id, 'Configuração da loja atualizada', { empresa: state.profile.empresa, loja: state.profile.loja });
+        await audit(user.id, 'CONFIG_UPDATED', { empresa: state.profile.empresa, loja: state.profile.loja });
         return json(res, { ok: true, state });
       } catch (error) {
-        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-        return res.end(JSON.stringify({ ok: false, error: error.message }));
+        return json(res, { ok: false, error: error.message }, 400);
       }
     })();
     return;
@@ -1562,18 +1623,26 @@ const server = http.createServer(async (req, res) => {
       try {
         if (!user) throw new Error('Faça login para importar vendas.');
         const body = await readJsonBody(req);
-        const rows = Array.isArray(body.rows) ? body.rows : [];
-        const validRows = rows.filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.data) && /^\d{2}:\d{2}$/.test(row.horaInicio) && /^\d{2}:\d{2}$/.test(row.horaFim) && Number(row.cupons) >= 0);
+        const rows = Array.isArray(body.rows) ? body.rows.slice(0, 10000) : [];
+
+        const validRows = rows.filter((row) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(row.data)) return false;
+          if (!/^\d{2}:\d{2}$/.test(row.horaInicio)) return false;
+          if (!/^\d{2}:\d{2}$/.test(row.horaFim)) return false;
+          if (Number(row.cupons) < 0 || Number(row.cupons) > 100000) return false;
+          return true;
+        });
+
         if (!validRows.length) throw new Error('Nenhuma linha válida encontrada. Use o modelo de importação.');
+
         const state = await loadClientState(user.id);
         state.salesRows = validRows;
         state.updatedAt = new Date().toISOString();
         await saveClientState(user.id, state);
-        await audit(user.id, 'Vendas importadas', { linhas: validRows.length, dias: new Set(validRows.map((row) => row.data)).size });
+        await audit(user.id, 'SALES_IMPORTED', { linhas: validRows.length, dias: new Set(validRows.map((row) => row.data)).size, ip: requestIp(req) });
         return json(res, { ok: true, imported: validRows.length, rejected: rows.length - validRows.length, state });
       } catch (error) {
-        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-        return res.end(JSON.stringify({ ok: false, error: error.message }));
+        return json(res, { ok: false, error: error.message }, 400);
       }
     })();
     return;
@@ -1583,26 +1652,40 @@ const server = http.createServer(async (req, res) => {
       try {
         if (!user) throw new Error('Faça login para importar a equipe.');
         const body = await readJsonBody(req);
-        const rows = Array.isArray(body.rows) ? body.rows : [];
-        const validRows = rows.filter((row) => row.nome && Number(row.horasSemanais) > 0);
+        const rows = Array.isArray(body.rows) ? body.rows.slice(0, 1000) : [];
+
+        const validRows = rows.filter((row) => {
+          const nome = sanitizeString(String(row.nome || '')).slice(0, 100);
+          const horas = Number(row.horasSemanais);
+          return nome.length >= 2 && horas > 0 && horas <= 168;
+        }).map(row => ({
+          nome: sanitizeString(String(row.nome || '')).slice(0, 100),
+          horasSemanais: Math.min(168, Math.max(0, Number(row.horasSemanais))),
+          funcao: sanitizeString(String(row.funcao || '')).slice(0, 50)
+        }));
+
         if (validRows.length < 4) throw new Error('Importe ao menos quatro operadoras para a implantação atual.');
+
         const state = await loadClientState(user.id);
         state.employees = validRows;
         state.profile.quantidadeOperadores = validRows.length;
         state.updatedAt = new Date().toISOString();
         await saveClientState(user.id, state);
-        await audit(user.id, 'Equipe importada', { colaboradores: validRows.length });
+        await audit(user.id, 'EMPLOYEES_IMPORTED', { colaboradores: validRows.length, ip: requestIp(req) });
         return json(res, { ok: true, imported: validRows.length, rejected: rows.length - validRows.length, state });
       } catch (error) {
-        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-        return res.end(JSON.stringify({ ok: false, error: error.message }));
+        return json(res, { ok: false, error: error.message }, 400);
       }
     })();
     return;
   }
+
+  // Proteção contra path traversal
   const file = req.url === '/' ? 'index.html' : req.url.replace(/^\//, '');
   const filePath = path.join(PUBLIC, file);
-  if (!filePath.startsWith(PUBLIC)) { res.writeHead(403); return res.end('Forbidden'); }
+  if (!filePath.startsWith(PUBLIC)) {
+    return json(res, { error: 'Forbidden' }, 403);
+  }
   fs.readFile(filePath, (err, buf) => {
     if (err) { res.writeHead(404); return res.end('Not found'); }
     const ext = path.extname(filePath);
