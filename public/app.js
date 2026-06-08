@@ -1,5 +1,6 @@
 ﻿const tabs = document.querySelectorAll('.sidebar button');
 let authState = { authenticated: false, user: null };
+console.log('App loaded with weekly scenarios - v2.1');
 
 tabs.forEach((button) => {
   button.onclick = () => {
