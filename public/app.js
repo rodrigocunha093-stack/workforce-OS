@@ -773,19 +773,65 @@ function renderResilience(data) {
   `).join('');
 
   document.getElementById('skillMatrix').innerHTML = `
+    <div class="skill-matrix-hint">💡 Clique em cada nível para editar: 1 (Treinar) → 2 (Apta) → 3 (Referência). Clique em "Pendente" para validar.</div>
     <div class="skill-row skill-head"><span>Colaboradora</span>${resilience.skills.map((skill) => `<span title="${skill.criticidade}">${skill.nome}</span>`).join('')}<span>Validação</span></div>
-    ${resilience.people.map((person) => `
+    ${resilience.people.map((person, personIdx) => `
       <div class="skill-row">
         <strong>${person.nome}</strong>
         ${resilience.skills.map((skill) => {
           const level = Number(person.skills[skill.id] || 0);
           const label = level === 3 ? 'Referencia' : level === 2 ? 'Apta' : 'Treinar';
-          return `<span class="skill-level level-${level}" title="${label}">${level}</span>`;
+          return `<span class="skill-level level-${level} editable-skill" data-person="${personIdx}" data-skill="${skill.id}" title="${label} (clique para mudar)" style="cursor:pointer">${level}</span>`;
         }).join('')}
-        <span class="validation-status ${person.validado ? 'validated' : 'pending'}">${person.validado ? 'Validado' : 'Pendente'}</span>
+        <span class="validation-status ${person.validado ? 'validated' : 'pending'} editable-validation" data-person="${personIdx}" style="cursor:pointer">${person.validado ? 'Validado' : 'Pendente'}</span>
       </div>
     `).join('')}
+    <div class="skill-matrix-actions">
+      <button id="saveSkillMatrix" class="optimize-button save-optimization">Salvar competências</button>
+    </div>
   `;
+
+  // Tornar células editáveis
+  document.querySelectorAll('.editable-skill').forEach((cell) => {
+    cell.onclick = () => {
+      const personIdx = Number(cell.dataset.person);
+      const skillId = cell.dataset.skill;
+      const current = Number(resilience.people[personIdx].skills[skillId] || 0);
+      const next = current >= 3 ? 1 : current + 1;
+      resilience.people[personIdx].skills[skillId] = next;
+      renderResilience(data);
+    };
+  });
+  document.querySelectorAll('.editable-validation').forEach((cell) => {
+    cell.onclick = () => {
+      const personIdx = Number(cell.dataset.person);
+      resilience.people[personIdx].validado = !resilience.people[personIdx].validado;
+      renderResilience(data);
+    };
+  });
+  const saveSkillBtn = document.getElementById('saveSkillMatrix');
+  if (saveSkillBtn) {
+    saveSkillBtn.onclick = async () => {
+      try {
+        const response = await fetch('/api/save-skills', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ people: resilience.people })
+        });
+        const result = await response.json();
+        if (result.ok) {
+          showToast('Competências salvas com sucesso!');
+          saveSkillBtn.textContent = 'Salvo ✓';
+          saveSkillBtn.disabled = true;
+          setTimeout(() => { saveSkillBtn.textContent = 'Salvar competências'; saveSkillBtn.disabled = false; }, 3000);
+        } else {
+          showToast('Erro: ' + (result.error || 'tente novamente'));
+        }
+      } catch (error) {
+        showToast('Erro ao salvar competências.');
+      }
+    };
+  }
 
   document.getElementById('absenceButtons').innerHTML = resilience.people
     .map((person) => `<button data-absent="${person.nome}">${person.nome}</button>`)

@@ -936,7 +936,7 @@ function generateOperatorShift(startHour, endHour) {
   return `${formatScheduleHour(startHour)}-${formatScheduleHour(endHour)} · ${duration}h`;
 }
 
-function updateAllTabsWithImportedData(summary, profile, employees) {
+function updateAllTabsWithImportedData(summary, profile, employees, savedSkillMatrix = null) {
   const employeeNames = employees.map(e => e.nome);
   const sundayClosed = sundayIsClosed(profile);
 
@@ -988,18 +988,25 @@ function updateAllTabsWithImportedData(summary, profile, employees) {
   }
 
   // === RESILIÊNCIA - PESSOAS ===
-  summary.resilience.people = employees.map((emp, idx) => ({
-    nome: emp.nome,
-    skills: {
-      caixa: 3,
-      abertura: idx % 2 === 0 ? 3 : 2,
-      fechamento: idx % 3 === 0 ? 3 : 2,
-      sangria: idx === 0 || idx === 1 ? 3 : 1,
-      lideranca: idx === 0 ? 3 : 2,
-      apoio: 3
-    },
-    validado: false
-  }));
+  summary.resilience.people = employees.map((emp, idx) => {
+    // Se há matriz salva para esta operadora, usa ela
+    const saved = savedSkillMatrix && savedSkillMatrix.find(s => s.nome === emp.nome);
+    if (saved) {
+      return { nome: emp.nome, skills: saved.skills, validado: saved.validado };
+    }
+    return {
+      nome: emp.nome,
+      skills: {
+        caixa: 3,
+        abertura: idx % 2 === 0 ? 3 : 2,
+        fechamento: idx % 3 === 0 ? 3 : 2,
+        sangria: idx === 0 || idx === 1 ? 3 : 1,
+        lideranca: idx === 0 ? 3 : 2,
+        apoio: 3
+      },
+      validado: false
+    };
+  });
 
   // === FINANCEIRO ===
   const salaries = employees.map(e => Number(e.salario || 0)).filter(s => s > 0);
@@ -1536,7 +1543,7 @@ async function applyClientState(summary, user) {
     }
 
     // ATUALIZAR TODAS as abas com dados importados/configurados
-    updateAllTabsWithImportedData(summary, profile, state.employees);
+    updateAllTabsWithImportedData(summary, profile, state.employees, state.skillMatrix);
 
     // REGENERAR faixas horárias do dailyCoverage com base no horário da loja
     regenerateCoverageHours(summary, profile);
@@ -1926,6 +1933,30 @@ const server = http.createServer(async (req, res) => {
       if (user) await audit(user.id, 'Logout realizado');
       await clearSession(res, req);
       return json(res, { ok: true });
+    })();
+    return;
+  }
+  if (req.url === '/api/save-skills' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login para salvar competências.');
+        const body = await readJsonBody(req);
+        const people = Array.isArray(body.people) ? body.people : [];
+        if (!people.length) throw new Error('Nenhuma competência para salvar.');
+
+        const state = await loadClientState(user.id);
+        state.skillMatrix = people.map(p => ({
+          nome: sanitizeString(String(p.nome || '')).slice(0, 100),
+          skills: p.skills || {},
+          validado: Boolean(p.validado)
+        }));
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.id, state);
+        await audit(user.id, 'SKILLS_SAVED', { count: people.length, ip: requestIp(req) });
+        return json(res, { ok: true });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
     })();
     return;
   }
