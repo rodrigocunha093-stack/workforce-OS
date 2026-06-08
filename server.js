@@ -234,7 +234,7 @@ function cashierLoadForHour(hora, simpleDemand, scheduledCashiers, dayType = 'we
     ? Math.round(observedServiceMinutes)
     : Math.round(inferredCustomers * averageServiceMinutes);
   const neededHours = Number((neededMinutes / 60).toFixed(2));
-  const recommended = Math.max(1, Math.ceil((neededMinutes / 60) * 1.1));
+  const recommended = Math.max(1, Math.ceil((neededMinutes / 60) * 1.05));
   const cappedRecommendation = Math.min(Math.max(1, pdvLimit), recommended);
   const capacityMinutes = Math.max(1, scheduledCashiers || simpleDemand) * 60;
   const utilization = Math.round(Math.min(160, (neededMinutes / capacityMinutes) * 100));
@@ -261,7 +261,7 @@ function cashierLoadForHour(hora, simpleDemand, scheduledCashiers, dayType = 'we
     operadoresRecomendados: cappedRecommendation,
     operadoresCalculados: recommended,
     limitadoPorPdvs: recommended > pdvLimit,
-    margemSeguranca: 10,
+    margemSeguranca: 5,
     filaMin: waitMinutes,
     filaStatus: queue.label,
     filaClass: queue.className,
