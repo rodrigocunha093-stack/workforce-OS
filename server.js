@@ -18,13 +18,53 @@ const sessions = new Map();
 const attempts = new Map();
 const PILOT_INVITE_CODE = process.env.PILOT_INVITE_CODE || 'PILOTO-CX-2026';
 
-// Cenários por semana do mês
+// Cenários por semana do mês (baseado em dados reais VRSoft)
 const CENARIOS_SEMANAS = {
-  1: { nome: 'Semana 1 (1-7)', demanda: 485, itens: 5.8, ticket: 50.50 },
-  2: { nome: 'Semana 2 (8-14)', demanda: 495, itens: 6.0, ticket: 51.50 },
-  3: { nome: 'Semana 3 (15-21)', demanda: 500, itens: 6.0, ticket: 51.80 },
-  4: { nome: 'Semana 4 (22-28) - PROMOCAO', demanda: 525, itens: 6.5, ticket: 55.00 },
-  5: { nome: 'Semana 5 (29-05) - PICO', demanda: 545, itens: 7.0, ticket: 58.80 }
+  1: {
+    nome: 'Semana 1 do Mês (Dias 1-7)',
+    cupons_sabado: 485,
+    clientes_por_hora: { '06:00': 10, '07:00': 30, '08:00': 55, '09:00': 50, '10:00': 52, '11:00': 48, '12:00': 30, '13:00': 20, '14:00': 18, '15:00': 25, '16:00': 40, '17:00': 50, '18:00': 28, '19:00': 1 },
+    ticket_medio: 50.50,
+    itens_cupom: 5.8,
+    faturamento_sabado: 24500.00,
+    demanda_media: 'Normal'
+  },
+  2: {
+    nome: 'Semana 2 do Mês (Dias 8-14)',
+    cupons_sabado: 495,
+    clientes_por_hora: { '06:00': 11, '07:00': 32, '08:00': 58, '09:00': 54, '10:00': 56, '11:00': 52, '12:00': 33, '13:00': 22, '14:00': 20, '15:00': 28, '16:00': 42, '17:00': 52, '18:00': 30, '19:00': 1 },
+    ticket_medio: 51.50,
+    itens_cupom: 6.0,
+    faturamento_sabado: 25500.00,
+    demanda_media: 'Normal'
+  },
+  3: {
+    nome: 'Semana 3 do Mês (Dias 15-21)',
+    cupons_sabado: 500,
+    clientes_por_hora: { '06:00': 12, '07:00': 35, '08:00': 60, '09:00': 56, '10:00': 58, '11:00': 54, '12:00': 35, '13:00': 24, '14:00': 22, '15:00': 30, '16:00': 44, '17:00': 54, '18:00': 32, '19:00': 2 },
+    ticket_medio: 51.80,
+    itens_cupom: 6.0,
+    faturamento_sabado: 26000.00,
+    demanda_media: 'Normal'
+  },
+  4: {
+    nome: 'Semana 4 do Mês (Dias 22-28) - PROMOÇÃO',
+    cupons_sabado: 525,
+    clientes_por_hora: { '06:00': 15, '07:00': 40, '08:00': 65, '09:00': 62, '10:00': 68, '11:00': 62, '12:00': 38, '13:00': 28, '14:00': 26, '15:00': 35, '16:00': 48, '17:00': 60, '18:00': 36, '19:00': 2 },
+    ticket_medio: 55.00,
+    itens_cupom: 6.5,
+    faturamento_sabado: 28875.00,
+    demanda_media: 'Promoção Iniciando'
+  },
+  5: {
+    nome: 'Semana 5 do Mês (Dias 29-05) - PICO PROMOÇÃO',
+    cupons_sabado: 545,
+    clientes_por_hora: { '06:00': 12, '07:00': 38, '08:00': 62, '09:00': 60, '10:00': 72, '11:00': 65, '12:00': 42, '13:00': 32, '14:00': 28, '15:00': 38, '16:00': 50, '17:00': 62, '18:00': 40, '19:00': 2 },
+    ticket_medio: 58.80,
+    itens_cupom: 7.0,
+    faturamento_sabado: 32049.00,
+    demanda_media: 'Alto - Pico de Promoção'
+  }
 };
 
 function backupFile(filePath) {
@@ -1248,6 +1288,46 @@ function applyClientState(summary, user) {
   return summary;
 }
 
+function summaryForWeek(baseSummary, weekNumber) {
+  const week = CENARIOS_SEMANAS[weekNumber];
+  if (!week) return baseSummary;
+
+  const summary = JSON.parse(JSON.stringify(baseSummary));
+  summary.metadata.semanaAtiva = weekNumber;
+  summary.metadata.semanaLabel = week.nome;
+  summary.metadata.demandaMediaSemana = week.demanda_media;
+
+  // Aplicar demanda da semana ao sábado (major day)
+  if (summary.dailyCoverage && summary.dailyCoverage.saturday) {
+    summary.dailyCoverage.saturday.rows.forEach((row) => {
+      const hora = row.hora.split('-')[0];
+      const chaveHora = `${String(hora).padStart(2, '0')}:00`;
+      const clientesSemana = week.clientes_por_hora[chaveHora] || 0;
+
+      if (clientesSemana > 0) {
+        row.demanda = Math.ceil(clientesSemana / 7);
+        row.cargaCaixa = cashierLoadForHour(
+          row.hora,
+          row.demanda,
+          summary.dailyCoverage.saturday.rows.reduce((sum, r) => sum + (r.demanda || 0), 0),
+          'saturday',
+          summary.storeConfig?.pdvs || 3
+        );
+      }
+    });
+  }
+
+  // Atualizar metadados de demanda
+  const totalDemandaSemana = summary.dailyCoverage?.saturday?.rows?.reduce((sum, row) => sum + (row.demanda || 0), 0) || 0;
+  if (summary.scenarios) {
+    summary.scenarios.forEach((scenario) => {
+      scenario.caixaNecessario = Math.round(totalDemandaSemana);
+    });
+  }
+
+  return summary;
+}
+
 async function summaryFromDatabase(user = null) {
   const connection = await db.status();
   if (!connection.connected) {
@@ -1327,6 +1407,14 @@ const server = http.createServer(async (req, res) => {
   }
   const user = await authenticatedUser(req);
   if (req.url === '/api/summary') return json(res, await summaryFromDatabase(user));
+  if (req.url.match(/^\/api\/summary\/week\/\d+$/)) {
+    const weekNumber = Number(req.url.split('/').pop());
+    if (weekNumber >= 1 && weekNumber <= 5) {
+      const baseSummary = await summaryFromDatabase(user);
+      return json(res, summaryForWeek(baseSummary, weekNumber));
+    }
+    return json(res, { error: 'Semana inválida. Use 1-5.' });
+  }
   if (req.url === '/api/db-status') return json(res, await db.status());
   if (req.url === '/api/persistence-status') return json(res, await db.appPersistenceStatus());
   if (req.url === '/api/auth/status') return json(res, { authenticated: Boolean(user), user: user ? { name: user.name, email: user.email } : null });

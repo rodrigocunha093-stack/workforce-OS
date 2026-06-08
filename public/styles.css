@@ -835,6 +835,38 @@ h3 {
   background: var(--amber);
 }
 
+.week-selector-panel {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: #f8fbfd;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.week-selector-panel label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+
+.week-selector-panel select {
+  border: 1px solid var(--line);
+  background: white;
+  color: #333;
+  font-size: 13px;
+}
+
+.week-selector-panel select:hover {
+  border-color: var(--teal);
+}
+
+.week-selector-panel select:focus {
+  outline: none;
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(64, 170, 150, 0.1);
+}
+
 .kpi {
   min-height: 120px;
   padding: 16px;

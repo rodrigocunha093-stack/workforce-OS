@@ -1427,6 +1427,40 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     safeRender('financeiro', () => renderFinance(data));
     safeRender('resiliencia', () => renderResilience(data));
     safeRender('memoria de decisao', () => renderDecisionMemory(data));
+
+    // Configurar seletor de semana
+    const weekSelector = document.getElementById('weekSelector');
+    const weekInfo = document.getElementById('weekInfo');
+    if (weekSelector) {
+      weekSelector.addEventListener('change', async (event) => {
+        const weekNumber = event.target.value;
+        if (!weekNumber) {
+          // Usar dados padrão
+          window.currentSummary = data;
+          safeRender('indicadores', () => renderKpis(data.scenarios, data.metadata));
+          safeRender('cenarios', () => renderScenarios(data.scenarios, data.metadata));
+          safeRender('cobertura', () => renderCoverage(data));
+          weekInfo.textContent = 'Mostrando todos os dados importados';
+        } else {
+          try {
+            const response = await fetch(`/api/summary/week/${weekNumber}`);
+            const weekData = await response.json();
+            window.currentSummary = weekData;
+            safeRender('indicadores', () => renderKpis(weekData.scenarios, weekData.metadata));
+            safeRender('cenarios', () => renderScenarios(weekData.scenarios, weekData.metadata));
+            safeRender('cobertura', () => renderCoverage(weekData));
+            const weekInfo = document.getElementById('weekInfo');
+            if (weekInfo && weekData.metadata?.demandaMediaSemana) {
+              weekInfo.textContent = `${weekData.metadata.semanaLabel} • Demanda: ${weekData.metadata.demandaMediaSemana}`;
+            }
+          } catch (error) {
+            console.error('Erro ao carregar dados da semana:', error);
+            weekInfo.textContent = 'Erro ao carregar dados da semana';
+          }
+        }
+      });
+    }
+
     if (authState.authenticated) {
       safeRender('implantacao', () => renderOnboarding(data));
       safeRender('atividade da conta', renderAccountActivity);
