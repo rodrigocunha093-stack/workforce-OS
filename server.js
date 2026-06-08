@@ -920,6 +920,75 @@ function requiredOperationalDayKeys(profile = {}) {
   return keys;
 }
 
+function parseStoreHours(hourStr) {
+  if (!hourStr || typeof hourStr !== 'string') return { open: 7, close: 19 };
+  const match = hourStr.match(/(\d{1,2}):?\d{0,2}\s*-\s*(\d{1,2}):?\d{0,2}/);
+  if (!match) return { open: 7, close: 19 };
+  return { open: Number(match[1]), close: Number(match[2]) };
+}
+
+function formatScheduleHour(h) {
+  return String(Math.floor(h)).padStart(2, '0');
+}
+
+function generateOperatorShift(startHour, endHour) {
+  const duration = endHour - startHour;
+  return `${formatScheduleHour(startHour)}-${formatScheduleHour(endHour)} · ${duration}h`;
+}
+
+function generateScheduleByProfile(profile, employees, targetHours = 44, targetDaysOff = 1) {
+  const segSex = parseStoreHours(profile.horarioSegSex);
+  const sabado = parseStoreHours(profile.horarioSabado);
+  const sundayClosed = sundayIsClosed(profile);
+  const domingo = sundayClosed ? null : parseStoreHours(profile.horarioDomingo);
+
+  const segSexDuration = segSex.close - segSex.open;
+  const sabadoDuration = sabado.close - sabado.open;
+
+  // Determinar turnos: abertura, meio, fechamento
+  const shiftHours = 8; // 8h por dia padrão
+  const numShifts = Math.max(1, Math.ceil(segSexDuration / 4));
+
+  const result = {};
+  employees.forEach((emp, idx) => {
+    // Distribuir turnos: par começa na abertura, ímpar mais tarde
+    const shiftOffset = (idx % numShifts) * Math.floor((segSexDuration - shiftHours) / Math.max(1, numShifts - 1));
+    const startHour = segSex.open + shiftOffset;
+    const endHour = Math.min(segSex.close, startHour + shiftHours);
+
+    // Sábado: turnos distribuídos
+    const sabStartHour = sabado.open + (idx % numShifts) * Math.floor((sabadoDuration - shiftHours) / Math.max(1, numShifts - 1));
+    const sabEndHour = Math.min(sabado.close, sabStartHour + shiftHours);
+
+    // Folga rotativa: Maria=Dom, Ana=Dom, Lucia=Seg, Jane=Ter, Pedro=Sab, João=Sex
+    const folgaDayIndex = idx === 0 || idx === 1 ? 6 : (idx - 1) % 7;
+
+    const shifts = [];
+    for (let day = 0; day < 7; day++) {
+      if (day === folgaDayIndex) {
+        shifts.push('Folga');
+      } else if (day === 5) {
+        // Sábado
+        shifts.push(generateOperatorShift(sabStartHour, sabEndHour));
+      } else if (day === 6) {
+        // Domingo
+        if (sundayClosed) {
+          shifts.push('Folga');
+        } else if (domingo) {
+          shifts.push(generateOperatorShift(domingo.open, domingo.close));
+        } else {
+          shifts.push('Folga');
+        }
+      } else {
+        // Segunda a sexta
+        shifts.push(generateOperatorShift(startHour, endHour));
+      }
+    }
+    result[emp.nome] = shifts;
+  });
+  return result;
+}
+
 function dateLabel(value) {
   const [year, month, day] = value.split('-');
   return `${day}/${month}/${year}`;
@@ -1251,27 +1320,12 @@ async function applyClientState(summary, user) {
     const employeeNames = state.employees.map((employee) => employee.nome);
     const names = Object.fromEntries(originals.map((original, index) => [original, employeeNames[index] || original]));
 
-    // Renomear escalas existentes para os primeiros 4 nomes
+    // Renomear escalas diárias
     Object.values(summary.staffSchedule).flat().forEach((person) => { person.nome = names[person.nome] || person.nome; });
-    Object.values(summary.weeklyScenarioSchedule).forEach((scenario) => {
-      scenario.people = Object.fromEntries(Object.entries(scenario.people).map(([name, shifts]) => [names[name] || name, shifts]));
-    });
 
-    // Para operadoras 5+, gerar escalas baseadas nos templates existentes (ciclando)
+    // Adicionar operadoras extras nas escalas diárias
     if (state.employees.length > 4) {
       const extraEmployees = state.employees.slice(4);
-      Object.values(summary.weeklyScenarioSchedule).forEach((scenario) => {
-        const templates = Object.values(scenario.people);
-        extraEmployees.forEach((employee, idx) => {
-          // Pega template alternando entre os 4 existentes
-          const baseTemplate = templates[idx % templates.length];
-          // Rotaciona dia de folga para distribuir
-          const rotated = [...baseTemplate.slice(idx + 1), ...baseTemplate.slice(0, idx + 1)];
-          scenario.people[employee.nome] = rotated;
-        });
-      });
-
-      // Adicionar nas escalas diárias também
       Object.keys(summary.staffSchedule).forEach((dayKey) => {
         const existingSchedule = summary.staffSchedule[dayKey];
         extraEmployees.forEach((employee, idx) => {
@@ -1285,6 +1339,13 @@ async function applyClientState(summary, user) {
         });
       });
     }
+
+    // GERAR ESCALAS DINÂMICAS baseadas no horário da loja
+    Object.entries(summary.weeklyScenarioSchedule).forEach(([scenarioKey, scenario]) => {
+      const targetHours = scenario.targetHours || 44;
+      const targetDaysOff = scenario.targetDaysOff || 1;
+      scenario.people = generateScheduleByProfile(profile, state.employees, targetHours, targetDaysOff);
+    });
 
     summary.sundayRotation.forEach((item) => {
       item.folga = item.folga.map((name) => names[name] || name);
