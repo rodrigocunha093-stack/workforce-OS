@@ -1,0 +1,14 @@
+{
+  "name": "controlador-escalas-mvp",
+  "version": "0.2.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "check-db": "node check-db.js",
+    "migrate:audit": "node migrate-local-to-postgres.js",
+    "migrate:apply": "node migrate-local-to-postgres.js --apply"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
+  }
+}

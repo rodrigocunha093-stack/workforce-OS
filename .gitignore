@@ -1,0 +1,9 @@
+data/
+*.log
+*.key
+cloudflared.exe
+serveo_tunnel_key
+node_modules/
+.env
+.env.*
+!.env.example
