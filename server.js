@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const db = require('./db');
+const dbSupabase = require('./db-supabase');
 
 const PORT = process.env.PORT || 4173;
 const PUBLIC = path.join(__dirname, 'public');
@@ -33,31 +34,21 @@ function tokenHash(token) {
 }
 
 function saveSessions() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  const active = [...sessions.entries()].filter(([, session]) => session.expiresAt > Date.now());
-  fs.writeFileSync(SESSIONS_FILE, JSON.stringify(Object.fromEntries(active), null, 2), 'utf8');
+  // Sessões agora são salvas no Supabase
 }
 
 function loadSessions() {
-  try {
-    Object.entries(JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'))).forEach(([key, value]) => {
-      if (value.expiresAt > Date.now()) sessions.set(key, value);
-    });
-  } catch {}
+  // Sessões são carregadas do Supabase quando necessário
 }
 
-function audit(userId, action, detail = {}) {
+async function audit(userId, action, detail = {}) {
   if (!userId) return;
-  fs.mkdirSync(AUDIT_DIR, { recursive: true });
-  const file = path.join(AUDIT_DIR, `${userId}.json`);
-  let rows = [];
-  try { rows = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
-  rows.unshift({ at: new Date().toISOString(), action, detail });
-  fs.writeFileSync(file, JSON.stringify(rows.slice(0, 200), null, 2), 'utf8');
+  await dbSupabase.auditLog(userId, action, detail);
 }
 
-function loadAudit(userId) {
-  try { return JSON.parse(fs.readFileSync(path.join(AUDIT_DIR, `${userId}.json`), 'utf8')); } catch { return []; }
+async function loadAudit(userId) {
+  // Implementar busca de auditoria no Supabase quando necessário
+  return [];
 }
 
 function requestIp(req) {
@@ -110,30 +101,23 @@ function clientStateFile(userId) {
   return path.join(CLIENTS_DIR, `${userId}.json`);
 }
 
-function loadClientState(userId) {
+async function loadClientState(userId) {
   if (!userId) return defaultClientState();
-  try {
-    return { ...defaultClientState(), ...JSON.parse(fs.readFileSync(clientStateFile(userId), 'utf8')) };
-  } catch {
-    return defaultClientState();
-  }
+  const data = await dbSupabase.getClientData(userId);
+  return { ...defaultClientState(), ...data };
 }
 
-function saveClientState(userId, state) {
-  fs.mkdirSync(CLIENTS_DIR, { recursive: true });
-  const file = clientStateFile(userId);
-  backupFile(file);
-  fs.writeFileSync(file, JSON.stringify(state, null, 2), 'utf8');
+async function saveClientState(userId, state) {
+  await dbSupabase.saveClientData(userId, state);
 }
 
-function loadUsers() {
-  try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); } catch { return []; }
+async function loadUsers() {
+  // Usuarios são carregados do Supabase quando necessário
+  return [];
 }
 
-function saveUsers(users) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  backupFile(USERS_FILE);
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
+async function saveUsers(users) {
+  // Usuarios são salvos no Supabase
 }
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
@@ -154,32 +138,26 @@ function cookies(req) {
   return Object.fromEntries(String(req.headers.cookie || '').split(';').map((part) => part.trim().split('=')).filter((pair) => pair.length === 2));
 }
 
-function authenticatedUser(req) {
+async function authenticatedUser(req) {
   const token = cookies(req).workforce_session;
-  const session = token && sessions.get(tokenHash(token));
-  if (!session || session.expiresAt < Date.now()) {
-    if (token) {
-      sessions.delete(tokenHash(token));
-      saveSessions();
-    }
-    return null;
-  }
-  return loadUsers().find((user) => user.id === session.userId) || null;
+  if (!token) return null;
+  const session = await dbSupabase.getSession(token);
+  if (!session) return null;
+  return await dbSupabase.getUserById(session.userId);
 }
 
-function createSession(res, req, userId) {
+async function createSession(res, req, userId) {
   const token = crypto.randomBytes(32).toString('hex');
-  sessions.set(tokenHash(token), { userId, expiresAt: Date.now() + 12 * 60 * 60 * 1000 });
-  saveSessions();
+  const expiresAt = Date.now() + 12 * 60 * 60 * 1000;
+  await dbSupabase.saveSession(token, userId, expiresAt);
   const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
   res.setHeader('Set-Cookie', `workforce_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${secure}`);
 }
 
-function clearSession(res, req) {
+async function clearSession(res, req) {
   const token = cookies(req).workforce_session;
   if (token) {
-    sessions.delete(tokenHash(token));
-    saveSessions();
+    await dbSupabase.deleteSession(token);
   }
   const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
   res.setHeader('Set-Cookie', `workforce_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`);
@@ -1338,7 +1316,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
     return res.end(JSON.stringify({ ok: false, error: error.message }));
   }
-  const user = authenticatedUser(req);
+  const user = await authenticatedUser(req);
   if (req.url === '/api/summary') return json(res, await summaryFromDatabase(user));
   if (req.url === '/api/db-status') return json(res, await db.status());
   if (req.url === '/api/persistence-status') return json(res, await db.appPersistenceStatus());
@@ -1397,100 +1375,117 @@ const server = http.createServer(async (req, res) => {
     }
   }
   if (req.url === '/api/auth/register' && req.method === 'POST') {
-    try {
-      enforceRateLimit(req, 'register', 5);
-      const body = await readJsonBody(req, 50_000);
-      const email = String(body.email || '').trim().toLowerCase();
-      const name = String(body.name || '').trim();
-      const password = String(body.password || '');
-      if (String(body.inviteCode || '').trim() !== PILOT_INVITE_CODE) throw new Error('Código de convite inválido.');
-      if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 8) throw new Error('Informe nome, e-mail válido e senha com pelo menos 8 caracteres.');
-      const users = loadUsers();
-      if (users.some((item) => item.email === email)) throw new Error('Este e-mail já possui uma conta.');
-      const secured = await hashPassword(password);
-      const newUser = { id: crypto.randomUUID(), name, email, passwordSalt: secured.salt, passwordHash: secured.hash, createdAt: new Date().toISOString() };
-      users.push(newUser);
-      saveUsers(users);
-      saveClientState(newUser.id, defaultClientState());
-      createSession(res, req, newUser.id);
-      audit(newUser.id, 'Conta criada', { email });
-      return json(res, { ok: true, user: { name, email } });
-    } catch (error) {
-      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-      return res.end(JSON.stringify({ ok: false, error: error.message }));
-    }
+    (async () => {
+      try {
+        enforceRateLimit(req, 'register', 5);
+        const body = await readJsonBody(req, 50_000);
+        const email = String(body.email || '').trim().toLowerCase();
+        const name = String(body.name || '').trim();
+        const password = String(body.password || '');
+        if (String(body.inviteCode || '').trim() !== PILOT_INVITE_CODE) throw new Error('Código de convite inválido.');
+        if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 8) throw new Error('Informe nome, e-mail válido e senha com pelo menos 8 caracteres.');
+        const existingUser = await dbSupabase.getUser(email);
+        if (existingUser) throw new Error('Este e-mail já possui uma conta.');
+        const secured = await hashPassword(password);
+        const newUser = { id: crypto.randomUUID(), name, email, passwordSalt: secured.salt, passwordHash: secured.hash, inviteCode: PILOT_INVITE_CODE };
+        await dbSupabase.createUser(newUser);
+        await saveClientState(newUser.id, defaultClientState());
+        await createSession(res, req, newUser.id);
+        await audit(newUser.id, 'Conta criada', { email });
+        return json(res, { ok: true, user: { name, email } });
+      } catch (error) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({ ok: false, error: error.message }));
+      }
+    })();
+    return;
   }
   if (req.url === '/api/auth/login' && req.method === 'POST') {
-    try {
-      enforceRateLimit(req, 'login', 8);
-      const body = await readJsonBody(req, 50_000);
-      const email = String(body.email || '').trim().toLowerCase();
-      const userMatch = loadUsers().find((item) => item.email === email);
-      if (!userMatch || !(await verifyPassword(String(body.password || ''), userMatch))) throw new Error('E-mail ou senha inválidos.');
-      createSession(res, req, userMatch.id);
-      audit(userMatch.id, 'Login realizado', { ip: requestIp(req) });
-      return json(res, { ok: true, user: { name: userMatch.name, email: userMatch.email } });
-    } catch (error) {
-      res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
-      return res.end(JSON.stringify({ ok: false, error: error.message }));
-    }
+    (async () => {
+      try {
+        enforceRateLimit(req, 'login', 8);
+        const body = await readJsonBody(req, 50_000);
+        const email = String(body.email || '').trim().toLowerCase();
+        const userMatch = await dbSupabase.getUser(email);
+        if (!userMatch || !(await verifyPassword(String(body.password || ''), userMatch))) throw new Error('E-mail ou senha inválidos.');
+        await createSession(res, req, userMatch.id);
+        await audit(userMatch.id, 'Login realizado', { ip: requestIp(req) });
+        return json(res, { ok: true, user: { name: userMatch.name, email: userMatch.email } });
+      } catch (error) {
+        res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({ ok: false, error: error.message }));
+      }
+    })();
+    return;
   }
   if (req.url === '/api/auth/logout' && req.method === 'POST') {
-    if (user) audit(user.id, 'Logout realizado');
-    clearSession(res, req);
-    return json(res, { ok: true });
+    (async () => {
+      if (user) await audit(user.id, 'Logout realizado');
+      await clearSession(res, req);
+      return json(res, { ok: true });
+    })();
+    return;
   }
   if (req.url === '/api/onboarding' && req.method === 'POST') {
-    try {
-      if (!user) throw new Error('Faça login para configurar sua loja.');
-      const body = await readJsonBody(req);
-      const state = loadClientState(user.id);
-      state.profile = { ...state.profile, ...body.profile };
-      state.updatedAt = new Date().toISOString();
-      saveClientState(user.id, state);
-      audit(user.id, 'Configuração da loja atualizada', { empresa: state.profile.empresa, loja: state.profile.loja });
-      return json(res, { ok: true, state });
-    } catch (error) {
-      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-      return res.end(JSON.stringify({ ok: false, error: error.message }));
-    }
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login para configurar sua loja.');
+        const body = await readJsonBody(req);
+        const state = await loadClientState(user.id);
+        state.profile = { ...state.profile, ...body.profile };
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.id, state);
+        await audit(user.id, 'Configuração da loja atualizada', { empresa: state.profile.empresa, loja: state.profile.loja });
+        return json(res, { ok: true, state });
+      } catch (error) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({ ok: false, error: error.message }));
+      }
+    })();
+    return;
   }
   if (req.url === '/api/import-sales' && req.method === 'POST') {
-    try {
-      if (!user) throw new Error('Faça login para importar vendas.');
-      const body = await readJsonBody(req);
-      const rows = Array.isArray(body.rows) ? body.rows : [];
-      const validRows = rows.filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.data) && /^\d{2}:\d{2}$/.test(row.horaInicio) && /^\d{2}:\d{2}$/.test(row.horaFim) && Number(row.cupons) >= 0);
-      if (!validRows.length) throw new Error('Nenhuma linha válida encontrada. Use o modelo de importação.');
-      const state = loadClientState(user.id);
-      state.salesRows = validRows;
-      state.updatedAt = new Date().toISOString();
-      saveClientState(user.id, state);
-      audit(user.id, 'Vendas importadas', { linhas: validRows.length, dias: new Set(validRows.map((row) => row.data)).size });
-      return json(res, { ok: true, imported: validRows.length, rejected: rows.length - validRows.length, state });
-    } catch (error) {
-      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-      return res.end(JSON.stringify({ ok: false, error: error.message }));
-    }
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login para importar vendas.');
+        const body = await readJsonBody(req);
+        const rows = Array.isArray(body.rows) ? body.rows : [];
+        const validRows = rows.filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.data) && /^\d{2}:\d{2}$/.test(row.horaInicio) && /^\d{2}:\d{2}$/.test(row.horaFim) && Number(row.cupons) >= 0);
+        if (!validRows.length) throw new Error('Nenhuma linha válida encontrada. Use o modelo de importação.');
+        const state = await loadClientState(user.id);
+        state.salesRows = validRows;
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.id, state);
+        await audit(user.id, 'Vendas importadas', { linhas: validRows.length, dias: new Set(validRows.map((row) => row.data)).size });
+        return json(res, { ok: true, imported: validRows.length, rejected: rows.length - validRows.length, state });
+      } catch (error) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({ ok: false, error: error.message }));
+      }
+    })();
+    return;
   }
   if (req.url === '/api/import-employees' && req.method === 'POST') {
-    try {
-      if (!user) throw new Error('Faça login para importar a equipe.');
-      const body = await readJsonBody(req);
-      const rows = Array.isArray(body.rows) ? body.rows : [];
-      const validRows = rows.filter((row) => row.nome && Number(row.horasSemanais) > 0);
-      if (validRows.length < 4) throw new Error('Importe ao menos quatro operadoras para a implantação atual.');
-      const state = loadClientState(user.id);
-      state.employees = validRows;
-      state.profile.quantidadeOperadores = validRows.length;
-      state.updatedAt = new Date().toISOString();
-      saveClientState(user.id, state);
-      audit(user.id, 'Equipe importada', { colaboradores: validRows.length });
-      return json(res, { ok: true, imported: validRows.length, rejected: rows.length - validRows.length, state });
-    } catch (error) {
-      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-      return res.end(JSON.stringify({ ok: false, error: error.message }));
-    }
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login para importar a equipe.');
+        const body = await readJsonBody(req);
+        const rows = Array.isArray(body.rows) ? body.rows : [];
+        const validRows = rows.filter((row) => row.nome && Number(row.horasSemanais) > 0);
+        if (validRows.length < 4) throw new Error('Importe ao menos quatro operadoras para a implantação atual.');
+        const state = await loadClientState(user.id);
+        state.employees = validRows;
+        state.profile.quantidadeOperadores = validRows.length;
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.id, state);
+        await audit(user.id, 'Equipe importada', { colaboradores: validRows.length });
+        return json(res, { ok: true, imported: validRows.length, rejected: rows.length - validRows.length, state });
+      } catch (error) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({ ok: false, error: error.message }));
+      }
+    })();
+    return;
   }
   const file = req.url === '/' ? 'index.html' : req.url.replace(/^\//, '');
   const filePath = path.join(PUBLIC, file);
