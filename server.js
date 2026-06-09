@@ -1910,6 +1910,48 @@ const server = http.createServer(async (req, res) => {
     const members = await dbSupabase.listOrgMembers(user.orgId);
     return json(res, { ok: true, orgCode: user.orgCode, role: user.role, members });
   }
+  if (req.url === '/api/company/add-member' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login.');
+        if (user.role !== 'admin') throw new Error('Apenas o administrador pode adicionar usuários.');
+        const body = await readJsonBody(req, 50_000);
+        const email = String(body.email || '').trim().toLowerCase();
+        const name = sanitizeString(String(body.name || '').trim());
+        const password = String(body.password || '');
+
+        if (!validateEmail(email)) throw new Error('E-mail inválido.');
+        if (!validateName(name)) throw new Error('Nome inválido (2-100 caracteres).');
+        if (!validatePassword(password)) throw new Error('Senha deve ter pelo menos 8 caracteres.');
+
+        const existingUser = await dbSupabase.getUser(email);
+        if (existingUser) throw new Error('Este e-mail já está cadastrado.');
+
+        const secured = await hashPassword(password);
+        const newMember = {
+          id: crypto.randomUUID(),
+          name,
+          email,
+          passwordSalt: secured.salt,
+          passwordHash: secured.hash,
+          inviteCode: PILOT_INVITE_CODE,
+          orgId: user.orgId,        // mesma empresa do admin
+          orgCode: user.orgCode,
+          role: 'membro'
+        };
+
+        const created = await dbSupabase.createUser(newMember);
+        if (!created) throw new Error('Erro ao criar usuário. Tente novamente.');
+
+        await audit(user.id, 'MEMBER_CREATED', { newMemberEmail: email, orgCode: user.orgCode, ip: requestIp(req) });
+        const members = await dbSupabase.listOrgMembers(user.orgId);
+        return json(res, { ok: true, members });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
+    })();
+    return;
+  }
   if (req.url === '/api/account/activity') {
     if (!user) {
       return json(res, { ok: false, error: 'Faça login para visualizar atividades.' }, 401);

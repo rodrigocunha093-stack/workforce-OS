@@ -1187,6 +1187,7 @@ async function renderCompanyInfo() {
     const info = await res.json();
     if (!info.ok) { el.innerHTML = '<p class="note">Faça login para ver a equipe.</p>'; return; }
     const roleLabel = info.role === 'admin' ? 'Administrador' : 'Membro';
+    const isAdmin = info.role === 'admin';
     el.innerHTML = `
       <div class="company-code-box">
         <div class="company-code-main">
@@ -1195,10 +1196,24 @@ async function renderCompanyInfo() {
             <strong id="orgCodeText">${info.orgCode || '—'}</strong>
             <button id="copyOrgCode" class="optimize-button" type="button">Copiar</button>
           </div>
-          <span>Compartilhe com colegas no momento do cadastro (campo "Código da empresa").</span>
+          <span>Identificador da sua empresa nos relatórios.</span>
         </div>
         <div class="company-role-badge">${roleLabel}</div>
       </div>
+
+      ${isAdmin ? `
+      <div class="add-member-box">
+        <small>ADICIONAR USUÁRIO SECUNDÁRIO</small>
+        <p class="note">Crie acessos para sua equipe. Eles compartilharão os mesmos dados desta empresa.</p>
+        <div class="add-member-form">
+          <input id="newMemberName" placeholder="Nome do colaborador" autocomplete="off">
+          <input id="newMemberEmail" type="email" placeholder="email@empresa.com" autocomplete="off">
+          <input id="newMemberPassword" type="text" placeholder="Senha (mín. 8 caracteres)" autocomplete="off">
+          <button id="addMemberBtn" class="optimize-button save-optimization" type="button">+ Criar usuário</button>
+        </div>
+        <small id="addMemberMsg" class="add-member-msg"></small>
+      </div>` : ''}
+
       <div class="company-members">
         <small>MEMBROS DA EQUIPE (${info.members.length})</small>
         ${info.members.map(m => `
@@ -1216,6 +1231,46 @@ async function renderCompanyInfo() {
         navigator.clipboard.writeText(info.orgCode);
         copyBtn.textContent = 'Copiado ✓';
         setTimeout(() => { copyBtn.textContent = 'Copiar'; }, 2000);
+      };
+    }
+    const addBtn = document.getElementById('addMemberBtn');
+    if (addBtn) {
+      addBtn.onclick = async () => {
+        const name = document.getElementById('newMemberName').value.trim();
+        const email = document.getElementById('newMemberEmail').value.trim();
+        const password = document.getElementById('newMemberPassword').value;
+        const msg = document.getElementById('addMemberMsg');
+        if (!name || !email || password.length < 8) {
+          msg.textContent = 'Preencha nome, e-mail e senha (mín. 8 caracteres).';
+          msg.className = 'add-member-msg error';
+          return;
+        }
+        addBtn.disabled = true;
+        addBtn.textContent = 'Criando...';
+        try {
+          const res = await fetch('/api/company/add-member', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, password })
+          });
+          const result = await res.json();
+          if (result.ok) {
+            msg.textContent = `✓ Usuário ${email} criado! Senha: ${password} (anote e entregue ao colaborador).`;
+            msg.className = 'add-member-msg success';
+            document.getElementById('newMemberName').value = '';
+            document.getElementById('newMemberEmail').value = '';
+            document.getElementById('newMemberPassword').value = '';
+            setTimeout(renderCompanyInfo, 1500);
+          } else {
+            msg.textContent = result.error || 'Erro ao criar usuário.';
+            msg.className = 'add-member-msg error';
+          }
+        } catch (e) {
+          msg.textContent = 'Erro de conexão.';
+          msg.className = 'add-member-msg error';
+        }
+        addBtn.disabled = false;
+        addBtn.textContent = '+ Criar usuário';
       };
     }
   } catch (error) {

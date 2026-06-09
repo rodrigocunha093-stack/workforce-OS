@@ -377,3 +377,36 @@ select option { background: #141b2e; color: #e8eef5; }
   background: rgba(45,212,191,0.15);
   color: #5eead4;
 }
+
+/* ---------- ADICIONAR MEMBRO ---------- */
+.add-member-box {
+  padding: 16px 18px;
+  background: rgba(59,130,246,0.06);
+  border: 1px solid rgba(59,130,246,0.25);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+.add-member-box > small {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: #93c5fd;
+  font-weight: 700;
+}
+.add-member-box .note { margin: 4px 0 12px; font-size: 12px; }
+.add-member-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+.add-member-form input {
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.add-member-form button { white-space: nowrap; padding: 10px 16px; }
+.add-member-msg { display: block; margin-top: 10px; font-size: 12px; }
+.add-member-msg.success { color: #6ee7b7; }
+.add-member-msg.error { color: #fca5a5; }
+@media (max-width: 900px) {
+  .add-member-form { grid-template-columns: 1fr; }
+}
