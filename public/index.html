@@ -395,6 +395,16 @@
 
         <div id="onboardingProgress" class="onboarding-progress"></div>
 
+        <article class="panel company-panel">
+          <div class="panel-head">
+            <div>
+              <h3>👥 Equipe da empresa</h3>
+              <p class="note">Compartilhe o código abaixo para que colegas acessem os mesmos dados desta empresa.</p>
+            </div>
+          </div>
+          <div id="companyInfo"></div>
+        </article>
+
         <article class="panel maturity-panel">
           <div class="panel-head">
             <div>
@@ -508,9 +518,11 @@
       <label>E-mail <input id="registerEmail" type="email" autocomplete="email" required></label>
       <div class="pilot-invite"><span>Convite de implantação</span><strong>PILOTO-CX-2026</strong></div>
       <label>Código de convite <input id="registerInvite" autocomplete="off" required></label>
+      <label>Código da empresa <span style="font-weight:400;opacity:0.7">(opcional)</span> <input id="registerCompany" autocomplete="off" placeholder="Ex: EMP-A1B2C3 — deixe vazio para criar nova empresa"></label>
+      <small style="opacity:0.8">Tem um código de empresa? Cole para acessar os dados compartilhados da sua equipe. Vazio = você cria uma nova empresa e recebe um código para convidar colegas.</small>
       <label>Senha <input id="registerPassword" type="password" minlength="8" autocomplete="new-password" required></label>
       <small>Mínimo de 8 caracteres. Não envie dados sensíveis antes da validação final da implantação.</small>
-      <button type="submit">Criar conta e começar zerado</button>
+      <button type="submit">Criar conta</button>
     </form>
     <p id="authError" class="auth-error"></p>
   </section>

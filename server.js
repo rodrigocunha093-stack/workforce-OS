@@ -1518,7 +1518,7 @@ function refreshCoverageLoads(summary, pdvLimit) {
 }
 
 async function applyClientState(summary, user) {
-  const state = await loadClientState(user.id);
+  const state = await loadClientState(user.orgId);
   const profile = state.profile || defaultClientState().profile;
   const requiredDayKeys = requiredOperationalDayKeys(profile);
   const importedDayKeys = new Set(state.salesRows.map((row) => dayKeys[new Date(`${row.data}T12:00:00`).getDay()]));
@@ -1904,7 +1904,12 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.url === '/api/db-status') return json(res, await db.status());
   if (req.url === '/api/persistence-status') return json(res, await db.appPersistenceStatus());
-  if (req.url === '/api/auth/status') return json(res, { authenticated: Boolean(user), user: user ? { name: user.name, email: user.email } : null });
+  if (req.url === '/api/auth/status') return json(res, { authenticated: Boolean(user), user: user ? { name: user.name, email: user.email, orgCode: user.orgCode, role: user.role } : null });
+  if (req.url === '/api/company/info') {
+    if (!user) return json(res, { ok: false, error: 'Faça login.' }, 401);
+    const members = await dbSupabase.listOrgMembers(user.orgId);
+    return json(res, { ok: true, orgCode: user.orgCode, role: user.role, members });
+  }
   if (req.url === '/api/account/activity') {
     if (!user) {
       return json(res, { ok: false, error: 'Faça login para visualizar atividades.' }, 401);
@@ -1919,7 +1924,7 @@ const server = http.createServer(async (req, res) => {
     const payload = {
       exportedAt: new Date().toISOString(),
       account: { name: user.name, email: user.email, createdAt: user.createdAt },
-      state: loadClientState(user.id),
+      state: loadClientState(user.orgId),
       activities: loadAudit(user.id)
     };
     res.writeHead(200, {
@@ -1964,6 +1969,7 @@ const server = http.createServer(async (req, res) => {
         const name = sanitizeString(String(body.name || '').trim());
         const password = String(body.password || '');
         const inviteCode = sanitizeString(String(body.inviteCode || '').trim());
+        const companyCode = sanitizeString(String(body.companyCode || '').trim()).toUpperCase();
 
         if (!validateEmail(email)) throw new Error('Dados inválidos. Verifique e tente novamente.');
         if (!validateName(name)) throw new Error('Dados inválidos. Verifique e tente novamente.');
@@ -1976,21 +1982,42 @@ const server = http.createServer(async (req, res) => {
         const existingUser = await dbSupabase.getUser(email);
         if (existingUser) {
           await audit(null, 'DUPLICATE_REGISTRATION_ATTEMPT', { email, ip: requestIp(req) });
-          throw new Error('Dados inválidos. Verifique e tente novamente.');
+          throw new Error('Este e-mail já possui uma conta.');
+        }
+
+        const userId = crypto.randomUUID();
+        let orgId, orgCode, role, joinedExisting = false;
+
+        if (companyCode) {
+          // Entrar em empresa existente
+          const orgOwner = await dbSupabase.getUserByOrgCode(companyCode);
+          if (!orgOwner) throw new Error('Código de empresa inválido. Verifique com o administrador.');
+          orgId = orgOwner.orgId;
+          orgCode = companyCode;
+          role = 'membro';
+          joinedExisting = true;
+        } else {
+          // Criar nova empresa
+          orgId = userId;
+          orgCode = 'EMP-' + crypto.randomBytes(3).toString('hex').toUpperCase();
+          role = 'admin';
         }
 
         const secured = await hashPassword(password);
-        const newUser = { id: crypto.randomUUID(), name, email, passwordSalt: secured.salt, passwordHash: secured.hash, inviteCode: PILOT_INVITE_CODE };
+        const newUser = { id: userId, name, email, passwordSalt: secured.salt, passwordHash: secured.hash, inviteCode: PILOT_INVITE_CODE, orgId, orgCode, role };
 
         const userCreated = await dbSupabase.createUser(newUser);
         if (!userCreated) throw new Error('Erro ao criar usuário. Tente novamente.');
 
-        const stateCreated = await saveClientState(newUser.id, defaultClientState());
-        if (!stateCreated) throw new Error('Erro ao configurar perfil. Tente novamente.');
+        // Só cria estado novo se for empresa nova (membro herda o existente)
+        if (!joinedExisting) {
+          const stateCreated = await saveClientState(orgId, defaultClientState());
+          if (!stateCreated) throw new Error('Erro ao configurar perfil. Tente novamente.');
+        }
 
         await createSession(res, req, newUser.id);
-        await audit(newUser.id, 'ACCOUNT_CREATED', { email, ip: requestIp(req) });
-        return json(res, { ok: true, user: { name, email } });
+        await audit(newUser.id, joinedExisting ? 'MEMBER_JOINED_ORG' : 'ACCOUNT_CREATED', { email, orgCode, role, ip: requestIp(req) });
+        return json(res, { ok: true, user: { name, email }, orgCode, role });
       } catch (error) {
         return json(res, { ok: false, error: error.message }, 400);
       }
@@ -2043,14 +2070,14 @@ const server = http.createServer(async (req, res) => {
         const people = Array.isArray(body.people) ? body.people : [];
         if (!people.length) throw new Error('Nenhuma competência para salvar.');
 
-        const state = await loadClientState(user.id);
+        const state = await loadClientState(user.orgId);
         state.skillMatrix = people.map(p => ({
           nome: sanitizeString(String(p.nome || '')).slice(0, 100),
           skills: p.skills || {},
           validado: Boolean(p.validado)
         }));
         state.updatedAt = new Date().toISOString();
-        await saveClientState(user.id, state);
+        await saveClientState(user.orgId, state);
         await audit(user.id, 'SKILLS_SAVED', { count: people.length, ip: requestIp(req) });
         return json(res, { ok: true });
       } catch (error) {
@@ -2071,12 +2098,12 @@ const server = http.createServer(async (req, res) => {
           throw new Error('Cenário inválido.');
         }
 
-        const state = await loadClientState(user.id);
+        const state = await loadClientState(user.orgId);
         state.optimizedCoverage = state.optimizedCoverage || {};
         state.optimizedCoverage[scenario] = optimizedCoverage;
         state.optimizedCoverage.savedAt = new Date().toISOString();
         state.updatedAt = new Date().toISOString();
-        await saveClientState(user.id, state);
+        await saveClientState(user.orgId, state);
         await audit(user.id, 'OPTIMIZATION_SAVED', { scenario, ip: requestIp(req) });
         return json(res, { ok: true, savedAt: state.optimizedCoverage.savedAt });
       } catch (error) {
@@ -2098,10 +2125,10 @@ const server = http.createServer(async (req, res) => {
           if (body.profile.cnpj) body.profile.cnpj = String(body.profile.cnpj).slice(0, 20);
         }
 
-        const state = await loadClientState(user.id);
+        const state = await loadClientState(user.orgId);
         state.profile = { ...state.profile, ...body.profile };
         state.updatedAt = new Date().toISOString();
-        await saveClientState(user.id, state);
+        await saveClientState(user.orgId, state);
         await audit(user.id, 'CONFIG_UPDATED', { empresa: state.profile.empresa, loja: state.profile.loja });
         return json(res, { ok: true, state });
       } catch (error) {
@@ -2127,10 +2154,10 @@ const server = http.createServer(async (req, res) => {
 
         if (!validRows.length) throw new Error('Nenhuma linha válida encontrada. Use o modelo de importação.');
 
-        const state = await loadClientState(user.id);
+        const state = await loadClientState(user.orgId);
         state.salesRows = validRows;
         state.updatedAt = new Date().toISOString();
-        await saveClientState(user.id, state);
+        await saveClientState(user.orgId, state);
         await audit(user.id, 'SALES_IMPORTED', { linhas: validRows.length, dias: new Set(validRows.map((row) => row.data)).size, ip: requestIp(req) });
         return json(res, { ok: true, imported: validRows.length, rejected: rows.length - validRows.length, state });
       } catch (error) {
@@ -2158,11 +2185,11 @@ const server = http.createServer(async (req, res) => {
 
         if (validRows.length < 1) throw new Error('Importe ao menos uma operadora válida.');
 
-        const state = await loadClientState(user.id);
+        const state = await loadClientState(user.orgId);
         state.employees = validRows;
         state.profile.quantidadeOperadores = validRows.length;
         state.updatedAt = new Date().toISOString();
-        await saveClientState(user.id, state);
+        await saveClientState(user.orgId, state);
         await audit(user.id, 'EMPLOYEES_IMPORTED', { colaboradores: validRows.length, ip: requestIp(req) });
         return json(res, { ok: true, imported: validRows.length, rejected: rows.length - validRows.length, state });
       } catch (error) {

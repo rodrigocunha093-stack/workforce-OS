@@ -20,18 +20,58 @@ async function getUser(email) {
       return null;
     }
     if (!data) return null;
-    return {
-      id: data.id,
-      name: data.name,
-      email: data.email,
-      passwordHash: data.passwordhash,
-      passwordSalt: data.passwordsalt,
-      inviteCode: data.invitecode,
-      createdAt: data.createdat
-    };
+    return mapUser(data);
   } catch (error) {
     console.error('DB Error on getUser:', error.message);
     return null;
+  }
+}
+
+function mapUser(data) {
+  return {
+    id: data.id,
+    name: data.name,
+    email: data.email,
+    passwordHash: data.passwordhash,
+    passwordSalt: data.passwordsalt,
+    inviteCode: data.invitecode,
+    orgId: data.orgid || data.id,
+    orgCode: data.orgcode || null,
+    role: data.role || 'admin',
+    createdAt: data.createdat
+  };
+}
+
+async function getUserByOrgCode(orgCode) {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('orgcode', orgCode)
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.error('DB Error on getUserByOrgCode:', error.message);
+      return null;
+    }
+    return data ? mapUser(data) : null;
+  } catch (error) {
+    console.error('DB Error on getUserByOrgCode:', error.message);
+    return null;
+  }
+}
+
+async function listOrgMembers(orgId) {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id,name,email,role,createdat')
+      .eq('orgid', orgId);
+    if (error) { console.error('DB Error on listOrgMembers:', error.message); return []; }
+    return (data || []).map(d => ({ id: d.id, name: d.name, email: d.email, role: d.role || 'membro', createdAt: d.createdat }));
+  } catch (error) {
+    console.error('DB Error on listOrgMembers:', error.message);
+    return [];
   }
 }
 
@@ -48,15 +88,7 @@ async function getUserById(id) {
       return null;
     }
     if (!data) return null;
-    return {
-      id: data.id,
-      name: data.name,
-      email: data.email,
-      passwordHash: data.passwordhash,
-      passwordSalt: data.passwordsalt,
-      inviteCode: data.invitecode,
-      createdAt: data.createdat
-    };
+    return mapUser(data);
   } catch (error) {
     console.error('DB Error on getUserById:', error.message);
     return null;
@@ -73,7 +105,10 @@ async function createUser(user) {
         email: user.email,
         passwordhash: user.passwordHash,
         passwordsalt: user.passwordSalt,
-        invitecode: user.inviteCode || null
+        invitecode: user.inviteCode || null,
+        orgid: user.orgId || user.id,
+        orgcode: user.orgCode || null,
+        role: user.role || 'admin'
       }])
       .select();
 
@@ -217,6 +252,8 @@ async function auditLog(userId, action, detail) {
 module.exports = {
   getUser,
   getUserById,
+  getUserByOrgCode,
+  listOrgMembers,
   createUser,
   saveSession,
   getSession,

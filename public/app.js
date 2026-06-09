@@ -1179,7 +1179,52 @@ function parseEmployeesCsv(text) {
   return { rows, errors };
 }
 
+async function renderCompanyInfo() {
+  const el = document.getElementById('companyInfo');
+  if (!el) return;
+  try {
+    const res = await fetch('/api/company/info');
+    const info = await res.json();
+    if (!info.ok) { el.innerHTML = '<p class="note">Faça login para ver a equipe.</p>'; return; }
+    const roleLabel = info.role === 'admin' ? 'Administrador' : 'Membro';
+    el.innerHTML = `
+      <div class="company-code-box">
+        <div class="company-code-main">
+          <small>CÓDIGO DA EMPRESA</small>
+          <div class="company-code-value">
+            <strong id="orgCodeText">${info.orgCode || '—'}</strong>
+            <button id="copyOrgCode" class="optimize-button" type="button">Copiar</button>
+          </div>
+          <span>Compartilhe com colegas no momento do cadastro (campo "Código da empresa").</span>
+        </div>
+        <div class="company-role-badge">${roleLabel}</div>
+      </div>
+      <div class="company-members">
+        <small>MEMBROS DA EQUIPE (${info.members.length})</small>
+        ${info.members.map(m => `
+          <div class="company-member-row">
+            <strong>${m.name}</strong>
+            <span>${m.email}</span>
+            <span class="member-role ${m.role === 'admin' ? 'admin' : ''}">${m.role === 'admin' ? 'Admin' : 'Membro'}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    const copyBtn = document.getElementById('copyOrgCode');
+    if (copyBtn) {
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(info.orgCode);
+        copyBtn.textContent = 'Copiado ✓';
+        setTimeout(() => { copyBtn.textContent = 'Copiar'; }, 2000);
+      };
+    }
+  } catch (error) {
+    el.innerHTML = '<p class="note">Não foi possível carregar a equipe.</p>';
+  }
+}
+
 function renderOnboarding(data) {
+  renderCompanyInfo();
   const client = data.client || { profile: {}, onboarding: {} };
   const profile = client.profile || {};
   const onboarding = client.onboarding || {};
@@ -1477,9 +1522,14 @@ function configureAuth() {
   };
   document.getElementById('registerForm').onsubmit = async (event) => {
     event.preventDefault();
-    const response = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: document.getElementById('registerName').value, email: document.getElementById('registerEmail').value, inviteCode: document.getElementById('registerInvite').value, password: document.getElementById('registerPassword').value }) });
+    const companyEl = document.getElementById('registerCompany');
+    const response = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: document.getElementById('registerName').value, email: document.getElementById('registerEmail').value, inviteCode: document.getElementById('registerInvite').value, companyCode: companyEl ? companyEl.value : '', password: document.getElementById('registerPassword').value }) });
     const result = await response.json();
     if (!response.ok) return document.getElementById('authError').textContent = result.error;
+    // Se criou nova empresa, mostra o código gerado antes de entrar
+    if (result.orgCode && result.role === 'admin') {
+      alert('✅ Empresa criada!\n\nSeu CÓDIGO DA EMPRESA é:\n\n' + result.orgCode + '\n\nGuarde e compartilhe com sua equipe para que acessem os mesmos dados. Você também encontra esse código na aba Implantação.');
+    }
     window.location.reload();
   };
   document.getElementById('logoutButton').onclick = async () => {
