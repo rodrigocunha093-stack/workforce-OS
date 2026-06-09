@@ -1301,16 +1301,34 @@ function renderEmployeesManager(data) {
   const turnoOpts = [['flexivel','Flexível'],['abertura','Abertura'],['intermediario','Intermediário'],['fechamento','Fechamento']];
   const folgaOpts = [['','Sem preferência'],['segunda','Segunda'],['terca','Terça'],['quarta','Quarta'],['quinta','Quinta'],['domingo','Domingo']];
 
+  // Resumo e filtro por setor
+  const setores = [...new Set(managedEmployees.map(e => (e.setor || 'Sem setor').trim() || 'Sem setor'))];
+  if (typeof window.empFilterSetor === 'undefined') window.empFilterSetor = '';
+  const filtro = window.empFilterSetor;
+  const filtered = managedEmployees
+    .map((e, originalIdx) => ({ e, originalIdx }))
+    .filter(({ e }) => !filtro || (e.setor || 'Sem setor').trim() === filtro);
+
+  const setorResumo = setores.map(s => {
+    const count = managedEmployees.filter(e => ((e.setor||'Sem setor').trim()||'Sem setor') === s).length;
+    return `<button class="setor-chip ${filtro===s?'active':''}" data-setor="${s}">${s} (${count})</button>`;
+  }).join('');
+
   el.innerHTML = `
+    <div class="setor-filter">
+      <button class="setor-chip ${!filtro?'active':''}" data-setor="">Todos (${managedEmployees.length})</button>
+      ${setorResumo}
+    </div>
     <div class="emp-table">
       <div class="emp-row emp-head">
-        <span>Nome</span><span>Cargo</span><span>Horas</span><span>Salário</span>
-        <span>Turno preferencial</span><span>Folga pref.</span><span>Domingo</span><span></span>
+        <span>Nome</span><span>Cargo</span><span>Setor</span><span>Horas</span><span>Salário</span>
+        <span>Turno preferencial</span><span>Folga pref.</span><span>Dom.</span><span></span>
       </div>
-      ${managedEmployees.map((e, i) => `
+      ${filtered.map(({ e, originalIdx: i }) => `
         <div class="emp-row">
           <input data-i="${i}" data-f="nome" value="${(e.nome||'').replace(/"/g,'&quot;')}" placeholder="Nome">
           <input data-i="${i}" data-f="cargo" value="${(e.cargo||'').replace(/"/g,'&quot;')}" placeholder="Cargo">
+          <input data-i="${i}" data-f="setor" value="${(e.setor||'').replace(/"/g,'&quot;')}" placeholder="Setor" list="setoresList">
           <input data-i="${i}" data-f="horasSemanais" type="number" min="1" max="168" value="${e.horasSemanais||44}">
           <input data-i="${i}" data-f="salario" type="number" min="0" step="50" value="${e.salario||0}">
           <select data-i="${i}" data-f="turno">
@@ -1319,11 +1337,14 @@ function renderEmployeesManager(data) {
           <select data-i="${i}" data-f="folgaPreferencial">
             ${folgaOpts.map(([v,l]) => `<option value="${v}" ${e.folgaPreferencial===v?'selected':''}>${l}</option>`).join('')}
           </select>
-          <label class="emp-domingo"><input data-i="${i}" data-f="podeDomingo" type="checkbox" ${e.podeDomingo!==false?'checked':''}> Sim</label>
+          <label class="emp-domingo"><input data-i="${i}" data-f="podeDomingo" type="checkbox" ${e.podeDomingo!==false?'checked':''}></label>
           <button class="emp-remove" data-i="${i}" type="button" title="Remover">✕</button>
         </div>
       `).join('')}
     </div>
+    <datalist id="setoresList">
+      <option value="Caixa"><option value="Açougue"><option value="Balcão"><option value="Administrativo"><option value="Padaria"><option value="Hortifruti"><option value="Estoque"><option value="Limpeza">
+    </datalist>
     <div class="emp-actions">
       <button id="empAddBtn" class="secondary-button" type="button">+ Adicionar colaborador</button>
       <button id="empSaveBtn" class="optimize-button save-optimization" type="button">Salvar equipe (${managedEmployees.length})</button>
@@ -1343,6 +1364,13 @@ function renderEmployeesManager(data) {
       } else {
         managedEmployees[i][f] = inp.value;
       }
+    };
+  });
+  // Filtro por setor
+  el.querySelectorAll('.setor-chip').forEach(chip => {
+    chip.onclick = () => {
+      window.empFilterSetor = chip.dataset.setor;
+      renderEmployeesManager(data);
     };
   });
   // Remover

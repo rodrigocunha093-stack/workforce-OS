@@ -415,19 +415,43 @@ select option { background: #141b2e; color: #e8eef5; }
 .emp-table { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .emp-row {
   display: grid;
-  grid-template-columns: 1.4fr 1.1fr 0.6fr 0.7fr 1.1fr 0.9fr 0.6fr 36px;
-  gap: 7px;
+  grid-template-columns: 1.3fr 1fr 0.9fr 0.55fr 0.7fr 1fr 0.85fr 0.4fr 34px;
+  gap: 6px;
   align-items: center;
 }
-.emp-row select { padding: 9px 8px; font-size: 12px; }
+.emp-row select { padding: 9px 7px; font-size: 12px; }
+.emp-row input { padding: 9px 8px; font-size: 12px; }
 .emp-domingo {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  color: #94a3b8;
+  justify-content: center;
 }
 .emp-domingo input { width: auto !important; }
+
+/* Filtro por setor (chips) */
+.setor-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.setor-chip {
+  padding: 7px 14px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--fx-border);
+  border-radius: 20px;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.setor-chip:hover { border-color: var(--fx-border-glow); color: #cbd5e1; }
+.setor-chip.active {
+  background: var(--fx-grad-primary);
+  color: #051014;
+  border: none;
+}
 .emp-row.emp-head span {
   font-size: 11px;
   letter-spacing: 0.5px;

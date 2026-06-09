@@ -180,6 +180,31 @@ function defaultClientState() {
   };
 }
 
+function normalizeSetor(value) {
+  return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+// Identifica se o colaborador é operador de caixa (entra na escala de caixa)
+function isOperadorCaixa(emp) {
+  const setor = normalizeSetor(emp.setor);
+  const cargo = normalizeSetor(emp.cargo);
+  if (setor.includes('caixa') || setor.includes('frente')) return true;
+  if (cargo.includes('caixa') || cargo.includes('operador')) return true;
+  // Sem setor definido = assume caixa (compatibilidade)
+  if (!setor && !cargo) return true;
+  return false;
+}
+
+function groupBySetor(employees) {
+  const groups = {};
+  (employees || []).forEach((e) => {
+    const key = (e.setor || 'Sem setor').trim() || 'Sem setor';
+    groups[key] = groups[key] || [];
+    groups[key].push(e);
+  });
+  return Object.entries(groups).map(([setor, lista]) => ({ setor, total: lista.length })).sort((a, b) => b.total - a.total);
+}
+
 const MODULE_CATALOG = [
   { id: 1, key: 'diagnostico', nome: 'Diagnóstico' },
   { id: 2, key: 'cenarios', nome: '6x1 vs 5x2' },
@@ -1558,10 +1583,14 @@ async function applyClientState(summary, user) {
   const missingOperationalDayKeys = requiredDayKeys.filter((key) => !importedDayKeys.has(key));
   summary.enabledModules = Array.isArray(state.enabledModules) ? state.enabledModules : [1,2,3,4,5,6,7,8,9,10];
   summary.userRole = user.role || 'admin';
+  // Separar operadores de caixa dos demais setores — a escala de caixa usa SÓ os de caixa
+  const caixaEmployees = (state.employees || []).filter(isOperadorCaixa);
+  summary.setoresResumo = groupBySetor(state.employees || []);
   summary.client = {
     profile: { ...profile, cnpj: '' },
     account: { name: user.name, email: user.email },
     employeesList: state.employees || [],
+    caixaCount: caixaEmployees.length,
     onboarding: {
       profileComplete: Boolean(profile.empresa && profile.loja && profile.quantidadeOperadores),
       salesImported: state.salesRows.length > 0,
@@ -1603,7 +1632,8 @@ async function applyClientState(summary, user) {
     ].filter(Boolean)
   };
   summary.financial.assumptions.regimeTributario = profile.regimeTributario || summary.financial.assumptions.regimeTributario;
-  const operators = Number(state.employees.length || profile.quantidadeOperadores || 4);
+  // Capacidade de caixa conta APENAS operadores de caixa (não mistura açougue/admin/balcão)
+  const operators = Number(caixaEmployees.length || profile.quantidadeOperadores || 4);
   summary.financial.assumptions.quantidadeOperadores = operators;
   summary.scenarios.forEach((scenario) => {
     scenario.operadores = operators;
@@ -1649,17 +1679,17 @@ async function applyClientState(summary, user) {
   };
   refreshCoverageLoads(summary, summary.storeConfig.pdvs);
 
-  if (state.employees.length >= 1) {
+  if (caixaEmployees.length >= 1) {
     const originals = ['Lucila', 'Edvania', 'Samara', 'Jane'];
-    const employeeNames = state.employees.map((employee) => employee.nome);
+    const employeeNames = caixaEmployees.map((employee) => employee.nome);
     const names = Object.fromEntries(originals.map((original, index) => [original, employeeNames[index] || original]));
 
     // Renomear escalas diárias
     Object.values(summary.staffSchedule).flat().forEach((person) => { person.nome = names[person.nome] || person.nome; });
 
     // Adicionar operadoras extras nas escalas diárias
-    if (state.employees.length > 4) {
-      const extraEmployees = state.employees.slice(4);
+    if (caixaEmployees.length > 4) {
+      const extraEmployees = caixaEmployees.slice(4);
       Object.keys(summary.staffSchedule).forEach((dayKey) => {
         const existingSchedule = summary.staffSchedule[dayKey];
         extraEmployees.forEach((employee, idx) => {
@@ -1675,7 +1705,7 @@ async function applyClientState(summary, user) {
     }
 
     // ATUALIZAR TODAS as abas com dados importados/configurados
-    updateAllTabsWithImportedData(summary, profile, state.employees, state.skillMatrix);
+    updateAllTabsWithImportedData(summary, profile, caixaEmployees, state.skillMatrix);
 
     // REGENERAR faixas horárias do dailyCoverage com base no horário da loja
     regenerateCoverageHours(summary, profile);
@@ -1684,7 +1714,7 @@ async function applyClientState(summary, user) {
     Object.entries(summary.weeklyScenarioSchedule).forEach(([scenarioKey, scenario]) => {
       const targetHours = scenario.targetHours || 44;
       const targetDaysOff = scenario.targetDaysOff || 1;
-      scenario.people = generateScheduleByProfile(profile, state.employees, targetHours, targetDaysOff);
+      scenario.people = generateScheduleByProfile(profile, caixaEmployees, targetHours, targetDaysOff);
     });
 
     summary.sundayRotation.forEach((item) => {
@@ -1699,7 +1729,7 @@ async function applyClientState(summary, user) {
 
   if (!state.salesRows.length) {
     summary.metadata.periodoAmostra = `${summary.metadata.periodoAmostra} (demonstração)`;
-    if (state.employees.length >= 1) {
+    if (caixaEmployees.length >= 1) {
       recalculateCoverageFromSchedules(summary, Number(profile.quantidadePdvs || 3));
       refreshCoverageLoads(summary, summary.storeConfig.pdvs);
     }
@@ -1741,7 +1771,7 @@ async function applyClientState(summary, user) {
     summary.dailyCoverage[dayKey].source = `Importação guiada · ${Object.values(hours).reduce((sum, rows) => sum + rows.length, 0)} faixas`;
   });
   // RECALCULAR caixas ativos depois da demanda ter sido aplicada
-  if (state.employees.length >= 1) {
+  if (caixaEmployees.length >= 1) {
     recalculateCoverageFromSchedules(summary, Number(profile.quantidadePdvs || 3));
   }
 
