@@ -676,3 +676,159 @@ button[type="submit"], .submit-button, .primary-action {
 .audit-status, .weekly-status, [class*="revisar"] {
   color: var(--fx-text) !important;
 }
+
+/* ============================================================
+   OVERRIDE DEFINITIVO v2 — todos os fundos brancos -> glass
+   Lista completa extraída do CSS original
+   ============================================================ */
+.absence-buttons, .absence-skill-list, .absence-verdict, .account-controls,
+.benchmark-card, .calendar-day, .calendar-legend, .cashier-load-panel,
+.commission-dimensions, .commission-score, .core-sector-card,
+.coverage-summary, .data-strip, .decision-memories, .drawer-score,
+.enterprise-card, .evolution-row, .example-steps, .finance-decision,
+.finance-impact, .finance-kpis, .finance-scenario, .finance-warning,
+.import-actions, .import-instructions, .maturity-lists, .memory-card,
+.memory-footer, .resilience-kpis, .scenario-card, .sector-kpis,
+.sector-priority, .staff-card, .staff-schedule, .week-selector-panel,
+.weekly-row, .weekly-strength-card, .weekly-strength-summary,
+.finance-kpis article, .resilience-kpis article, .sector-kpis article,
+.weekly-strength-summary article {
+  background: rgba(255,255,255,0.04) !important;
+  border-color: var(--fx-border) !important;
+}
+
+/* SUB-CAIXAS internas (métricas dentro de cards) */
+.finance-kpis article,
+.finance-scenario .finance-metrics > div,
+.weekly-strength-card > div,
+.weekly-strength-summary article,
+.resilience-kpis article,
+.sector-kpis article,
+.commission-score,
+.audit-card > div,
+[class*="audit"] article > div,
+.calendar-day,
+.drawer-score,
+.cashier-metric,
+.enterprise-card,
+.benchmark-card,
+.memory-card,
+.decision-memories article,
+.maturity-lists > div,
+.weekly-person,
+.coverage-summary > div {
+  background: rgba(255,255,255,0.05) !important;
+  border: 1px solid var(--fx-border) !important;
+  color: var(--fx-text) !important;
+}
+
+/* TODO texto dentro de main fica claro por padrão (exceto status) */
+main strong:not([class*="queue"]):not([class*="status"]),
+main h1, main h2, main h3, main h4 {
+  color: #f1f5f9 !important;
+}
+
+main small,
+main label,
+main p:not(.finance-decision p),
+main .note,
+main span:not([class*="status"]):not([class*="queue"]):not([class*="pill"]):not([class*="balance"]):not(.savings-excess):not(.savings-deficit):not(.savings-ok) {
+  color: var(--fx-text-dim) !important;
+}
+
+/* Valores grandes em caixas de métrica */
+.finance-kpis article strong,
+.weekly-strength-card strong,
+.weekly-strength-summary strong,
+.resilience-kpis strong,
+.sector-kpis strong,
+.coverage-summary strong,
+.audit-card strong,
+.commission-score strong,
+.enterprise-card strong,
+.memory-card strong {
+  color: #f1f5f9 !important;
+}
+
+/* TABELA SEMANA COLABORADORA — turnos coloridos */
+.weekly-shift {
+  background: rgba(45,212,191,0.12) !important;
+  color: #a5f3ec !important;
+  border: 1px solid rgba(45,212,191,0.2) !important;
+}
+.weekly-shift.weekly-off,
+.weekly-off {
+  background: rgba(255,255,255,0.03) !important;
+  color: var(--fx-text-dim) !important;
+}
+.weekly-shift.weekly-sunday {
+  background: rgba(251,191,36,0.12) !important;
+  color: #fcd34d !important;
+}
+.weekly-person, .weekly-person strong { color: #f1f5f9 !important; }
+.weekly-person small { color: var(--fx-text-dim) !important; }
+.weekly-status.valid { color: #6ee7b7 !important; }
+.weekly-status.invalid { color: #fca5a5 !important; background: rgba(248,113,113,0.12) !important; border-radius: 6px; }
+
+/* BANNER AMARELO (finance warning topo) */
+.finance-warning {
+  background: rgba(251,191,36,0.10) !important;
+  border: 1px solid rgba(251,191,36,0.3) !important;
+  color: #fcd34d !important;
+}
+.finance-warning strong, .finance-warning p { color: #fcd34d !important; }
+
+/* COMISSÃO orientação box */
+.commission-dimensions, .commission-dimension {
+  background: rgba(255,255,255,0.04) !important;
+}
+[class*="orientacao"], .commission-guidance, .controller-card textarea,
+.controller-card .guidance-box {
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid var(--fx-border) !important;
+  color: var(--fx-text) !important;
+}
+
+/* Barras de progresso/meter mantêm gradiente */
+.meter, [class*="meter"], [class*="-bar"], [class*="progress"] {
+  background: rgba(255,255,255,0.08) !important;
+}
+.meter i, [class*="meter"] i, [class*="-bar"] i {
+  background: var(--fx-grad-primary) !important;
+}
+
+/* Calendar legend pills */
+.legend-good { background: rgba(52,211,153,0.18) !important; color: #6ee7b7 !important; }
+.legend-warn { background: rgba(251,191,36,0.18) !important; color: #fcd34d !important; }
+.calendar-legend span { background: transparent !important; }
+
+/* Status pills auditoria (Atencao) */
+.pill, .audit-pill, [class*="status-pill"] {
+  background: rgba(251,191,36,0.18) !important;
+  color: #fcd34d !important;
+}
+
+/* Coverage table - garantir colunas visíveis */
+.coverage-row span,
+.coverage-row .coverage-number,
+.coverage-row .coverage-hour {
+  color: #e8eef5 !important;
+}
+.coverage-row .coverage-status,
+.coverage-row .coverage-balance {
+  color: inherit;
+}
+
+/* Decisão final / próxima decisão (gradiente azul) */
+.finance-decision, [class*="proxima-decisao"], [class*="next-decision"] {
+  background: rgba(255,255,255,0.04) !important;
+}
+
+/* Botões de ação dentro de cards mantêm destaque */
+.action-footer button, [class*="criar-plano"], [class*="gerar-escala"],
+.simulate-action {
+  background: var(--fx-grad-primary) !important;
+  color: #051014 !important;
+  border: none !important;
+  font-weight: 700 !important;
+}
