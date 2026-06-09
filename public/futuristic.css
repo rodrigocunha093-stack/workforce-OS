@@ -525,3 +525,34 @@ select option { background: #141b2e; color: #e8eef5; }
 .gestor-msg { display: block; margin-top: 10px; font-size: 12px; }
 .gestor-msg.success { color: #6ee7b7; }
 .gestor-msg.error { color: #fca5a5; }
+
+/* ---------- LOGOMARCA TáÓtimo! ---------- */
+.brand { gap: 14px; }
+.brand-logo {
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 4px 14px rgba(45,212,191,0.4));
+  transition: transform 0.3s ease;
+}
+.brand-logo:hover { transform: scale(1.05) rotate(-3deg); }
+.brand-logo svg { display: block; }
+
+.topbar h1 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  -webkit-text-fill-color: #f1f5f9;
+  background: none;
+}
+.brand-accent {
+  background: linear-gradient(90deg, #34d399, #2dd4bf, #3b82f6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 800;
+}
+.topbar .brand p {
+  color: #94a3b8;
+  font-size: 12px;
+}
