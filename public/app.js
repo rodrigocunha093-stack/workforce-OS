@@ -1672,6 +1672,7 @@ function renderAuthState() {
 
 function applyClientAccess(data) {
   if (!authState.authenticated) return;
+  if (data.userRole === 'gestor') return; // Gestor não passa pela trava de onboarding
   const onboarding = data.client.onboarding || {};
   const ready = onboarding.profileComplete && onboarding.employeesImported && onboarding.salesImported;
   if (ready) return;
@@ -1790,6 +1791,9 @@ async function renderGestorPanel(data) {
       document.getElementById('gestor').classList.add('active');
       loadGestorOrgs();
     };
+
+    // Gestor abre direto no painel de gestão ao logar
+    btn.click();
   }
 }
 
