@@ -1371,16 +1371,15 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
   return result;
 }
 
-// Gera escala agrupando por (setor + cargo): cada grupo reveza folgas/turnos internamente
+// Gera escala agrupando por CARGO (a função define quem reveza entre si).
+// Ex.: todos os "Repositor" revezam juntos e escalonam turnos, mesmo que tenham
+// sub-setores mercadológicos diferentes (Bebidas, Limpeza, Cereais...).
 function generateGroupedSchedule(profile, employees, targetHours = 44, targetDaysOff = 1) {
-  // Agrupar por chave setor+cargo
   const groups = {};
   (employees || []).forEach((emp) => {
-    const setor = (emp.setor || 'Sem setor').trim() || 'Sem setor';
-    const cargo = (emp.cargo || 'Sem cargo').trim() || 'Sem cargo';
-    const key = `${setor}||${cargo}`;
-    groups[key] = groups[key] || [];
-    groups[key].push(emp);
+    const cargo = (emp.cargo || 'Sem cargo').trim().toLowerCase() || 'sem cargo';
+    groups[cargo] = groups[cargo] || [];
+    groups[cargo].push(emp);
   });
 
   // Gerar escala para cada grupo isoladamente (revezamento interno) e mesclar
