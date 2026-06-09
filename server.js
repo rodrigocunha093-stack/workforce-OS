@@ -230,7 +230,7 @@ function groupBySetor(employees) {
 
 const MODULE_CATALOG = [
   { id: 1, key: 'diagnostico', nome: 'Diagnóstico' },
-  { id: 2, key: 'cenarios', nome: '6x1 vs 5x2' },
+  { id: 2, key: 'cenarios', nome: 'Escala' },
   { id: 3, key: 'domingo', nome: 'Domingos' },
   { id: 4, key: 'auditoria', nome: 'Auditoria' },
   { id: 5, key: 'acoes', nome: 'Controlador' },
