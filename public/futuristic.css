@@ -1,42 +1,29 @@
 /* ============================================================
    TEMA FUTURISTA — Workforce OS 2026
-   Glassmorphism, gradientes e efeitos neon
+   Camada visual: glassmorphism, gradientes, animações.
+   (O contraste base já vem do styles.css com tema escuro nativo)
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap');
 
 :root {
-  --fx-bg-0: #0a0e1a;
-  --fx-bg-1: #0f1524;
-  --fx-bg-2: #141b2e;
-  --fx-surface: rgba(255, 255, 255, 0.04);
-  --fx-surface-2: rgba(255, 255, 255, 0.07);
-  --fx-border: rgba(255, 255, 255, 0.10);
-  --fx-border-glow: rgba(99, 217, 199, 0.35);
-  --fx-text: #e8eef5;
-  --fx-text-dim: #94a3b8;
-  --fx-teal: #2dd4bf;
-  --fx-cyan: #22d3ee;
-  --fx-blue: #3b82f6;
-  --fx-violet: #8b5cf6;
-  --fx-amber: #fbbf24;
-  --fx-red: #f87171;
-  --fx-green: #34d399;
   --fx-grad-primary: linear-gradient(135deg, #2dd4bf 0%, #3b82f6 100%);
   --fx-grad-violet: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%);
   --fx-grad-warm: linear-gradient(135deg, #fbbf24 0%, #f87171 100%);
+  --fx-border: rgba(255, 255, 255, 0.10);
+  --fx-border-glow: rgba(45, 212, 191, 0.35);
   --fx-glow-teal: 0 0 0 1px rgba(45,212,191,0.2), 0 8px 32px -8px rgba(45,212,191,0.4);
   --fx-shadow-soft: 0 4px 24px -6px rgba(0,0,0,0.5);
   --fx-shadow-card: 0 8px 32px -12px rgba(0,0,0,0.6);
 }
 
+/* ---------- BODY: auroras de cor ---------- */
 body {
   background:
     radial-gradient(1200px 800px at 15% -10%, rgba(59,130,246,0.10), transparent 60%),
     radial-gradient(1000px 700px at 100% 0%, rgba(139,92,246,0.10), transparent 55%),
     radial-gradient(900px 900px at 50% 120%, rgba(45,212,191,0.08), transparent 60%),
-    var(--fx-bg-0);
-  color: var(--fx-text);
+    #0a0e1a;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -83,13 +70,11 @@ body {
 }
 
 .auth-button { border-radius: 8px; transition: all 0.25s ease; }
-
 .auth-button.primary {
   background: var(--fx-grad-primary);
   border: none;
   box-shadow: 0 4px 16px -4px rgba(45,212,191,0.5);
 }
-
 .auth-button.primary:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 22px -4px rgba(45,212,191,0.7);
@@ -106,23 +91,16 @@ body {
 .sidebar button {
   border-radius: 10px;
   border-left: 0;
-  color: var(--fx-text-dim);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
   font-weight: 500;
 }
 
 .sidebar button:hover {
-  background: var(--fx-surface);
-  color: var(--fx-text);
+  background: rgba(255,255,255,0.05);
   transform: translateX(3px);
 }
 
-.sidebar button span {
-  color: #4b5b6b;
-  font-family: 'Space Grotesk', sans-serif;
-  transition: color 0.25s;
-}
+.sidebar button span { font-family: 'Space Grotesk', sans-serif; }
 
 .sidebar button.active {
   background: var(--fx-grad-primary);
@@ -131,20 +109,18 @@ body {
   font-weight: 700;
   box-shadow: 0 4px 20px -4px rgba(45,212,191,0.6);
 }
-
 .sidebar button.active span { color: rgba(5,16,20,0.6); }
 
-/* ---------- HERO PANEL ---------- */
+/* ---------- HERO ---------- */
 .hero-panel {
   background:
     linear-gradient(135deg, rgba(45,212,191,0.08), rgba(59,130,246,0.05)),
-    rgba(20, 27, 46, 0.7);
+    rgba(20, 27, 46, 0.7) !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--fx-border);
+  border: 1px solid var(--fx-border) !important;
   border-radius: 16px;
   box-shadow: var(--fx-shadow-card);
-  color: var(--fx-text);
   position: relative;
   overflow: hidden;
 }
@@ -166,52 +142,15 @@ body {
   letter-spacing: -0.02em;
 }
 
-.hero-panel #conclusion { color: var(--fx-text-dim); }
-
-.decision-card {
-  background: rgba(255,255,255,0.05);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--fx-border-glow);
-  border-radius: 12px;
-  color: var(--fx-text);
+/* ---------- HEADINGS ---------- */
+.panel h3, h2, h3 {
+  font-family: 'Space Grotesk', sans-serif;
 }
 
-.decision-card small, .decision-card span { color: var(--fx-text-dim); }
-.decision-card strong {
-  background: linear-gradient(90deg, #2dd4bf, #22d3ee);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* ---------- DATA STRIP / WEEK SELECTOR ---------- */
-.data-strip, .week-selector-panel {
-  background: rgba(20, 27, 46, 0.6);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--fx-border);
-  border-radius: 12px;
-}
-
-.data-strip small, .week-selector-panel label { color: var(--fx-text-dim); }
-.data-strip strong { color: var(--fx-text); }
-
-.week-selector-panel select {
-  background: var(--fx-surface-2);
-  border: 1px solid var(--fx-border);
-  color: var(--fx-text);
-  border-radius: 8px;
-}
-
-.week-selector-panel select option { background: var(--fx-bg-2); color: var(--fx-text); }
-
-/* ---------- KPIs ---------- */
+/* ---------- KPIs com glass + gradiente no topo ---------- */
 .kpi {
-  background: rgba(20, 27, 46, 0.65);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--fx-border);
-  border-top: 1px solid var(--fx-border);
   border-radius: 14px;
   box-shadow: var(--fx-shadow-soft);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -226,7 +165,6 @@ body {
   height: 3px;
   background: var(--fx-grad-primary);
 }
-
 .kpi.blue::before { background: var(--fx-grad-violet); }
 .kpi.amber::before { background: var(--fx-grad-warm); }
 .kpi.red::before { background: linear-gradient(90deg, #f87171, #ef4444); }
@@ -237,49 +175,28 @@ body {
   box-shadow: var(--fx-glow-teal);
 }
 
-.kpi small, .kpi span { color: var(--fx-text-dim); }
 .kpi strong {
-  color: var(--fx-text);
   font-family: 'Space Grotesk', sans-serif;
   font-weight: 700;
-  font-size: 30px;
 }
 
-/* ---------- PANELS ---------- */
+/* ---------- PANELS glass ---------- */
 .panel {
-  background: rgba(20, 27, 46, 0.55);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border: 1px solid var(--fx-border);
   border-radius: 16px;
   box-shadow: var(--fx-shadow-soft);
-  color: var(--fx-text);
 }
 
-.panel h3 {
-  color: var(--fx-text);
-  font-family: 'Space Grotesk', sans-serif;
-  font-weight: 600;
-}
-
-.panel .note, .panel p { color: var(--fx-text-dim); }
-
-/* ---------- CARDS ---------- */
-.enterprise-readiness-grid > *,
+/* ---------- CARDS hover ---------- */
+.enterprise-card,
 .weekly-strength-card,
 .benchmark-card,
 .scenario-card,
-.finance-scenario,
-.sunday-card,
-article.weekly-strength-card {
-  background: rgba(255,255,255,0.04) !important;
-  border: 1px solid var(--fx-border) !important;
-  border-radius: 12px !important;
-  color: var(--fx-text);
+.finance-scenario {
   transition: all 0.25s ease;
 }
-
-.enterprise-readiness-grid > *:hover,
+.enterprise-card:hover,
 .weekly-strength-card:hover,
 .benchmark-card:hover,
 .scenario-card:hover {
@@ -287,106 +204,49 @@ article.weekly-strength-card {
   transform: translateY(-2px);
 }
 
-.scenario-card h3, .finance-scenario h3 { color: var(--fx-text); }
-.scenario-card small, .scenario-card span,
-.finance-scenario small, .finance-scenario span { color: var(--fx-text-dim); }
-.scenario-card strong, .finance-scenario strong { color: var(--fx-text); }
-
-/* ---------- TABLES / GRIDS ---------- */
-.coverage-row, .skill-row, .weekly-row,
-.icoc-table-row, .savings-hour-row {
-  border-color: var(--fx-border) !important;
-}
-
-.coverage-head, .skill-head, .weekly-head,
-.savings-hour-head {
-  background: rgba(255,255,255,0.03) !important;
-  color: var(--fx-text-dim) !important;
-}
-
-.coverage-number, .coverage-hour { color: var(--fx-text); }
-
-/* ---------- FILTER BUTTONS ---------- */
-.scenario-filter-button, .day-filter, .action-filter {
-  background: var(--fx-surface);
-  border: 1px solid var(--fx-border);
-  color: var(--fx-text-dim);
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-
-.scenario-filter-button:hover, .day-filter:hover, .action-filter:hover {
-  background: var(--fx-surface-2);
-  color: var(--fx-text);
-}
-
-.scenario-filter-button.active, .day-filter.active, .action-filter.active {
-  background: var(--fx-grad-primary);
-  border: none;
-  color: #051014;
+/* ---------- BOTÕES de filtro ativos com gradiente ---------- */
+.scenario-filter-button.active,
+.day-filter.active,
+.action-filter.active {
+  background: var(--fx-grad-primary) !important;
+  border: none !important;
+  color: #051014 !important;
   font-weight: 700;
   box-shadow: 0 4px 14px -4px rgba(45,212,191,0.5);
 }
 
 .optimize-button {
-  background: rgba(45,212,191,0.12);
-  border: 1px solid rgba(45,212,191,0.4);
-  color: #5eead4;
-  border-radius: 8px;
+  background: rgba(45,212,191,0.12) !important;
+  border: 1px solid rgba(45,212,191,0.4) !important;
+  color: #5eead4 !important;
+}
+.optimize-button.active {
+  background: var(--fx-grad-primary) !important;
+  color: #051014 !important;
+}
+.optimize-button.save-optimization {
+  background: linear-gradient(135deg, #3b82f6, #1e40af) !important;
+  color: #fff !important;
+  border: none !important;
 }
 
-.optimize-button.active { background: var(--fx-grad-primary); color: #051014; }
-
-/* ---------- ICOC ---------- */
-.icoc-head { color: var(--fx-text); }
-.icoc-metric, .icoc-kpi {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid var(--fx-border);
-  border-radius: 10px;
+/* ---------- BARRAS de progresso com gradiente ---------- */
+.meter i, [class*="meter"] i, .confidence i {
+  background: var(--fx-grad-primary) !important;
 }
 
-/* ---------- SAVINGS ---------- */
-.savings-card.actual {
-  background: rgba(248,113,113,0.08) !important;
-  border-color: rgba(248,113,113,0.3) !important;
-}
-.savings-card.optimal {
-  background: rgba(52,211,153,0.08) !important;
-  border-color: rgba(52,211,153,0.3) !important;
-}
-.savings-card strong { color: var(--fx-text); }
-.savings-card small, .savings-card span { color: var(--fx-text-dim); }
-.savings-cost { color: var(--fx-text) !important; border-color: var(--fx-border) !important; }
-
-/* ---------- FORMS ---------- */
-input, select, textarea {
-  background: var(--fx-surface-2) !important;
-  border: 1px solid var(--fx-border) !important;
-  color: var(--fx-text) !important;
-  border-radius: 8px !important;
-}
-
+/* ---------- INPUTS focus glow ---------- */
 input:focus, select:focus, textarea:focus {
-  border-color: var(--fx-teal) !important;
+  border-color: #2dd4bf !important;
   box-shadow: 0 0 0 3px rgba(45,212,191,0.15) !important;
   outline: none;
 }
+select option { background: #141b2e; color: #e8eef5; }
 
-label { color: var(--fx-text-dim); }
-
-/* ---------- AUTH DIALOG ---------- */
+/* ---------- AUTH DIALOG glass ---------- */
 .auth-dialog .auth-card, .auth-dialog form {
-  background: rgba(20, 27, 46, 0.95) !important;
   backdrop-filter: blur(24px);
-  border: 1px solid var(--fx-border) !important;
-  color: var(--fx-text);
 }
-
-/* ---------- PILLS ---------- */
-.pill, .soft-pill { border-radius: 20px; backdrop-filter: blur(8px); }
-.pill.ok { background: rgba(52,211,153,0.15); color: #6ee7b7; }
-.pill.warn { background: rgba(251,191,36,0.15); color: #fcd34d; }
-.pill.bad { background: rgba(248,113,113,0.15); color: #fca5a5; }
 
 /* ---------- SCROLLBAR ---------- */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -394,11 +254,7 @@ label { color: var(--fx-text-dim); }
 ::-webkit-scrollbar-thumb { background: rgba(45,212,191,0.3); border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(45,212,191,0.5); }
 
-/* ---------- TEXT OVERRIDES ---------- */
-.section-head h2, .section-head h3 { color: var(--fx-text); }
-.section-head p, .section-head .note { color: var(--fx-text-dim); }
-
-/* ---------- ANIMATED ENTRANCE ---------- */
+/* ---------- ANIMAÇÃO de entrada ---------- */
 .tab.active > * {
   animation: fx-fade-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) backwards;
 }
@@ -411,424 +267,5 @@ label { color: var(--fx-text-dim); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ============================================================
-   CONTRASTE — força texto claro em todas as superfícies escuras
-   ============================================================ */
-
-/* Valores grandes (números, R$) sempre claros */
-.kpi strong,
-.panel strong,
-.scenario-card strong,
-.finance-scenario strong,
-.finance-metrics strong,
-.finance-metrics div,
-.split-metrics strong,
-.split-metrics div,
-.metric-row strong,
-.metric-row span,
-.finance-kpis strong,
-.finance-kpis article strong {
-  color: var(--fx-text) !important;
-}
-
-/* Labels e textos secundários */
-.kpi small, .kpi span,
-.panel small,
-.scenario-card small, .scenario-card span,
-.finance-scenario small, .finance-scenario span,
-.finance-metrics small,
-.split-metrics small,
-.metric-row,
-.finance-kpis small, .finance-kpis span {
-  color: var(--fx-text-dim) !important;
-}
-
-/* Métricas internas: caixinhas com fundo translúcido */
-.finance-metrics > div,
-.split-metrics > div,
-.metric-row,
-.scenario-card .metric-row {
-  background: rgba(255,255,255,0.03);
-  border-radius: 8px;
-}
-
-/* Hero panel banner de aviso (era amarelo claro) */
-.hero-panel + .panel,
-.warning-banner,
-.alert-banner {
-  color: var(--fx-text);
-}
-
-/* Faixa de aviso amarela do topo financeiro */
-[class*="finance"] [class*="banner"],
-.finance-warning,
-.tab > p,
-.tab > .note {
-  color: var(--fx-text-dim) !important;
-}
-
-/* Decision card, finance decision */
-.finance-decision,
-.finance-decision strong,
-.finance-decision p,
-.finance-decision span,
-.finance-decision b {
-  color: var(--fx-text) !important;
-}
-
-.finance-decision {
-  background: rgba(255,255,255,0.04) !important;
-  border: 1px solid var(--fx-border) !important;
-  border-radius: 12px;
-}
-
-/* Aside premissas */
-aside, .finance-aside, .assumptions-aside {
-  background: rgba(255,255,255,0.03) !important;
-  border: 1px solid var(--fx-border) !important;
-  border-radius: 12px;
-  color: var(--fx-text-dim);
-}
-
-aside small, aside p { color: var(--fx-text-dim) !important; }
-aside h3, aside strong { color: var(--fx-text) !important; }
-
-/* Catch-all: qualquer h1-h4 dentro de painel/card claro */
-.panel h1, .panel h2, .panel h4,
-.scenario-card h2, .scenario-card h4 {
-  color: var(--fx-text) !important;
-}
-
-/* Banner de aviso amarelo (impacto financeiro topo) */
-.finance-banner, .info-strip, .tab-banner {
-  background: rgba(251,191,36,0.10) !important;
-  border: 1px solid rgba(251,191,36,0.3) !important;
-  color: #fcd34d !important;
-}
-
-/* Tabelas finance scenario - métricas com valor escuro */
-.finance-scenario .finance-metrics div small { color: var(--fx-text-dim) !important; }
-.finance-scenario .finance-metrics div strong { color: var(--fx-text) !important; }
-
-/* Submit/primary buttons mantêm gradiente */
-button[type="submit"], .submit-button, .primary-action {
-  background: var(--fx-grad-primary) !important;
-  color: #051014 !important;
-  border: none !important;
-  border-radius: 8px !important;
-  font-weight: 700 !important;
-}
-
-/* finance-impact box */
-.finance-impact {
-  background: rgba(255,255,255,0.03) !important;
-  border-radius: 8px;
-}
-.finance-impact span, .finance-impact small { color: var(--fx-text-dim) !important; }
-.finance-impact strong { color: var(--fx-text) !important; }
-.finance-impact.negative { border-left: 3px solid var(--fx-red); }
-.finance-impact.neutral { border-left: 3px solid var(--fx-teal); }
-
-/* Premissas editáveis pill no topo direito */
-.soft-pill {
-  background: rgba(251,191,36,0.15) !important;
-  color: #fcd34d !important;
-  border: 1px solid rgba(251,191,36,0.3) !important;
-}
-
-/* ============================================================
-   OVERRIDE GLOBAL — todos os cards brancos viram glass escuro
-   ============================================================ */
-.enterprise-card,
-.weekly-strength-summary article,
-.weekly-strength-card,
-.benchmark-card,
-.sector-kpis article,
-.core-sector-card,
-.example-steps div,
-.evolution-row,
-.cashier-load-panel,
-.staff-card,
-.commission-score,
-.commission-dimensions,
-.finance-kpis article,
-.finance-scenario,
-.resilience-kpis article,
-.coverage-row,
-.coverage-summary > div,
-.coverage-summary div,
-.icoc-table,
-.icoc-table-row,
-.icoc-metric,
-.icoc-kpi,
-.sector-card,
-.audit-row,
-.audit-card,
-.controller-card,
-.memory-card,
-.commission-dimension,
-.sector-library-row,
-.calendar-day,
-.drawer-score,
-.cashier-load-grid > *,
-.cashier-metric,
-.staff-schedule-grid > *,
-.sunday-card,
-.scenario-card,
-.resilience-action,
-.resilience-actions article,
-.controllerActions article,
-[id="controllerActions"] article,
-.action-card,
-[class*="-kpis"] article,
-[class*="-summary"] article,
-[class*="-summary"] > div,
-[class*="-card"],
-[class*="-row"]:not(.skill-head):not(.coverage-head):not(.weekly-head) {
-  background: rgba(255, 255, 255, 0.04) !important;
-  border-color: var(--fx-border) !important;
-  color: var(--fx-text) !important;
-}
-
-/* Texto dentro desses cards */
-.enterprise-card *,
-.weekly-strength-summary article *,
-.weekly-strength-card *,
-.benchmark-card *,
-.cashier-load-panel *,
-.staff-card *,
-.finance-kpis article *,
-.coverage-row *,
-.coverage-summary div *,
-.icoc-table-row *,
-.icoc-metric *,
-.audit-row *,
-.controller-card *,
-.memory-card *,
-[class*="-card"] *,
-[class*="-summary"] article * {
-  color: var(--fx-text);
-}
-
-/* Strong/valores grandes sempre brancos puros */
-.enterprise-card strong,
-.weekly-strength-card strong,
-.weekly-strength-summary strong,
-.benchmark-card strong,
-.coverage-summary strong,
-.icoc-metric strong,
-.icoc-kpi strong,
-.cashier-metric strong,
-[class*="-card"] strong,
-[class*="-summary"] strong {
-  color: #f1f5f9 !important;
-  font-weight: 700;
-}
-
-/* Small/labels secundários */
-.enterprise-card small,
-.weekly-strength-card small,
-.weekly-strength-summary small,
-.benchmark-card small,
-.coverage-summary small,
-[class*="-card"] small,
-[class*="-summary"] small,
-[class*="-card"] span,
-[class*="-summary"] span {
-  color: var(--fx-text-dim) !important;
-}
-
-/* Tabela de cobertura: linhas alternadas sutis */
-.coverage-row { background: rgba(255,255,255,0.025) !important; }
-.coverage-row:nth-child(even) { background: rgba(255,255,255,0.045) !important; }
-.coverage-number, .coverage-hour, .coverage-balance { color: var(--fx-text) !important; }
-
-/* Status de cobertura coloridos */
-.coverage-status.covered, .coverage-balance.covered { color: #6ee7b7 !important; }
-.coverage-status.critical, .coverage-balance.critical { color: #fca5a5 !important; }
-.coverage-status.high, .coverage-balance.high { color: #fcd34d !important; }
-.coverage-status.support, .coverage-balance.support { color: #93c5fd !important; }
-
-/* ICOC tabela */
-.icoc-table-row { background: rgba(255,255,255,0.025) !important; }
-.icoc-table-row:nth-child(even) { background: rgba(255,255,255,0.045) !important; }
-.icoc-table-head, .icoc-table-row.head {
-  background: rgba(255,255,255,0.03) !important;
-  color: var(--fx-text-dim) !important;
-}
-
-/* Banner amarelo de aviso (impacto financeiro) */
-.tab > article:first-child[style*="amber"],
-.finance-alert, .warning-strip {
-  background: rgba(251,191,36,0.10) !important;
-  border-color: rgba(251,191,36,0.3) !important;
-}
-
-/* Pills de status dentro de cards */
-.pill, .status-pill, .tag {
-  background: rgba(255,255,255,0.08) !important;
-}
-.pill.ok, .status-ok { background: rgba(52,211,153,0.18) !important; color: #6ee7b7 !important; }
-.pill.warn, .status-warn { background: rgba(251,191,36,0.18) !important; color: #fcd34d !important; }
-.pill.bad, .status-bad { background: rgba(248,113,113,0.18) !important; color: #fca5a5 !important; }
-
-/* Botões "Revisar" e similares */
-.audit-status, .weekly-status, [class*="revisar"] {
-  color: var(--fx-text) !important;
-}
-
-/* ============================================================
-   OVERRIDE DEFINITIVO v2 — todos os fundos brancos -> glass
-   Lista completa extraída do CSS original
-   ============================================================ */
-.absence-buttons, .absence-skill-list, .absence-verdict, .account-controls,
-.benchmark-card, .calendar-day, .calendar-legend, .cashier-load-panel,
-.commission-dimensions, .commission-score, .core-sector-card,
-.coverage-summary, .data-strip, .decision-memories, .drawer-score,
-.enterprise-card, .evolution-row, .example-steps, .finance-decision,
-.finance-impact, .finance-kpis, .finance-scenario, .finance-warning,
-.import-actions, .import-instructions, .maturity-lists, .memory-card,
-.memory-footer, .resilience-kpis, .scenario-card, .sector-kpis,
-.sector-priority, .staff-card, .staff-schedule, .week-selector-panel,
-.weekly-row, .weekly-strength-card, .weekly-strength-summary,
-.finance-kpis article, .resilience-kpis article, .sector-kpis article,
-.weekly-strength-summary article {
-  background: rgba(255,255,255,0.04) !important;
-  border-color: var(--fx-border) !important;
-}
-
-/* SUB-CAIXAS internas (métricas dentro de cards) */
-.finance-kpis article,
-.finance-scenario .finance-metrics > div,
-.weekly-strength-card > div,
-.weekly-strength-summary article,
-.resilience-kpis article,
-.sector-kpis article,
-.commission-score,
-.audit-card > div,
-[class*="audit"] article > div,
-.calendar-day,
-.drawer-score,
-.cashier-metric,
-.enterprise-card,
-.benchmark-card,
-.memory-card,
-.decision-memories article,
-.maturity-lists > div,
-.weekly-person,
-.coverage-summary > div {
-  background: rgba(255,255,255,0.05) !important;
-  border: 1px solid var(--fx-border) !important;
-  color: var(--fx-text) !important;
-}
-
-/* TODO texto dentro de main fica claro por padrão (exceto status) */
-main strong:not([class*="queue"]):not([class*="status"]),
-main h1, main h2, main h3, main h4 {
-  color: #f1f5f9 !important;
-}
-
-main small,
-main label,
-main p:not(.finance-decision p),
-main .note,
-main span:not([class*="status"]):not([class*="queue"]):not([class*="pill"]):not([class*="balance"]):not(.savings-excess):not(.savings-deficit):not(.savings-ok) {
-  color: var(--fx-text-dim) !important;
-}
-
-/* Valores grandes em caixas de métrica */
-.finance-kpis article strong,
-.weekly-strength-card strong,
-.weekly-strength-summary strong,
-.resilience-kpis strong,
-.sector-kpis strong,
-.coverage-summary strong,
-.audit-card strong,
-.commission-score strong,
-.enterprise-card strong,
-.memory-card strong {
-  color: #f1f5f9 !important;
-}
-
-/* TABELA SEMANA COLABORADORA — turnos coloridos */
-.weekly-shift {
-  background: rgba(45,212,191,0.12) !important;
-  color: #a5f3ec !important;
-  border: 1px solid rgba(45,212,191,0.2) !important;
-}
-.weekly-shift.weekly-off,
-.weekly-off {
-  background: rgba(255,255,255,0.03) !important;
-  color: var(--fx-text-dim) !important;
-}
-.weekly-shift.weekly-sunday {
-  background: rgba(251,191,36,0.12) !important;
-  color: #fcd34d !important;
-}
-.weekly-person, .weekly-person strong { color: #f1f5f9 !important; }
-.weekly-person small { color: var(--fx-text-dim) !important; }
-.weekly-status.valid { color: #6ee7b7 !important; }
-.weekly-status.invalid { color: #fca5a5 !important; background: rgba(248,113,113,0.12) !important; border-radius: 6px; }
-
-/* BANNER AMARELO (finance warning topo) */
-.finance-warning {
-  background: rgba(251,191,36,0.10) !important;
-  border: 1px solid rgba(251,191,36,0.3) !important;
-  color: #fcd34d !important;
-}
-.finance-warning strong, .finance-warning p { color: #fcd34d !important; }
-
-/* COMISSÃO orientação box */
-.commission-dimensions, .commission-dimension {
-  background: rgba(255,255,255,0.04) !important;
-}
-[class*="orientacao"], .commission-guidance, .controller-card textarea,
-.controller-card .guidance-box {
-  background: rgba(255,255,255,0.04) !important;
-  border: 1px solid var(--fx-border) !important;
-  color: var(--fx-text) !important;
-}
-
-/* Barras de progresso/meter mantêm gradiente */
-.meter, [class*="meter"], [class*="-bar"], [class*="progress"] {
-  background: rgba(255,255,255,0.08) !important;
-}
-.meter i, [class*="meter"] i, [class*="-bar"] i {
-  background: var(--fx-grad-primary) !important;
-}
-
-/* Calendar legend pills */
-.legend-good { background: rgba(52,211,153,0.18) !important; color: #6ee7b7 !important; }
-.legend-warn { background: rgba(251,191,36,0.18) !important; color: #fcd34d !important; }
-.calendar-legend span { background: transparent !important; }
-
-/* Status pills auditoria (Atencao) */
-.pill, .audit-pill, [class*="status-pill"] {
-  background: rgba(251,191,36,0.18) !important;
-  color: #fcd34d !important;
-}
-
-/* Coverage table - garantir colunas visíveis */
-.coverage-row span,
-.coverage-row .coverage-number,
-.coverage-row .coverage-hour {
-  color: #e8eef5 !important;
-}
-.coverage-row .coverage-status,
-.coverage-row .coverage-balance {
-  color: inherit;
-}
-
-/* Decisão final / próxima decisão (gradiente azul) */
-.finance-decision, [class*="proxima-decisao"], [class*="next-decision"] {
-  background: rgba(255,255,255,0.04) !important;
-}
-
-/* Botões de ação dentro de cards mantêm destaque */
-.action-footer button, [class*="criar-plano"], [class*="gerar-escala"],
-.simulate-action {
-  background: var(--fx-grad-primary) !important;
-  color: #051014 !important;
-  border: none !important;
-  font-weight: 700 !important;
-}
+/* ---------- SAVINGS panel (mantém destaque) ---------- */
+.savings-card strong { font-family: 'Space Grotesk', sans-serif; }
