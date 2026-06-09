@@ -1717,6 +1717,19 @@ async function applyClientState(summary, user) {
       scenario.people = generateScheduleByProfile(profile, caixaEmployees, targetHours, targetDaysOff);
     });
 
+    // ESCALA COMPLETA — todos os colaboradores (todos os setores), para a tabela com filtro
+    summary.employeeSetorMap = {};
+    state.employees.forEach(e => { summary.employeeSetorMap[e.nome] = (e.setor || 'Sem setor').trim() || 'Sem setor'; });
+    summary.fullSchedule = {};
+    Object.entries(summary.weeklyScenarioSchedule).forEach(([key, sc]) => {
+      summary.fullSchedule[key] = {
+        label: sc.label,
+        targetHours: sc.targetHours,
+        targetDaysOff: sc.targetDaysOff,
+        people: generateScheduleByProfile(profile, state.employees, sc.targetHours || 44, sc.targetDaysOff || 1)
+      };
+    });
+
     summary.sundayRotation.forEach((item) => {
       item.folga = item.folga.map((name) => names[name] || name);
       item.trabalhando = item.trabalhando.map((name) => names[name] || name);

@@ -499,34 +499,68 @@ function renderStaffSchedule(data) {
   `).join('');
 }
 
+let weeklyScheduleSetorFilter = '';
+
 function renderWeeklySchedule(data) {
-  const scenario = data.weeklyScenarioSchedule[currentCoverageScenario];
+  // Usa escala completa (todos os setores) se disponível; senão, só caixa
+  const source = (data.fullSchedule && data.fullSchedule[currentCoverageScenario]) || data.weeklyScenarioSchedule[currentCoverageScenario];
+  const setorMap = data.employeeSetorMap || {};
   const days = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
-  const people = Object.entries(scenario.people);
+  let people = Object.entries(source.people);
+
+  // Setores disponíveis
+  const setores = [...new Set(people.map(([nome]) => setorMap[nome] || 'Sem setor'))];
+
+  // Aplicar filtro de setor
+  if (weeklyScheduleSetorFilter) {
+    people = people.filter(([nome]) => (setorMap[nome] || 'Sem setor') === weeklyScheduleSetorFilter);
+  }
+
   const audits = people.map(([nome, shifts]) => ({
     nome,
     hours: shifts.reduce((sum, shift) => sum + parseHours(shift), 0),
     daysOff: shifts.filter((shift) => shift === 'Folga').length
   }));
-  const valid = audits.filter((audit) => Math.abs(audit.hours - scenario.targetHours) < 0.01 && audit.daysOff === scenario.targetDaysOff).length;
-  document.getElementById('weeklyScheduleNote').textContent = `${scenario.label}: meta de ${scenario.targetHours}h e ${scenario.targetDaysOff} folga${scenario.targetDaysOff > 1 ? 's' : ''} a cada 7 dias.`;
+  const valid = audits.filter((audit) => Math.abs(audit.hours - source.targetHours) < 0.01 && audit.daysOff === source.targetDaysOff).length;
+  document.getElementById('weeklyScheduleNote').textContent = `${source.label}: meta de ${source.targetHours}h e ${source.targetDaysOff} folga${source.targetDaysOff > 1 ? 's' : ''} a cada 7 dias.`;
   document.getElementById('weeklyAuditSummary').innerHTML = `
     <span class="${valid === audits.length ? 'weekly-ok' : 'weekly-bad'}">${valid}/${audits.length} conformes</span>
   `;
+
+  // Chips de filtro por setor
+  const filterChips = setores.length > 1 ? `
+    <div class="setor-filter weekly-setor-filter">
+      <button class="setor-chip ${!weeklyScheduleSetorFilter?'active':''}" data-wsetor="">Todos (${Object.keys(source.people).length})</button>
+      ${setores.map(s => {
+        const count = Object.keys(source.people).filter(n => (setorMap[n]||'Sem setor')===s).length;
+        return `<button class="setor-chip ${weeklyScheduleSetorFilter===s?'active':''}" data-wsetor="${s}">${s} (${count})</button>`;
+      }).join('')}
+    </div>` : '';
+
   document.getElementById('weeklySchedule').innerHTML = `
-    <div class="weekly-row weekly-head"><span>Colaboradora</span>${days.map((day) => `<span>${day}</span>`).join('')}<span>Auditoria</span></div>
+    ${filterChips}
+    <div class="weekly-row weekly-head"><span>Colaborador(a)</span>${days.map((day) => `<span>${day}</span>`).join('')}<span>Auditoria</span></div>
     ${people.map(([nome, shifts]) => {
       const audit = audits.find((item) => item.nome === nome);
-      const ok = Math.abs(audit.hours - scenario.targetHours) < 0.01 && audit.daysOff === scenario.targetDaysOff;
+      const ok = Math.abs(audit.hours - source.targetHours) < 0.01 && audit.daysOff === source.targetDaysOff;
+      const setor = setorMap[nome] || 'Sem setor';
       return `
         <div class="weekly-row">
-          <span class="weekly-person"><strong>${nome}</strong><small>${audit.hours.toFixed(0)}h - ${audit.daysOff} folga${audit.daysOff > 1 ? 's' : ''}</small></span>
+          <span class="weekly-person"><strong>${nome}</strong><small>${setor} · ${audit.hours.toFixed(0)}h - ${audit.daysOff} folga${audit.daysOff > 1 ? 's' : ''}</small></span>
           ${shifts.map((shift) => `<span class="weekly-shift ${shift === 'Folga' ? 'weekly-off' : shift.includes('08-12') ? 'weekly-sunday' : ''}">${shift}</span>`).join('')}
           <span class="weekly-status ${ok ? 'valid' : 'invalid'}">${ok ? 'Conforme' : 'Revisar'}</span>
         </div>
       `;
     }).join('')}
   `;
+
+  // Handlers dos chips
+  document.querySelectorAll('#weeklySchedule .setor-chip').forEach(chip => {
+    chip.onclick = () => {
+      weeklyScheduleSetorFilter = chip.dataset.wsetor;
+      renderWeeklySchedule(data);
+    };
+  });
 }
 
 function renderSunday(rotation) {

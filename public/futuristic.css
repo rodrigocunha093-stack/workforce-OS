@@ -556,3 +556,6 @@ select option { background: #141b2e; color: #e8eef5; }
   color: #94a3b8;
   font-size: 12px;
 }
+
+/* Filtro de setor na escala semanal */
+.weekly-setor-filter { margin-bottom: 12px; }
