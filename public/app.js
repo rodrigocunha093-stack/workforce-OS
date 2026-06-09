@@ -34,10 +34,14 @@ function percent(value, max) {
 }
 
 function parseHours(value) {
-  if (value === 'Folga') return 0;
-  const match = value.match(/(\d+)h(:(\d+))$/);
-  if (!match) return 0;
-  return Number(match[1]) + Number(match[2] || 0) / 60;
+  if (!value || value === 'Folga') return 0;
+  // Lê o sufixo de horas trabalhadas: "06-14 · 8h" ou "07-11/14-18 · 8h"
+  const m = value.match(/·\s*(\d+)h(?:(\d+))?/);
+  if (m) return Number(m[1]) + (m[2] ? Number(m[2]) / 60 : 0);
+  // Formato antigo "8h:30"
+  const old = value.match(/(\d+)h(?::(\d+))$/);
+  if (old) return Number(old[1]) + Number(old[2] || 0) / 60;
+  return 0;
 }
 
 let currentCoverageDay = 'monday';
