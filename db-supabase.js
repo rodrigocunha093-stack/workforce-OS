@@ -61,6 +61,26 @@ async function getUserByOrgCode(orgCode) {
   }
 }
 
+async function listAllOrgAdmins() {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id,name,email,orgid,orgcode,role,createdat')
+      .eq('role', 'admin');
+    if (error) { console.error('DB Error on listAllOrgAdmins:', error.message); return []; }
+    return (data || []).map(d => ({
+      orgId: d.orgid || d.id,
+      orgCode: d.orgcode,
+      adminName: d.name,
+      adminEmail: d.email,
+      createdAt: d.createdat
+    }));
+  } catch (error) {
+    console.error('DB Error on listAllOrgAdmins:', error.message);
+    return [];
+  }
+}
+
 async function listOrgMembers(orgId) {
   try {
     const { data, error } = await supabase
@@ -254,6 +274,7 @@ module.exports = {
   getUserById,
   getUserByOrgCode,
   listOrgMembers,
+  listAllOrgAdmins,
   createUser,
   saveSession,
   getSession,

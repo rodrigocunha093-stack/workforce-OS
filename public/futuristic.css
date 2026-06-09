@@ -450,3 +450,45 @@ select option { background: #141b2e; color: #e8eef5; }
   .emp-row { grid-template-columns: 1fr 1fr; }
   .emp-row.emp-head { display: none; }
 }
+
+/* ---------- PAINEL GESTOR ---------- */
+.gestor-org-card {
+  padding: 16px 18px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--fx-border);
+  border-radius: 12px;
+  margin-bottom: 14px;
+}
+.gestor-org-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  gap: 12px;
+}
+.gestor-org-head strong { display: block; color: #e8eef5; font-size: 15px; }
+.gestor-org-head span { color: #94a3b8; font-size: 12px; }
+.gestor-modules {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+}
+.gestor-module-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--fx-border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #cbd5e1;
+  transition: all 0.2s;
+}
+.gestor-module-toggle:hover { border-color: var(--fx-border-glow); }
+.gestor-module-toggle input { width: auto !important; cursor: pointer; }
+.gestor-module-toggle input:checked + span { color: #5eead4; font-weight: 600; }
+.gestor-msg { display: block; margin-top: 10px; font-size: 12px; }
+.gestor-msg.success { color: #6ee7b7; }
+.gestor-msg.error { color: #fca5a5; }

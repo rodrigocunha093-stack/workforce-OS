@@ -175,9 +175,23 @@ function defaultClientState() {
     },
     employees: [],
     salesRows: [],
+    enabledModules: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     updatedAt: null
   };
 }
+
+const MODULE_CATALOG = [
+  { id: 1, key: 'diagnostico', nome: 'Diagnóstico' },
+  { id: 2, key: 'cenarios', nome: '6x1 vs 5x2' },
+  { id: 3, key: 'domingo', nome: 'Domingos' },
+  { id: 4, key: 'auditoria', nome: 'Auditoria' },
+  { id: 5, key: 'acoes', nome: 'Controlador' },
+  { id: 6, key: 'financeiro', nome: 'Financeiro' },
+  { id: 7, key: 'resiliencia', nome: 'Resiliência' },
+  { id: 8, key: 'setores', nome: 'Setores' },
+  { id: 9, key: 'memoria', nome: 'Memória' },
+  { id: 10, key: 'implantacao', nome: 'Implantação' }
+];
 
 function clientStateFile(userId) {
   return path.join(CLIENTS_DIR, `${userId}.json`);
@@ -1524,6 +1538,8 @@ async function applyClientState(summary, user) {
   const importedDayKeys = new Set(state.salesRows.map((row) => dayKeys[new Date(`${row.data}T12:00:00`).getDay()]));
   const importedOperationalDayKeys = requiredDayKeys.filter((key) => importedDayKeys.has(key));
   const missingOperationalDayKeys = requiredDayKeys.filter((key) => !importedDayKeys.has(key));
+  summary.enabledModules = Array.isArray(state.enabledModules) ? state.enabledModules : [1,2,3,4,5,6,7,8,9,10];
+  summary.userRole = user.role || 'admin';
   summary.client = {
     profile: { ...profile, cnpj: '' },
     account: { name: user.name, email: user.email },
@@ -2149,6 +2165,44 @@ const server = http.createServer(async (req, res) => {
         await saveClientState(user.orgId, state);
         await audit(user.id, 'OPTIMIZATION_SAVED', { scenario, ip: requestIp(req) });
         return json(res, { ok: true, savedAt: state.optimizedCoverage.savedAt });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
+    })();
+    return;
+  }
+  if (req.url === '/api/gestor/orgs') {
+    if (!user || user.role !== 'gestor') return json(res, { ok: false, error: 'Acesso restrito ao gestor.' }, 403);
+    const admins = await dbSupabase.listAllOrgAdmins();
+    const orgs = [];
+    for (const adm of admins) {
+      const st = await dbSupabase.getClientData(adm.orgId);
+      orgs.push({
+        orgId: adm.orgId,
+        orgCode: adm.orgCode,
+        adminEmail: adm.adminEmail,
+        empresa: (st && st.profile && st.profile.empresa) || '(sem nome)',
+        loja: (st && st.profile && st.profile.loja) || '',
+        enabledModules: (st && Array.isArray(st.enabledModules)) ? st.enabledModules : [1,2,3,4,5,6,7,8,9,10]
+      });
+    }
+    return json(res, { ok: true, modules: MODULE_CATALOG, orgs });
+  }
+  if (req.url === '/api/gestor/set-modules' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user || user.role !== 'gestor') throw new Error('Acesso restrito ao gestor.');
+        const body = await readJsonBody(req);
+        const targetOrgId = String(body.orgId || '');
+        const modules = Array.isArray(body.modules) ? body.modules.map(Number).filter(n => n >= 1 && n <= 10) : [];
+        if (!targetOrgId) throw new Error('Empresa não informada.');
+
+        const st = await dbSupabase.getClientData(targetOrgId) || defaultClientState();
+        st.enabledModules = modules.length ? modules : [1];
+        st.updatedAt = new Date().toISOString();
+        await dbSupabase.saveClientData(targetOrgId, st);
+        await audit(user.id, 'GESTOR_SET_MODULES', { targetOrgId, modules });
+        return json(res, { ok: true, enabledModules: st.enabledModules });
       } catch (error) {
         return json(res, { ok: false, error: error.message }, 400);
       }

@@ -1683,6 +1683,123 @@ function configureAuth() {
 
 configureAuth();
 
+const MODULE_TAB_MAP = {
+  1: 'diagnostico', 2: 'cenarios', 3: 'domingo', 4: 'auditoria', 5: 'acoes',
+  6: 'financeiro', 7: 'resiliencia', 8: 'setores', 9: 'memoria', 10: 'implantacao'
+};
+
+function applyEnabledModules(data) {
+  // Gestor vê tudo; clientes veem só os módulos liberados
+  if (data.userRole === 'gestor') return;
+  const enabled = Array.isArray(data.enabledModules) ? data.enabledModules : [1,2,3,4,5,6,7,8,9,10];
+  Object.entries(MODULE_TAB_MAP).forEach(([id, tab]) => {
+    const btn = document.querySelector(`.sidebar button[data-tab="${tab}"]`);
+    if (!btn) return;
+    if (enabled.includes(Number(id))) {
+      btn.style.display = '';
+    } else {
+      btn.style.display = 'none';
+    }
+  });
+}
+
+async function renderGestorPanel(data) {
+  // Só renderiza para gestor
+  const existing = document.getElementById('gestorTabBtn');
+  if (data.userRole !== 'gestor') { if (existing) existing.remove(); return; }
+
+  // Adicionar botão na sidebar se não existir
+  if (!existing) {
+    const sidebar = document.querySelector('.sidebar');
+    const btn = document.createElement('button');
+    btn.id = 'gestorTabBtn';
+    btn.dataset.tab = 'gestor';
+    btn.innerHTML = '<span>★</span> Gestor';
+    btn.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+    btn.style.marginTop = '8px';
+    sidebar.appendChild(btn);
+
+    // Criar seção da aba gestor se não existir
+    if (!document.getElementById('gestor')) {
+      const main = document.querySelector('main');
+      const section = document.createElement('section');
+      section.id = 'gestor';
+      section.className = 'tab';
+      section.innerHTML = `
+        <div class="section-head">
+          <div><p class="eyebrow">Painel do Gestor do Produto</p>
+          <h2>Controle de módulos por empresa</h2></div>
+          <span class="soft-pill">Super-admin</span>
+        </div>
+        <div class="panel"><div id="gestorOrgs"></div></div>
+      `;
+      main.appendChild(section);
+    }
+
+    btn.onclick = () => {
+      document.querySelectorAll('.sidebar button').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('gestor').classList.add('active');
+      loadGestorOrgs();
+    };
+  }
+}
+
+async function loadGestorOrgs() {
+  const el = document.getElementById('gestorOrgs');
+  if (!el) return;
+  el.innerHTML = '<p class="note">Carregando empresas...</p>';
+  try {
+    const res = await fetch('/api/gestor/orgs');
+    const info = await res.json();
+    if (!info.ok) { el.innerHTML = `<p class="note">${info.error}</p>`; return; }
+    el.innerHTML = info.orgs.map(org => `
+      <div class="gestor-org-card">
+        <div class="gestor-org-head">
+          <div>
+            <strong>${org.empresa}${org.loja ? ' · ' + org.loja : ''}</strong>
+            <span>${org.adminEmail} · ${org.orgCode || ''}</span>
+          </div>
+          <button class="optimize-button save-optimization gestor-save" data-org="${org.orgId}" type="button">Salvar módulos</button>
+        </div>
+        <div class="gestor-modules">
+          ${info.modules.map(m => `
+            <label class="gestor-module-toggle">
+              <input type="checkbox" data-org="${org.orgId}" data-mod="${m.id}" ${org.enabledModules.includes(m.id) ? 'checked' : ''}>
+              <span>${m.id}. ${m.nome}</span>
+            </label>
+          `).join('')}
+        </div>
+        <small class="gestor-msg" id="gestorMsg-${org.orgId}"></small>
+      </div>
+    `).join('');
+
+    el.querySelectorAll('.gestor-save').forEach(btn => {
+      btn.onclick = async () => {
+        const orgId = btn.dataset.org;
+        const mods = [...el.querySelectorAll(`input[data-org="${orgId}"]:checked`)].map(i => Number(i.dataset.mod));
+        const msg = document.getElementById('gestorMsg-' + orgId);
+        try {
+          const r = await fetch('/api/gestor/set-modules', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orgId, modules: mods })
+          });
+          const result = await r.json();
+          if (result.ok) {
+            msg.textContent = `✓ Salvo: ${result.enabledModules.length} módulos ativos.`;
+            msg.className = 'gestor-msg success';
+          } else {
+            msg.textContent = result.error; msg.className = 'gestor-msg error';
+          }
+        } catch (e) { msg.textContent = 'Erro.'; msg.className = 'gestor-msg error'; }
+      };
+    });
+  } catch (e) {
+    el.innerHTML = '<p class="note">Erro ao carregar empresas.</p>';
+  }
+}
+
 function safeRender(label, renderFn) {
   try {
     renderFn();
@@ -1702,6 +1819,8 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     sourceStatus.textContent = source.mode === 'postgresql' ? `PostgreSQL - ${source.database}` : 'Ambiente local seguro - base demonstrativa';
     sourceStatus.className = source.mode === 'postgresql' ? 'source-connected' : 'source-demo';
     safeRender('estado de login', renderAuthState);
+    safeRender('modulos', () => applyEnabledModules(data));
+    safeRender('gestor', () => renderGestorPanel(data));
     if (!authState.authenticated) {
       document.querySelector('[data-tab="implantacao"]').onclick = (event) => {
         event.stopPropagation();
