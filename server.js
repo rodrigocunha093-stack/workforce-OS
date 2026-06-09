@@ -1306,17 +1306,20 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
   const additionalDaysOff = sundayClosed ? Math.max(0, targetDaysOff - 1) : targetDaysOff;
 
   const folgaDiaMap = { segunda: 0, terca: 1, quarta: 2, quinta: 3, domingo: 6 };
+  const N = employees.length; // tamanho do grupo (setor + cargo)
 
-  // Calcula início do turno conforme preferência da operadora
+  // Calcula início do turno conforme preferência + distribuição uniforme pelo grupo
   function startForTurno(turno, open, close, idx) {
-    const dur = close - open;
-    const lateStart = Math.max(open, close - shiftHours); // turno que fecha a loja
+    const span = Math.max(0, close - shiftHours - open); // janela de início (abertura até turno que fecha)
+    const lateStart = open + span; // turno que fecha a loja
     switch (turno) {
       case 'abertura': return open;
       case 'fechamento': return lateStart;
-      case 'intermediario': return Math.min(lateStart, open + Math.floor((dur - shiftHours) / 2));
-      default: // flexivel — distribui por índice
-        return open + (idx % numShifts) * Math.floor((dur - shiftHours) / Math.max(1, numShifts - 1));
+      case 'intermediario': return open + Math.round(span / 2);
+      default:
+        // flexível — espalha o grupo uniformemente da abertura ao fechamento
+        // 5 repositores numa loja 06-18 → 06,07,08,09,10 (cobrindo até 18h)
+        return open + Math.round((N > 1 ? idx / (N - 1) : 0) * span);
     }
   }
 
