@@ -1595,9 +1595,28 @@ function refreshCoverageLoads(summary, pdvLimit) {
   });
 }
 
-async function applyClientState(summary, user) {
+function weekOfMonth(dateStr) {
+  const day = Number(dateStr.split('-')[2]);
+  if (day <= 7) return 1;
+  if (day <= 14) return 2;
+  if (day <= 21) return 3;
+  if (day <= 28) return 4;
+  return 5;
+}
+
+async function applyClientState(summary, user, weekFilter = null) {
   const state = await loadClientState(user.orgId);
   const profile = state.profile || defaultClientState().profile;
+  // Filtrar vendas pela semana do mês (módulo 2 — análise semana a semana)
+  if (weekFilter && Array.isArray(state.salesRows)) {
+    const semanaLabels = { 1: 'Semana 1 (dias 1-7)', 2: 'Semana 2 (dias 8-14)', 3: 'Semana 3 (dias 15-21)', 4: 'Semana 4 (dias 22-28)', 5: 'Semana 5 (dias 29-31)' };
+    const filtradas = state.salesRows.filter(r => weekOfMonth(r.data) === Number(weekFilter));
+    state.salesRows = filtradas;
+    summary.metadata = summary.metadata || {};
+    summary.metadata.semanaAtiva = Number(weekFilter);
+    summary.metadata.semanaLabel = semanaLabels[Number(weekFilter)] || `Semana ${weekFilter}`;
+    summary.metadata.demandaMediaSemana = filtradas.length ? `${filtradas.length} faixas analisadas` : 'Sem dados nesta semana';
+  }
   const requiredDayKeys = requiredOperationalDayKeys(profile);
   const importedDayKeys = new Set(state.salesRows.map((row) => dayKeys[new Date(`${row.data}T12:00:00`).getDay()]));
   const importedOperationalDayKeys = requiredDayKeys.filter((key) => importedDayKeys.has(key));
@@ -1907,11 +1926,11 @@ function summaryForWeek(baseSummary, weekNumber) {
   return summary;
 }
 
-async function summaryFromDatabase(user = null) {
+async function summaryFromDatabase(user = null, weekFilter = null) {
   const connection = await db.status();
   if (!connection.connected) {
     const summary = JSON.parse(JSON.stringify({ ...data, dataSource: { mode: 'demo', ...connection } }));
-    if (user) return applyClientState(summary, user);
+    if (user) return applyClientState(summary, user, weekFilter);
     applySalesRowsToSummary(summary, loadModelSalesRows(), 'Empresa modelo VRSoft');
     refreshCoverageLoads(summary, summary.storeConfig.pdvs);
     return summary;
@@ -1965,12 +1984,12 @@ async function summaryFromDatabase(user = null) {
         caixaNecessario: demand
       }));
     }
-    if (user) return applyClientState(summary, user);
+    if (user) return applyClientState(summary, user, weekFilter);
     refreshCoverageLoads(summary, summary.storeConfig.pdvs);
     return summary;
   } catch (error) {
     const summary = JSON.parse(JSON.stringify({ ...data, dataSource: { mode: 'demo', connected: true, database: connection.database, error: error.message } }));
-    if (user) return applyClientState(summary, user);
+    if (user) return applyClientState(summary, user, weekFilter);
     applySalesRowsToSummary(summary, loadModelSalesRows(), 'Empresa modelo VRSoft');
     refreshCoverageLoads(summary, summary.storeConfig.pdvs);
     return summary;
@@ -1997,8 +2016,14 @@ const server = http.createServer(async (req, res) => {
   if (req.url.match(/^\/api\/summary\/week\/\d+$/)) {
     const weekNumber = Number(req.url.split('/').pop());
     if (weekNumber >= 1 && weekNumber <= 5) {
-      const baseSummary = await summaryFromDatabase(user);
-      return json(res, summaryForWeek(baseSummary, weekNumber));
+      try {
+        // Filtra os dados REAIS do cliente pela semana do mês e recalcula tudo
+        const summary = await summaryFromDatabase(user, weekNumber);
+        return json(res, summary);
+      } catch (error) {
+        console.error('ERROR in /api/summary/week:', error.message);
+        return json(res, { error: error.message }, 500);
+      }
     }
     return json(res, { error: 'Semana inválida. Use 1-5.' });
   }

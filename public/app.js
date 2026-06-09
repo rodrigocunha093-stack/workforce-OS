@@ -1942,28 +1942,30 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     if (weekSelector) {
       weekSelector.addEventListener('change', async (event) => {
         const weekNumber = event.target.value;
+        const applyData = (d, label) => {
+          window.currentSummary = d;
+          safeRender('indicadores', () => renderKpis(d.scenarios, d.metadata));
+          safeRender('cenarios', () => renderScenarios(d.scenarios, d.metadata));
+          safeRender('semana colaboradora', () => renderWeeklySchedule(d));
+          safeRender('cobertura', () => renderCoverage(d));
+          safeRender('forca semanal', () => renderMonthlyWeekAnalysis(d));
+          if (weekInfo) weekInfo.textContent = label;
+        };
         if (!weekNumber) {
-          // Usar dados padrão
-          window.currentSummary = data;
-          safeRender('indicadores', () => renderKpis(data.scenarios, data.metadata));
-          safeRender('cenarios', () => renderScenarios(data.scenarios, data.metadata));
-          safeRender('cobertura', () => renderCoverage(data));
-          weekInfo.textContent = 'Mostrando todos os dados importados';
+          applyData(data, 'Mostrando todos os dados importados');
         } else {
+          if (weekInfo) weekInfo.textContent = 'Carregando semana...';
           try {
             const response = await fetch(`/api/summary/week/${weekNumber}`);
             const weekData = await response.json();
-            window.currentSummary = weekData;
-            safeRender('indicadores', () => renderKpis(weekData.scenarios, weekData.metadata));
-            safeRender('cenarios', () => renderScenarios(weekData.scenarios, weekData.metadata));
-            safeRender('cobertura', () => renderCoverage(weekData));
-            const weekInfo = document.getElementById('weekInfo');
-            if (weekInfo && weekData.metadata?.demandaMediaSemana) {
-              weekInfo.textContent = `${weekData.metadata.semanaLabel} • Demanda: ${weekData.metadata.demandaMediaSemana}`;
-            }
+            if (weekData.error) { weekInfo.textContent = 'Erro: ' + weekData.error; return; }
+            const lbl = weekData.metadata?.semanaLabel
+              ? `${weekData.metadata.semanaLabel} • ${weekData.metadata.demandaMediaSemana || ''}`
+              : `Semana ${weekNumber}`;
+            applyData(weekData, lbl);
           } catch (error) {
             console.error('Erro ao carregar dados da semana:', error);
-            weekInfo.textContent = 'Erro ao carregar dados da semana';
+            if (weekInfo) weekInfo.textContent = 'Erro ao carregar dados da semana';
           }
         }
       });
