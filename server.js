@@ -181,23 +181,26 @@ function defaultClientState() {
   };
 }
 
-// Mapa de grupo mercadológico -> setor que o atende (para dimensionar escala por dados)
+// Mapa de grupo mercadológico (descricao_m2) -> setor operacional que o atende.
+// Perecíveis têm equipes dedicadas; mercearia seca é reposição geral.
 const MERCADOLOGICO_SETOR = {
+  // Perecíveis (atendimento/balança/produção)
   'acougue': 'Açougue', 'açougue': 'Açougue', 'carnes': 'Açougue',
-  'padaria': 'Padaria', 'panificacao': 'Padaria', 'panificação': 'Padaria', 'confeitaria': 'Padaria',
-  'hortifruti': 'Hortifruti', 'hortifrutigranjeiros': 'Hortifruti', 'flv': 'Hortifruti',
-  'frios': 'Frios e Laticínios', 'laticinios': 'Frios e Laticínios', 'laticínios': 'Frios e Laticínios', 'frios e laticinios': 'Frios e Laticínios',
-  'mercearia': 'Mercearia', 'mercearia seca': 'Mercearia', 'mercearia liquida': 'Mercearia',
-  'bebidas': 'Bebidas', 'adega': 'Bebidas',
-  'limpeza': 'Mercearia', 'higiene': 'Mercearia', 'perfumaria': 'Mercearia',
-  'bazar': 'Bazar', 'utilidades': 'Bazar',
+  'padaria': 'Padaria', 'panificacao': 'Padaria', 'confeitaria': 'Padaria',
+  'flv': 'Hortifruti', 'hortifruti': 'Hortifruti', 'hortifrutigranjeiros': 'Hortifruti',
+  'frios e laticineos': 'Frios e Laticínios', 'frios e laticinios': 'Frios e Laticínios', 'frios': 'Frios e Laticínios', 'laticinios': 'Frios e Laticínios',
+  'ilhas e congelados': 'Congelados', 'congelados': 'Congelados', 'ilhas': 'Congelados',
   'peixaria': 'Peixaria', 'pescados': 'Peixaria',
-  'rotisseria': 'Rotisseria', 'restaurante': 'Rotisseria'
+  'rotisseria': 'Rotisseria', 'restaurante': 'Rotisseria',
+  // Mercearia seca (reposição geral)
+  'bazar': 'Mercearia', 'bebidas': 'Mercearia', 'cereais': 'Mercearia',
+  'limpeza': 'Mercearia', 'mercearia doce': 'Mercearia', 'mercearia salgada': 'Mercearia',
+  'perfumaria e higiene pessoal': 'Mercearia', 'perfumaria': 'Mercearia', 'higiene': 'Mercearia'
 };
 
 function mercadologicoParaSetor(merc) {
   const key = String(merc || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  return MERCADOLOGICO_SETOR[key] || MERCADOLOGICO_SETOR[String(merc||'').trim().toLowerCase()] || (merc || 'Outros');
+  return MERCADOLOGICO_SETOR[key] || (merc || 'Outros');
 }
 
 function normalizeSetor(value) {
@@ -2431,6 +2434,7 @@ const server = http.createServer(async (req, res) => {
           return Number(row.vendaLiquida) >= 0;
         }).map((row) => ({
           data: row.data,
+          grupoM1: sanitizeString(String(row.grupoM1 || '')).slice(0, 60),
           mercadologico: sanitizeString(String(row.mercadologico)).slice(0, 80),
           setor: mercadologicoParaSetor(row.mercadologico),
           vendaLiquida: Number(row.vendaLiquida) || 0,

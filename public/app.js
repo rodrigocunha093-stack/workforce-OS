@@ -1495,6 +1495,23 @@ function renderMercadologicoResumo(data) {
   `;
 }
 
+// Detecta decimal BR (vírgula) ou US (ponto). Ex.: "755.20" -> 755.2; "1.234,56" -> 1234.56
+function parseFlexNumber(value) {
+  let s = String(value || '').trim();
+  if (!s) return 0;
+  const hasComma = s.includes(',');
+  const hasDot = s.includes('.');
+  if (hasComma && hasDot) {
+    // Formato BR: ponto = milhar, vírgula = decimal
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (hasComma) {
+    s = s.replace(',', '.');
+  }
+  // só ponto (ou nenhum) -> já é decimal US
+  const n = Number(s);
+  return isNaN(n) ? 0 : n;
+}
+
 function parseMercadologicoCsv(text) {
   const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim());
   if (lines.length < 2) return { rows: [], errors: ['Arquivo vazio.'] };
@@ -1502,27 +1519,32 @@ function parseMercadologicoCsv(text) {
   const headers = lines[0].split(delim).map(normalizeHeader);
   const pos = {
     data: headers.findIndex(h => h === 'data'),
-    merc: headers.findIndex(h => ['mercadologico', 'grupo', 'departamento', 'setor', 'categoria'].includes(h)),
-    venda: headers.findIndex(h => ['venda_liquida', 'valor', 'venda', 'faturamento', 'vendaliquida'].includes(h)),
+    m1: headers.findIndex(h => ['descricao_m1', 'm1', 'grupo', 'grupo_m1', 'nivel1'].includes(h)),
+    m2: headers.findIndex(h => ['descricao_m2', 'm2', 'mercadologico', 'departamento', 'setor', 'categoria', 'subgrupo', 'nivel2'].includes(h)),
     itens: headers.findIndex(h => ['qtd_itens', 'itens', 'qtditens'].includes(h)),
-    qtde: headers.findIndex(h => ['qtd_vendida', 'quantidade', 'qtde', 'qtdvendida'].includes(h)),
+    unid: headers.findIndex(h => ['qtd_unidades', 'qtd_vendida', 'quantidade', 'qtde', 'unidades'].includes(h)),
+    valor: headers.findIndex(h => ['valor_total', 'venda_liquida', 'valor', 'venda', 'faturamento', 'total'].includes(h)),
     cupons: headers.findIndex(h => ['cupons', 'transacoes', 'tickets'].includes(h))
   };
-  if (pos.data < 0 || pos.merc < 0 || pos.venda < 0) {
-    return { rows: [], errors: ['Faltam colunas obrigatórias: data, mercadologico, venda_liquida.'] };
+  // m2 é o mercadológico principal; se não houver m2, usa m1
+  const mercCol = pos.m2 >= 0 ? pos.m2 : pos.m1;
+  if (pos.data < 0 || mercCol < 0 || pos.valor < 0) {
+    return { rows: [], errors: ['Faltam colunas: data, descricao_m2 (mercadológico) e valor_total.'] };
   }
   const rows = [], errors = [];
   lines.slice(1).forEach((line, i) => {
     const c = line.split(delim).map(x => x.trim().replace(/^"|"$/g, ''));
     const data = normalizeDate(c[pos.data]);
-    const merc = c[pos.merc];
+    const merc = c[mercCol];
     if (!data || !merc) { errors.push(`Linha ${i + 2} inválida.`); return; }
     rows.push({
-      data, mercadologico: merc,
-      vendaLiquida: parseDecimal(c[pos.venda]),
-      qtdItens: pos.itens >= 0 ? parseDecimal(c[pos.itens]) : 0,
-      qtdeVendida: pos.qtde >= 0 ? parseDecimal(c[pos.qtde]) : 0,
-      cupons: pos.cupons >= 0 ? parseDecimal(c[pos.cupons]) : 0
+      data,
+      grupoM1: pos.m1 >= 0 ? c[pos.m1] : '',
+      mercadologico: merc,
+      vendaLiquida: parseFlexNumber(c[pos.valor]),
+      qtdItens: pos.itens >= 0 ? parseFlexNumber(c[pos.itens]) : 0,
+      qtdeVendida: pos.unid >= 0 ? parseFlexNumber(c[pos.unid]) : 0,
+      cupons: pos.cupons >= 0 ? parseFlexNumber(c[pos.cupons]) : 0
     });
   });
   return { rows, errors };
@@ -2323,7 +2345,7 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     const downloadMerc = document.getElementById('downloadMercTemplate');
     if (downloadMerc) {
       downloadMerc.onclick = () => {
-        const csv = 'data;mercadologico;venda_liquida;qtd_itens;qtd_vendida;cupons\n2026-06-01;Açougue;12500,00;340;180;95\n2026-06-01;Padaria;8200,00;520;610;180\n2026-06-01;Hortifruti;6400,00;410;380;140\n2026-06-01;Mercearia;31000,00;1850;2100;520\n2026-06-01;Frios e Laticínios;9800,00;430;390;160\n';
+        const csv = 'data;descricao_m1;descricao_m2;qtd_itens;qtd_unidades;valor_total\n2026-06-01;PERECIVEIS;ACOUGUE;167;127.965;4027.33\n2026-06-01;PERECIVEIS;PADARIA;91;182.000;789.08\n2026-06-01;PERECIVEIS;FLV;34;36.160;450.54\n2026-06-01;PERECIVEIS;FRIOS E LATICINEOS;312;337.554;3374.62\n2026-06-01;MERCEARIA;MERCEARIA DOCE;958;1223.000;7479.78\n2026-06-01;MERCEARIA;LIMPEZA;351;476.000;2694.76\n';
         const link = document.createElement('a');
         link.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
         link.download = 'modelo-vendas-mercadologico.csv';

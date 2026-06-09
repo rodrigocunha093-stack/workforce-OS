@@ -496,9 +496,9 @@
           <article class="panel import-panel merc-import-panel">
             <div class="panel-head"><div><h3>4. Importar vendas por mercadológico <span class="new-badge">NOVO</span></h3><p class="note">Vendas por dia e por grupo mercadológico (departamento). Base para dimensionar a escala de cada setor por dados — não só o caixa.</p></div></div>
             <div class="import-instructions">
-              <strong>Colunas aceitas</strong>
-              <code>data;mercadologico;venda_liquida;qtd_itens;qtd_vendida;cupons</code>
-              <span>Ex.: 2026-06-01;Açougue;12500,00;340;180;95 — o sistema mapeia cada grupo mercadológico ao setor responsável (Açougue, Padaria, Hortifruti, Mercearia...).</span>
+              <strong>Colunas aceitas (padrão do seu sistema)</strong>
+              <code>data;descricao_m1;descricao_m2;qtd_itens;qtd_unidades;valor_total</code>
+              <span>Ex.: 2026-05-01;PERECIVEIS;ACOUGUE;167;127.965;4027.33 — o sistema usa o nível 2 (descricao_m2) e mapeia ao setor operacional: Açougue, Padaria, Hortifruti (FLV), Frios e Laticínios, Congelados e Mercearia. Caixa e Administrativo ficam fora.</span>
             </div>
             <input id="mercCsvInput" type="file" accept=".csv,text/csv">
             <div id="mercImportPreview" class="import-preview"><span>Nenhum arquivo selecionado.</span></div>
