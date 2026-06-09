@@ -195,7 +195,54 @@ function renderEnterpriseReadiness(data) {
   `).join('');
 }
 
+function renderSetorDashboard(data) {
+  const el = document.getElementById('setorDashboard');
+  if (!el) return;
+  const dash = data.setorDashboard || [];
+  if (!dash.length) {
+    el.innerHTML = '<div class="summary-empty"><strong>Importe vendas por mercadológico</strong><span>Na aba Implantação (painel 4), suba o arquivo de vendas por departamento para liberar os KPIs inteligentes de cada setor.</span></div>';
+    return;
+  }
+  const statusColor = { sobrecarga: 'st-high', folga: 'st-low', equilibrado: 'st-ok', 'sem-equipe': 'st-none' };
+  const totalVendaDia = dash.reduce((s, d) => s + d.vendaDia, 0);
+
+  el.innerHTML = `
+    <div class="icos-summary">
+      <div><small>Setores analisados</small><strong>${dash.length}</strong></div>
+      <div><small>Venda/dia (setores)</small><strong>${money(totalVendaDia)}</strong></div>
+      <div><small>Colaboradores</small><strong>${dash.reduce((s, d) => s + d.colaboradores, 0)}</strong></div>
+    </div>
+    <div class="icos-grid">
+      ${dash.map(d => `
+        <article class="icos-card ${statusColor[d.status] || ''}">
+          <div class="icos-card-head">
+            <strong>${d.setor}</strong>
+            <span class="icos-status">${d.statusLabel}</span>
+          </div>
+          <div class="icos-bigval">${money(d.vendaDia)}<small>/dia</small></div>
+          <div class="icos-metrics">
+            <div><small>Participação</small><b>${d.participacao}%</b></div>
+            <div><small>Colaboradores</small><b>${d.colaboradores || '—'}</b></div>
+            <div><small>Itens/dia</small><b>${d.itensDia.toLocaleString('pt-BR')}</b></div>
+            <div><small>Venda/colab.</small><b>${d.colaboradores ? money(d.vendaPorColab) : '—'}</b></div>
+            <div><small>Itens/colab.</small><b>${d.colaboradores ? d.itensPorColab.toLocaleString('pt-BR') : '—'}</b></div>
+            <div><small>Venda/mês</small><b>${money(d.vendaMes)}</b></div>
+          </div>
+          ${d.nomes && d.nomes.length ? `<div class="icos-team">${d.nomes.slice(0, 6).map(n => `<span>${n}</span>`).join('')}${d.nomes.length > 6 ? `<span>+${d.nomes.length - 6}</span>` : ''}</div>` : '<div class="icos-team empty">Sem equipe cadastrada neste setor</div>'}
+        </article>
+      `).join('')}
+    </div>
+    <div class="icos-legend">
+      <span class="st-high">● Alta carga</span>
+      <span class="st-ok">● Equilibrado</span>
+      <span class="st-low">● Capacidade ociosa</span>
+      <span class="st-none">● Sem equipe</span>
+    </div>
+  `;
+}
+
 function renderSectorEngine(data) {
+  renderSetorDashboard(data);
   const engine = data.sectorEngine || { coreSectors: [], library: [], example: {}, evolution: [] };
   const core = engine.coreSectors || [];
   const library = engine.library || [];

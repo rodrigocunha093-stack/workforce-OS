@@ -998,6 +998,98 @@ function generateOperatorShift(startHour, endHour) {
   return `${formatScheduleHour(startHour)}-${formatScheduleHour(endHour)} · ${duration}h`;
 }
 
+// Mapeia um colaborador ao setor operacional (para cruzar com vendas mercadológico)
+function empSetorOperacional(emp) {
+  const cargo = String(emp.cargo || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const setor = String(emp.setor || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (cargo.includes('acougu') || setor.includes('acougu')) return 'Açougue';
+  if (cargo.includes('padeiro') || cargo.includes('confeit') || cargo.includes('padaria') || setor.includes('padaria')) return 'Padaria';
+  if (cargo.includes('peixeiro') || setor.includes('peix')) return 'Peixaria';
+  if (setor.includes('hortifruti') || setor.includes('flv')) return 'Hortifruti';
+  if (setor.includes('frios') || setor.includes('laticin')) return 'Frios e Laticínios';
+  if (setor.includes('congelado') || setor.includes('ilha')) return 'Congelados';
+  // Repositores e demais → mapeia o sub-setor mercadológico ao operacional
+  return mercadologicoParaSetor(emp.setor);
+}
+
+// Dashboard inteligente por setor: cruza vendas (mercadológico) com a equipe
+function buildSetorDashboard(mercRows, employees, profile) {
+  if (!mercRows || !mercRows.length) return [];
+  const dias = new Set(mercRows.map(r => r.data)).size || 1;
+  const vendaTotalGeral = mercRows.reduce((s, r) => s + r.vendaLiquida, 0);
+
+  // Agregar vendas por setor operacional
+  const setorVendas = {};
+  mercRows.forEach(r => {
+    setorVendas[r.setor] = setorVendas[r.setor] || { vendaLiquida: 0, qtdItens: 0, qtdeVendida: 0 };
+    setorVendas[r.setor].vendaLiquida += r.vendaLiquida;
+    setorVendas[r.setor].qtdItens += r.qtdItens;
+    setorVendas[r.setor].qtdeVendida += r.qtdeVendida;
+  });
+
+  // Agregar colaboradores por setor operacional (exclui caixa e administrativo)
+  const setorEquipe = {};
+  (employees || []).forEach(emp => {
+    if (isOperadorCaixa(emp)) return;
+    const setorOp = String(emp.setor || '').toLowerCase();
+    const cargoOp = String(emp.cargo || '').toLowerCase();
+    if (setorOp.includes('administrativo') || cargoOp.includes('financeiro') || cargoOp.includes('fiscal') || cargoOp.includes('faturamento') || cargoOp.includes('rh') || cargoOp.includes('ti') || cargoOp.includes('mkt') || cargoOp.includes('motorista')) return;
+    const setor = empSetorOperacional(emp);
+    setorEquipe[setor] = setorEquipe[setor] || { colaboradores: 0, horas: 0, nomes: [] };
+    setorEquipe[setor].colaboradores += 1;
+    setorEquipe[setor].horas += Number(emp.horasSemanais || 44);
+    setorEquipe[setor].nomes.push(emp.nome);
+  });
+
+  // Unir todos os setores que têm venda OU equipe
+  const todosSetores = new Set([...Object.keys(setorVendas), ...Object.keys(setorEquipe)]);
+  const dashboard = [];
+  todosSetores.forEach(setor => {
+    const v = setorVendas[setor] || { vendaLiquida: 0, qtdItens: 0, qtdeVendida: 0 };
+    const e = setorEquipe[setor] || { colaboradores: 0, horas: 0, nomes: [] };
+    const vendaDia = v.vendaLiquida / dias;
+    const itensDia = v.qtdItens / dias;
+    const colaboradores = e.colaboradores;
+    const vendaPorColab = colaboradores ? vendaDia / colaboradores : 0;
+    const itensPorColab = colaboradores ? itensDia / colaboradores : 0;
+    const participacao = vendaTotalGeral ? (v.vendaLiquida / vendaTotalGeral) * 100 : 0;
+    dashboard.push({
+      setor,
+      vendaDia: Math.round(vendaDia),
+      vendaMes: Math.round(v.vendaLiquida * (30 / dias)),
+      itensDia: Math.round(itensDia),
+      colaboradores,
+      horasSemanais: e.horas,
+      vendaPorColab: Math.round(vendaPorColab),
+      itensPorColab: Math.round(itensPorColab),
+      participacao: Number(participacao.toFixed(1)),
+      nomes: e.nomes
+    });
+  });
+  // Ordena por venda (maior primeiro)
+  dashboard.sort((a, b) => b.vendaDia - a.vendaDia);
+
+  // Inteligência: classificar carga (produtividade relativa)
+  const produtividades = dashboard.filter(d => d.colaboradores > 0).map(d => d.vendaPorColab);
+  const mediaProacolab = produtividades.length ? produtividades.reduce((s, p) => s + p, 0) / produtividades.length : 0;
+  dashboard.forEach(d => {
+    if (!d.colaboradores) {
+      d.status = 'sem-equipe';
+      d.statusLabel = 'Sem equipe cadastrada';
+    } else if (d.vendaPorColab > mediaProacolab * 1.3) {
+      d.status = 'sobrecarga';
+      d.statusLabel = 'Alta carga — avaliar reforço';
+    } else if (d.vendaPorColab < mediaProacolab * 0.7) {
+      d.status = 'folga';
+      d.statusLabel = 'Capacidade ociosa';
+    } else {
+      d.status = 'equilibrado';
+      d.statusLabel = 'Equilibrado';
+    }
+  });
+  return dashboard;
+}
+
 function isReposicao(emp) {
   const cargo = String(emp.cargo || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   return cargo.includes('repositor') || cargo.includes('reposicao') || cargo.includes('repos');
@@ -1705,6 +1797,8 @@ async function applyClientState(summary, user, weekFilter = null) {
   } else {
     summary.mercadologicoResumo = [];
   }
+  // Dashboard inteligente por setor (cruza vendas com equipe)
+  summary.setorDashboard = buildSetorDashboard(mercRows, state.employees || [], profile);
   summary.client = {
     profile: { ...profile, cnpj: '' },
     account: { name: user.name, email: user.email },
