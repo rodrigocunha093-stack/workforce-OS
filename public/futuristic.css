@@ -269,3 +269,39 @@ select option { background: #141b2e; color: #e8eef5; }
 
 /* ---------- SAVINGS panel (mantém destaque) ---------- */
 .savings-card strong { font-family: 'Space Grotesk', sans-serif; }
+
+/* ============================================================
+   LEGIBILIDADE — fontes maiores (+10% e correção dos micro-textos)
+   ============================================================ */
+
+/* Quadro semana por colaboradora */
+.weekly-row > span { font-size: 12px !important; min-height: 54px !important; }
+.weekly-person strong { font-size: 13px !important; }
+.weekly-person small { font-size: 10px !important; }
+.weekly-head > span { font-size: 10px !important; }
+
+/* Tabela de cobertura (Demanda x caixas) */
+.coverage-row > span { font-size: 13px !important; min-height: 40px !important; }
+.coverage-head > span { font-size: 10px !important; }
+
+/* Escala diária (staff cards) */
+.staff-card, .staff-card * { font-size: 12px; }
+.staff-person b, .staff-person strong { font-size: 13px !important; }
+
+/* ICOC tabela */
+.icoc-table-row span, [class*="icoc"] td, [class*="icoc"] span { font-size: 12px !important; }
+
+/* Savings hourly */
+.savings-hour-row { font-size: 13px !important; }
+
+/* KPIs gerais — leve aumento */
+.kpi small { font-size: 12px !important; }
+.kpi span { font-size: 12px !important; }
+
+/* Cards de cenário / métricas */
+.metric-row, .split-metrics small, .finance-metrics small { font-size: 12px !important; }
+.scenario-card .metric-row strong { font-size: 14px !important; }
+
+/* Auditoria */
+.audit-card small, [class*="audit"] small { font-size: 11px !important; }
+.audit-card strong, [class*="audit"] strong { font-size: 14px !important; }

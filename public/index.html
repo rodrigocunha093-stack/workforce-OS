@@ -63,21 +63,6 @@
           <div class="confidence"><small>Confiança da análise</small><strong id="confidenceValue"></strong><span><i id="confidenceBar"></i></span></div>
         </div>
 
-        <div class="week-selector-panel">
-          <div style="display: flex; align-items: center; gap: 16px;">
-            <label for="weekSelector" style="margin: 0; font-weight: 600;">Analisar por semana do mês:</label>
-            <select id="weekSelector" style="padding: 8px 12px; border-radius: 4px; border: 1px solid #ccc; font-size: 14px;">
-              <option value="">Todos os dados importados (padrão)</option>
-              <option value="1">Semana 1 (1-7) - Normal</option>
-              <option value="2">Semana 2 (8-14) - Normal</option>
-              <option value="3">Semana 3 (15-21) - Normal</option>
-              <option value="4">Semana 4 (22-28) - Promoção Iniciando</option>
-              <option value="5">Semana 5 (29-05) - Pico de Promoção</option>
-            </select>
-            <small id="weekInfo" style="color: #666; min-width: 200px;"></small>
-          </div>
-        </div>
-
         <div id="kpis" class="kpis"></div>
 
         <article class="panel enterprise-readiness-panel">
@@ -154,6 +139,21 @@
             <h2>Impacto da jornada na capacidade da equipe</h2>
           </div>
           <span class="soft-pill">4 operadoras de caixa</span>
+        </div>
+
+        <div class="week-selector-panel">
+          <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+            <label for="weekSelector" style="margin: 0; font-weight: 600;">Analisar por semana do mês:</label>
+            <select id="weekSelector" style="padding: 8px 12px; border-radius: 8px; font-size: 14px;">
+              <option value="">Todos os dados importados (padrão)</option>
+              <option value="1">Semana 1 (1-7) - Normal</option>
+              <option value="2">Semana 2 (8-14) - Normal</option>
+              <option value="3">Semana 3 (15-21) - Normal</option>
+              <option value="4">Semana 4 (22-28) - Promoção Iniciando</option>
+              <option value="5">Semana 5 (29-05) - Pico de Promoção</option>
+            </select>
+            <small id="weekInfo" style="min-width: 200px;"></small>
+          </div>
         </div>
 
         <div id="scenarioCards" class="scenario-grid"></div>
