@@ -517,7 +517,7 @@ const data = {
     pdvs: 3,
     operadores: 4
   },
-  blueYonderBenchmark: [
+  taOtimoBenchmark: [
     {
       pilar: 'Previsão de demanda',
       referencia: 'Prever necessidade de mão de obra por sinais operacionais e movimento.',

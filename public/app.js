@@ -139,7 +139,7 @@ function renderScenarios(scenarios, metadata) {
 }
 
 function renderBenchmark(data) {
-  const rows = data.blueYonderBenchmark || [];
+  const rows = data.taOtimoBenchmark || [];
   document.getElementById('benchmarkGrid').innerHTML = rows.map((row) => `
     <article class="benchmark-card">
       <div><strong>${row.pilar}</strong><span class="benchmark-status">${row.nossoStatus}</span></div>
@@ -2033,7 +2033,7 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
       optimizeButton.onclick = () => {
         coverageAdjustmentMode = !coverageAdjustmentMode;
         optimizeButton.classList.toggle('active', coverageAdjustmentMode);
-        optimizeButton.textContent = coverageAdjustmentMode ? 'Voltar à escala original' : 'Otimização IA · Blue Yonder';
+        optimizeButton.textContent = coverageAdjustmentMode ? 'Voltar à escala original' : 'Otimização IA · TáÓtimo!';
         if (saveOptimizationButton) saveOptimizationButton.hidden = !coverageAdjustmentMode;
         renderCoverage(data);
         showToast(coverageAdjustmentMode
