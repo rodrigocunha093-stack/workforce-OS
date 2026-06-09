@@ -1257,23 +1257,43 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
   // Folgas adicionais necessárias = targetDaysOff - 1 (se sundayClosed)
   const additionalDaysOff = sundayClosed ? Math.max(0, targetDaysOff - 1) : targetDaysOff;
 
+  const folgaDiaMap = { segunda: 0, terca: 1, quarta: 2, quinta: 3, domingo: 6 };
+
+  // Calcula início do turno conforme preferência da operadora
+  function startForTurno(turno, open, close, idx) {
+    const dur = close - open;
+    const lateStart = Math.max(open, close - shiftHours); // turno que fecha a loja
+    switch (turno) {
+      case 'abertura': return open;
+      case 'fechamento': return lateStart;
+      case 'intermediario': return Math.min(lateStart, open + Math.floor((dur - shiftHours) / 2));
+      default: // flexivel — distribui por índice
+        return open + (idx % numShifts) * Math.floor((dur - shiftHours) / Math.max(1, numShifts - 1));
+    }
+  }
+
   const result = {};
   employees.forEach((emp, idx) => {
-    // Distribuir turnos: par começa na abertura, ímpar mais tarde
-    const shiftOffset = (idx % numShifts) * Math.floor((segSexDuration - shiftHours) / Math.max(1, numShifts - 1));
-    const startHour = segSex.open + shiftOffset;
-    const endHour = Math.min(segSex.close, startHour + shiftHours);
+    const turno = emp.turno || 'flexivel';
+    const podeDomingo = emp.podeDomingo !== false;
+    const folgaPref = emp.folgaPreferencial || '';
 
-    // Sábado: turnos distribuídos
-    const sabStartHour = sabado.open + (idx % numShifts) * Math.floor((sabadoDuration - shiftHours) / Math.max(1, numShifts - 1));
+    const startHour = startForTurno(turno, segSex.open, segSex.close, idx);
+    const endHour = Math.min(segSex.close, startHour + shiftHours);
+    const sabStartHour = startForTurno(turno, sabado.open, sabado.close, idx);
     const sabEndHour = Math.min(sabado.close, sabStartHour + shiftHours);
 
-    // Folgas adicionais durante a semana: NUNCA em sexta (4) ou sábado (5)
-    // Dias permitidos para folga adicional: segunda(0), terça(1), quarta(2), quinta(3)
+    // Folgas adicionais: prioriza a preferência da operadora (se válida: seg-qui ou domingo)
     const folgaDaysAllowed = [0, 1, 2, 3];
     const additionalFolgaDays = [];
-    for (let i = 0; i < additionalDaysOff; i++) {
-      additionalFolgaDays.push(folgaDaysAllowed[(idx + i) % folgaDaysAllowed.length]);
+    const prefDay = folgaDiaMap[folgaPref];
+    if (prefDay !== undefined && folgaDaysAllowed.includes(prefDay)) {
+      additionalFolgaDays.push(prefDay);
+    }
+    // Completa as folgas restantes evitando sexta/sábado
+    for (let i = 0; additionalFolgaDays.length < additionalDaysOff && i < folgaDaysAllowed.length; i++) {
+      const d = folgaDaysAllowed[(idx + i) % folgaDaysAllowed.length];
+      if (!additionalFolgaDays.includes(d)) additionalFolgaDays.push(d);
     }
 
     const shifts = [];
@@ -1281,11 +1301,10 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
       if (additionalFolgaDays.includes(day)) {
         shifts.push('Folga');
       } else if (day === 5) {
-        // Sábado
         shifts.push(generateOperatorShift(sabStartHour, sabEndHour));
       } else if (day === 6) {
-        // Domingo
-        if (sundayClosed) {
+        // Domingo: respeita disponibilidade da operadora
+        if (sundayClosed || !podeDomingo) {
           shifts.push('Folga');
         } else if (domingo) {
           shifts.push(generateOperatorShift(domingo.open, domingo.close));
@@ -1293,7 +1312,6 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
           shifts.push('Folga');
         }
       } else {
-        // Segunda a sexta (exceto sábado=5 que já tratamos acima)
         shifts.push(generateOperatorShift(startHour, endHour));
       }
     }
@@ -2241,13 +2259,20 @@ const server = http.createServer(async (req, res) => {
         const body = await readJsonBody(req);
         const list = Array.isArray(body.employees) ? body.employees.slice(0, 500) : [];
 
+        const turnosValidos = ['abertura', 'intermediario', 'fechamento', 'flexivel'];
+        const diasValidos = ['', 'segunda', 'terca', 'quarta', 'quinta', 'domingo'];
         const employees = list.map((row) => ({
           nome: sanitizeString(String(row.nome || '')).slice(0, 100),
           sexo: ['masculino', 'feminino'].includes(String(row.sexo || '').toLowerCase()) ? String(row.sexo).toLowerCase() : 'feminino',
           cargo: sanitizeString(String(row.cargo || 'Operador de Caixa')).slice(0, 60),
           setor: sanitizeString(String(row.setor || 'Caixa')).slice(0, 60),
           horasSemanais: Math.min(168, Math.max(1, Number(row.horasSemanais) || 44)),
-          salario: Math.max(0, Number(row.salario) || 0)
+          salario: Math.max(0, Number(row.salario) || 0),
+          turno: turnosValidos.includes(String(row.turno || '').toLowerCase()) ? String(row.turno).toLowerCase() : 'flexivel',
+          podeDomingo: row.podeDomingo === false ? false : true,
+          folgaPreferencial: diasValidos.includes(String(row.folgaPreferencial || '').toLowerCase()) ? String(row.folgaPreferencial).toLowerCase() : '',
+          podeAbrir: Boolean(row.podeAbrir),
+          podeFechar: Boolean(row.podeFechar)
         })).filter((e) => e.nome.length >= 2);
 
         const state = await loadClientState(user.orgId);

@@ -1291,22 +1291,35 @@ function renderEmployeesManager(data) {
       cargo: e.cargo || 'Operador de Caixa',
       setor: e.setor || 'Caixa',
       horasSemanais: e.horasSemanais || 44,
-      salario: e.salario || 0
+      salario: e.salario || 0,
+      turno: e.turno || 'flexivel',
+      podeDomingo: e.podeDomingo !== false,
+      folgaPreferencial: e.folgaPreferencial || ''
     }));
   }
+
+  const turnoOpts = [['flexivel','Flexível'],['abertura','Abertura'],['intermediario','Intermediário'],['fechamento','Fechamento']];
+  const folgaOpts = [['','Sem preferência'],['segunda','Segunda'],['terca','Terça'],['quarta','Quarta'],['quinta','Quinta'],['domingo','Domingo']];
 
   el.innerHTML = `
     <div class="emp-table">
       <div class="emp-row emp-head">
-        <span>Nome</span><span>Cargo</span><span>Setor</span><span>Horas/sem</span><span>Salário</span><span></span>
+        <span>Nome</span><span>Cargo</span><span>Horas</span><span>Salário</span>
+        <span>Turno preferencial</span><span>Folga pref.</span><span>Domingo</span><span></span>
       </div>
       ${managedEmployees.map((e, i) => `
         <div class="emp-row">
           <input data-i="${i}" data-f="nome" value="${(e.nome||'').replace(/"/g,'&quot;')}" placeholder="Nome">
           <input data-i="${i}" data-f="cargo" value="${(e.cargo||'').replace(/"/g,'&quot;')}" placeholder="Cargo">
-          <input data-i="${i}" data-f="setor" value="${(e.setor||'').replace(/"/g,'&quot;')}" placeholder="Setor">
           <input data-i="${i}" data-f="horasSemanais" type="number" min="1" max="168" value="${e.horasSemanais||44}">
           <input data-i="${i}" data-f="salario" type="number" min="0" step="50" value="${e.salario||0}">
+          <select data-i="${i}" data-f="turno">
+            ${turnoOpts.map(([v,l]) => `<option value="${v}" ${e.turno===v?'selected':''}>${l}</option>`).join('')}
+          </select>
+          <select data-i="${i}" data-f="folgaPreferencial">
+            ${folgaOpts.map(([v,l]) => `<option value="${v}" ${e.folgaPreferencial===v?'selected':''}>${l}</option>`).join('')}
+          </select>
+          <label class="emp-domingo"><input data-i="${i}" data-f="podeDomingo" type="checkbox" ${e.podeDomingo!==false?'checked':''}> Sim</label>
           <button class="emp-remove" data-i="${i}" type="button" title="Remover">✕</button>
         </div>
       `).join('')}
@@ -1318,12 +1331,18 @@ function renderEmployeesManager(data) {
     <small id="empMsg" class="emp-msg"></small>
   `;
 
-  // Editar campos
-  el.querySelectorAll('input[data-i]').forEach(inp => {
+  // Editar campos (inputs e selects)
+  el.querySelectorAll('input[data-i], select[data-i]').forEach(inp => {
     inp.onchange = () => {
       const i = Number(inp.dataset.i);
       const f = inp.dataset.f;
-      managedEmployees[i][f] = (f === 'horasSemanais' || f === 'salario') ? Number(inp.value) : inp.value;
+      if (f === 'podeDomingo') {
+        managedEmployees[i][f] = inp.checked;
+      } else if (f === 'horasSemanais' || f === 'salario') {
+        managedEmployees[i][f] = Number(inp.value);
+      } else {
+        managedEmployees[i][f] = inp.value;
+      }
     };
   });
   // Remover
@@ -1335,7 +1354,7 @@ function renderEmployeesManager(data) {
   });
   // Adicionar
   document.getElementById('empAddBtn').onclick = () => {
-    managedEmployees.push({ nome: '', sexo: 'feminino', cargo: 'Operador de Caixa', setor: 'Caixa', horasSemanais: 44, salario: 0 });
+    managedEmployees.push({ nome: '', sexo: 'feminino', cargo: 'Operador de Caixa', setor: 'Caixa', horasSemanais: 44, salario: 0, turno: 'flexivel', podeDomingo: true, folgaPreferencial: '' });
     renderEmployeesManager(data);
   };
   // Salvar
