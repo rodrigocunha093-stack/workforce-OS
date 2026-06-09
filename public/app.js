@@ -1278,8 +1278,95 @@ async function renderCompanyInfo() {
   }
 }
 
+let managedEmployees = [];
+
+function renderEmployeesManager(data) {
+  const el = document.getElementById('employeesManager');
+  if (!el) return;
+  // Inicializa com a lista atual (do servidor) na primeira renderização
+  if (!managedEmployees.length && data.client && data.client.employeesList) {
+    managedEmployees = data.client.employeesList.map(e => ({
+      nome: e.nome || '',
+      sexo: e.sexo || 'feminino',
+      cargo: e.cargo || 'Operador de Caixa',
+      setor: e.setor || 'Caixa',
+      horasSemanais: e.horasSemanais || 44,
+      salario: e.salario || 0
+    }));
+  }
+
+  el.innerHTML = `
+    <div class="emp-table">
+      <div class="emp-row emp-head">
+        <span>Nome</span><span>Cargo</span><span>Setor</span><span>Horas/sem</span><span>Salário</span><span></span>
+      </div>
+      ${managedEmployees.map((e, i) => `
+        <div class="emp-row">
+          <input data-i="${i}" data-f="nome" value="${(e.nome||'').replace(/"/g,'&quot;')}" placeholder="Nome">
+          <input data-i="${i}" data-f="cargo" value="${(e.cargo||'').replace(/"/g,'&quot;')}" placeholder="Cargo">
+          <input data-i="${i}" data-f="setor" value="${(e.setor||'').replace(/"/g,'&quot;')}" placeholder="Setor">
+          <input data-i="${i}" data-f="horasSemanais" type="number" min="1" max="168" value="${e.horasSemanais||44}">
+          <input data-i="${i}" data-f="salario" type="number" min="0" step="50" value="${e.salario||0}">
+          <button class="emp-remove" data-i="${i}" type="button" title="Remover">✕</button>
+        </div>
+      `).join('')}
+    </div>
+    <div class="emp-actions">
+      <button id="empAddBtn" class="secondary-button" type="button">+ Adicionar colaborador</button>
+      <button id="empSaveBtn" class="optimize-button save-optimization" type="button">Salvar equipe (${managedEmployees.length})</button>
+    </div>
+    <small id="empMsg" class="emp-msg"></small>
+  `;
+
+  // Editar campos
+  el.querySelectorAll('input[data-i]').forEach(inp => {
+    inp.onchange = () => {
+      const i = Number(inp.dataset.i);
+      const f = inp.dataset.f;
+      managedEmployees[i][f] = (f === 'horasSemanais' || f === 'salario') ? Number(inp.value) : inp.value;
+    };
+  });
+  // Remover
+  el.querySelectorAll('.emp-remove').forEach(btn => {
+    btn.onclick = () => {
+      managedEmployees.splice(Number(btn.dataset.i), 1);
+      renderEmployeesManager(data);
+    };
+  });
+  // Adicionar
+  document.getElementById('empAddBtn').onclick = () => {
+    managedEmployees.push({ nome: '', sexo: 'feminino', cargo: 'Operador de Caixa', setor: 'Caixa', horasSemanais: 44, salario: 0 });
+    renderEmployeesManager(data);
+  };
+  // Salvar
+  document.getElementById('empSaveBtn').onclick = async () => {
+    const msg = document.getElementById('empMsg');
+    const valid = managedEmployees.filter(e => (e.nome || '').trim().length >= 2);
+    if (!valid.length) { msg.textContent = 'Adicione ao menos um colaborador com nome.'; msg.className = 'emp-msg error'; return; }
+    try {
+      const res = await fetch('/api/employees/save', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employees: valid })
+      });
+      const result = await res.json();
+      if (result.ok) {
+        msg.textContent = `✓ ${result.total} colaboradores salvos. Atualizando escala...`;
+        msg.className = 'emp-msg success';
+        setTimeout(() => window.location.reload(), 1200);
+      } else {
+        msg.textContent = result.error || 'Erro ao salvar.';
+        msg.className = 'emp-msg error';
+      }
+    } catch (e) {
+      msg.textContent = 'Erro de conexão.';
+      msg.className = 'emp-msg error';
+    }
+  };
+}
+
 function renderOnboarding(data) {
   renderCompanyInfo();
+  renderEmployeesManager(data);
   const client = data.client || { profile: {}, onboarding: {} };
   const profile = client.profile || {};
   const onboarding = client.onboarding || {};

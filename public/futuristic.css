@@ -410,3 +410,43 @@ select option { background: #141b2e; color: #e8eef5; }
 @media (max-width: 900px) {
   .add-member-form { grid-template-columns: 1fr; }
 }
+
+/* ---------- GERENCIAR EQUIPE MANUAL ---------- */
+.emp-table { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.emp-row {
+  display: grid;
+  grid-template-columns: 1.6fr 1.4fr 1fr 0.8fr 0.9fr 40px;
+  gap: 8px;
+  align-items: center;
+}
+.emp-row.emp-head span {
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: #94a3b8;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0 4px;
+}
+.emp-row input {
+  padding: 9px 10px;
+  font-size: 13px;
+}
+.emp-remove {
+  background: rgba(248,113,113,0.12);
+  border: 1px solid rgba(248,113,113,0.3);
+  color: #fca5a5;
+  border-radius: 8px;
+  height: 36px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+.emp-remove:hover { background: rgba(248,113,113,0.25); }
+.emp-actions { display: flex; gap: 12px; align-items: center; }
+.emp-msg { display: block; margin-top: 10px; font-size: 12px; }
+.emp-msg.success { color: #6ee7b7; }
+.emp-msg.error { color: #fca5a5; }
+@media (max-width: 900px) {
+  .emp-row { grid-template-columns: 1fr 1fr; }
+  .emp-row.emp-head { display: none; }
+}

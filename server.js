@@ -1527,6 +1527,7 @@ async function applyClientState(summary, user) {
   summary.client = {
     profile: { ...profile, cnpj: '' },
     account: { name: user.name, email: user.email },
+    employeesList: state.employees || [],
     onboarding: {
       profileComplete: Boolean(profile.empresa && profile.loja && profile.quantidadeOperadores),
       salesImported: state.salesRows.length > 0,
@@ -2173,6 +2174,35 @@ const server = http.createServer(async (req, res) => {
         await saveClientState(user.orgId, state);
         await audit(user.id, 'CONFIG_UPDATED', { empresa: state.profile.empresa, loja: state.profile.loja });
         return json(res, { ok: true, state });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
+    })();
+    return;
+  }
+  if (req.url === '/api/employees/save' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login para gerenciar a equipe.');
+        const body = await readJsonBody(req);
+        const list = Array.isArray(body.employees) ? body.employees.slice(0, 500) : [];
+
+        const employees = list.map((row) => ({
+          nome: sanitizeString(String(row.nome || '')).slice(0, 100),
+          sexo: ['masculino', 'feminino'].includes(String(row.sexo || '').toLowerCase()) ? String(row.sexo).toLowerCase() : 'feminino',
+          cargo: sanitizeString(String(row.cargo || 'Operador de Caixa')).slice(0, 60),
+          setor: sanitizeString(String(row.setor || 'Caixa')).slice(0, 60),
+          horasSemanais: Math.min(168, Math.max(1, Number(row.horasSemanais) || 44)),
+          salario: Math.max(0, Number(row.salario) || 0)
+        })).filter((e) => e.nome.length >= 2);
+
+        const state = await loadClientState(user.orgId);
+        state.employees = employees;
+        state.profile.quantidadeOperadores = employees.length;
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.orgId, state);
+        await audit(user.id, 'EMPLOYEES_MANAGED', { total: employees.length, ip: requestIp(req) });
+        return json(res, { ok: true, total: employees.length });
       } catch (error) {
         return json(res, { ok: false, error: error.message }, 400);
       }
