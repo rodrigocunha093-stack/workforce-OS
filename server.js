@@ -175,9 +175,29 @@ function defaultClientState() {
     },
     employees: [],
     salesRows: [],
+    salesByMercadologico: [],
     enabledModules: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     updatedAt: null
   };
+}
+
+// Mapa de grupo mercadológico -> setor que o atende (para dimensionar escala por dados)
+const MERCADOLOGICO_SETOR = {
+  'acougue': 'Açougue', 'açougue': 'Açougue', 'carnes': 'Açougue',
+  'padaria': 'Padaria', 'panificacao': 'Padaria', 'panificação': 'Padaria', 'confeitaria': 'Padaria',
+  'hortifruti': 'Hortifruti', 'hortifrutigranjeiros': 'Hortifruti', 'flv': 'Hortifruti',
+  'frios': 'Frios e Laticínios', 'laticinios': 'Frios e Laticínios', 'laticínios': 'Frios e Laticínios', 'frios e laticinios': 'Frios e Laticínios',
+  'mercearia': 'Mercearia', 'mercearia seca': 'Mercearia', 'mercearia liquida': 'Mercearia',
+  'bebidas': 'Bebidas', 'adega': 'Bebidas',
+  'limpeza': 'Mercearia', 'higiene': 'Mercearia', 'perfumaria': 'Mercearia',
+  'bazar': 'Bazar', 'utilidades': 'Bazar',
+  'peixaria': 'Peixaria', 'pescados': 'Peixaria',
+  'rotisseria': 'Rotisseria', 'restaurante': 'Rotisseria'
+};
+
+function mercadologicoParaSetor(merc) {
+  const key = String(merc || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return MERCADOLOGICO_SETOR[key] || MERCADOLOGICO_SETOR[String(merc||'').trim().toLowerCase()] || (merc || 'Outros');
 }
 
 function normalizeSetor(value) {
@@ -1626,6 +1646,22 @@ async function applyClientState(summary, user, weekFilter = null) {
   // Separar operadores de caixa dos demais setores — a escala de caixa usa SÓ os de caixa
   const caixaEmployees = (state.employees || []).filter(isOperadorCaixa);
   summary.setoresResumo = groupBySetor(state.employees || []);
+  // Resumo de vendas por mercadológico/setor (base para dimensionar escala por dados)
+  const mercRows = Array.isArray(state.salesByMercadologico) ? state.salesByMercadologico : [];
+  if (mercRows.length) {
+    const porSetor = {};
+    mercRows.forEach(r => {
+      porSetor[r.setor] = porSetor[r.setor] || { setor: r.setor, vendaLiquida: 0, qtdItens: 0, dias: new Set() };
+      porSetor[r.setor].vendaLiquida += r.vendaLiquida;
+      porSetor[r.setor].qtdItens += r.qtdItens;
+      porSetor[r.setor].dias.add(r.data);
+    });
+    summary.mercadologicoResumo = Object.values(porSetor)
+      .map(s => ({ setor: s.setor, vendaLiquida: Math.round(s.vendaLiquida), qtdItens: Math.round(s.qtdItens), dias: s.dias.size, vendaMediaDia: Math.round(s.vendaLiquida / Math.max(1, s.dias.size)) }))
+      .sort((a, b) => b.vendaLiquida - a.vendaLiquida);
+  } else {
+    summary.mercadologicoResumo = [];
+  }
   summary.client = {
     profile: { ...profile, cnpj: '' },
     account: { name: user.name, email: user.email },
@@ -1760,7 +1796,11 @@ async function applyClientState(summary, user, weekFilter = null) {
 
     // ESCALA COMPLETA — todos os colaboradores, revezamento por grupo (setor + cargo)
     summary.employeeSetorMap = {};
-    state.employees.forEach(e => { summary.employeeSetorMap[e.nome] = (e.setor || 'Sem setor').trim() || 'Sem setor'; });
+    summary.employeeCargoMap = {};
+    state.employees.forEach(e => {
+      summary.employeeSetorMap[e.nome] = (e.setor || 'Sem setor').trim() || 'Sem setor';
+      summary.employeeCargoMap[e.nome] = (e.cargo || 'Sem cargo').trim() || 'Sem cargo';
+    });
     summary.fullSchedule = {};
     Object.entries(summary.weeklyScenarioSchedule).forEach(([key, sc]) => {
       summary.fullSchedule[key] = {
@@ -2372,6 +2412,44 @@ const server = http.createServer(async (req, res) => {
         await saveClientState(user.orgId, state);
         await audit(user.id, 'EMPLOYEES_MANAGED', { total: employees.length, ip: requestIp(req) });
         return json(res, { ok: true, total: employees.length });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
+    })();
+    return;
+  }
+  if (req.url === '/api/import-mercadologico' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login para importar vendas por mercadológico.');
+        const body = await readJsonBody(req, 5_000_000);
+        const rows = Array.isArray(body.rows) ? body.rows.slice(0, 50000) : [];
+
+        const validRows = rows.filter((row) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(String(row.data || ''))) return false;
+          if (!String(row.mercadologico || '').trim()) return false;
+          return Number(row.vendaLiquida) >= 0;
+        }).map((row) => ({
+          data: row.data,
+          mercadologico: sanitizeString(String(row.mercadologico)).slice(0, 80),
+          setor: mercadologicoParaSetor(row.mercadologico),
+          vendaLiquida: Number(row.vendaLiquida) || 0,
+          qtdItens: Number(row.qtdItens) || 0,
+          qtdeVendida: Number(row.qtdeVendida) || 0,
+          cupons: Number(row.cupons) || 0
+        }));
+
+        if (!validRows.length) throw new Error('Nenhuma linha válida. Use as colunas: data, mercadologico, venda_liquida.');
+
+        const state = await loadClientState(user.orgId);
+        state.salesByMercadologico = validRows;
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.orgId, state);
+
+        const setores = [...new Set(validRows.map(r => r.setor))];
+        const dias = [...new Set(validRows.map(r => r.data))];
+        await audit(user.id, 'MERCADOLOGICO_IMPORTED', { linhas: validRows.length, setores: setores.length, dias: dias.length, ip: requestIp(req) });
+        return json(res, { ok: true, imported: validRows.length, rejected: rows.length - validRows.length, setores, dias: dias.length });
       } catch (error) {
         return json(res, { ok: false, error: error.message }, 400);
       }

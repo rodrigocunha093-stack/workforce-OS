@@ -500,11 +500,13 @@ function renderStaffSchedule(data) {
 }
 
 let weeklyScheduleSetorFilter = '';
+let weeklyScheduleCargoFilter = '';
 
 function renderWeeklySchedule(data) {
   // Usa escala completa (todos os setores) se disponível; senão, só caixa
   const source = (data.fullSchedule && data.fullSchedule[currentCoverageScenario]) || data.weeklyScenarioSchedule[currentCoverageScenario];
   const setorMap = data.employeeSetorMap || {};
+  const cargoMap = data.employeeCargoMap || {};
   const days = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
   let people = Object.entries(source.people);
 
@@ -514,6 +516,12 @@ function renderWeeklySchedule(data) {
   // Aplicar filtro de setor
   if (weeklyScheduleSetorFilter) {
     people = people.filter(([nome]) => (setorMap[nome] || 'Sem setor') === weeklyScheduleSetorFilter);
+  }
+  // Cargos disponíveis (dentro do setor filtrado, se houver)
+  const cargos = [...new Set(people.map(([nome]) => cargoMap[nome] || 'Sem cargo'))];
+  // Aplicar filtro de cargo
+  if (weeklyScheduleCargoFilter) {
+    people = people.filter(([nome]) => (cargoMap[nome] || 'Sem cargo') === weeklyScheduleCargoFilter);
   }
 
   const audits = people.map(([nome, shifts]) => ({
@@ -528,8 +536,9 @@ function renderWeeklySchedule(data) {
   `;
 
   // Chips de filtro por setor
-  const filterChips = setores.length > 1 ? `
+  const setorChips = setores.length > 1 ? `
     <div class="setor-filter weekly-setor-filter">
+      <span class="filter-label">Setor:</span>
       <button class="setor-chip ${!weeklyScheduleSetorFilter?'active':''}" data-wsetor="">Todos (${Object.keys(source.people).length})</button>
       ${setores.map(s => {
         const count = Object.keys(source.people).filter(n => (setorMap[n]||'Sem setor')===s).length;
@@ -537,8 +546,20 @@ function renderWeeklySchedule(data) {
       }).join('')}
     </div>` : '';
 
+  // Chips de filtro por cargo (dos colaboradores visíveis após o filtro de setor)
+  const cargoChips = cargos.length > 1 ? `
+    <div class="setor-filter weekly-cargo-filter">
+      <span class="filter-label">Cargo:</span>
+      <button class="cargo-chip ${!weeklyScheduleCargoFilter?'active':''}" data-wcargo="">Todos</button>
+      ${cargos.map(c => {
+        const count = Object.entries(source.people).filter(([n]) => (cargoMap[n]||'Sem cargo')===c && (!weeklyScheduleSetorFilter || (setorMap[n]||'Sem setor')===weeklyScheduleSetorFilter)).length;
+        return `<button class="cargo-chip ${weeklyScheduleCargoFilter===c?'active':''}" data-wcargo="${c}">${c} (${count})</button>`;
+      }).join('')}
+    </div>` : '';
+
   document.getElementById('weeklySchedule').innerHTML = `
-    ${filterChips}
+    ${setorChips}
+    ${cargoChips}
     <div class="weekly-row weekly-head"><span>Colaborador(a)</span>${days.map((day) => `<span>${day}</span>`).join('')}<span>Auditoria</span></div>
     ${people.map(([nome, shifts]) => {
       const audit = audits.find((item) => item.nome === nome);
@@ -558,6 +579,13 @@ function renderWeeklySchedule(data) {
   document.querySelectorAll('#weeklySchedule .setor-chip').forEach(chip => {
     chip.onclick = () => {
       weeklyScheduleSetorFilter = chip.dataset.wsetor;
+      weeklyScheduleCargoFilter = ''; // reseta cargo ao trocar de setor
+      renderWeeklySchedule(data);
+    };
+  });
+  document.querySelectorAll('#weeklySchedule .cargo-chip').forEach(chip => {
+    chip.onclick = () => {
+      weeklyScheduleCargoFilter = chip.dataset.wcargo;
       renderWeeklySchedule(data);
     };
   });
@@ -1445,9 +1473,65 @@ function renderEmployeesManager(data) {
   };
 }
 
+function renderMercadologicoResumo(data) {
+  const el = document.getElementById('mercResumo');
+  if (!el) return;
+  const resumo = data.mercadologicoResumo || [];
+  if (!resumo.length) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = `
+    <div class="merc-resumo-head">📊 Vendas importadas por setor (${resumo.length} setores)</div>
+    <div class="merc-resumo-grid">
+      ${resumo.map(s => `
+        <div class="merc-resumo-card">
+          <strong>${s.setor}</strong>
+          <span>${money(s.vendaLiquida)} · ${s.dias} dias</span>
+          <small>${money(s.vendaMediaDia)}/dia · ${s.qtdItens.toLocaleString('pt-BR')} itens</small>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function parseMercadologicoCsv(text) {
+  const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return { rows: [], errors: ['Arquivo vazio.'] };
+  const delim = (lines[0].match(/;/g) || []).length >= (lines[0].match(/,/g) || []).length ? ';' : ',';
+  const headers = lines[0].split(delim).map(normalizeHeader);
+  const pos = {
+    data: headers.findIndex(h => h === 'data'),
+    merc: headers.findIndex(h => ['mercadologico', 'grupo', 'departamento', 'setor', 'categoria'].includes(h)),
+    venda: headers.findIndex(h => ['venda_liquida', 'valor', 'venda', 'faturamento', 'vendaliquida'].includes(h)),
+    itens: headers.findIndex(h => ['qtd_itens', 'itens', 'qtditens'].includes(h)),
+    qtde: headers.findIndex(h => ['qtd_vendida', 'quantidade', 'qtde', 'qtdvendida'].includes(h)),
+    cupons: headers.findIndex(h => ['cupons', 'transacoes', 'tickets'].includes(h))
+  };
+  if (pos.data < 0 || pos.merc < 0 || pos.venda < 0) {
+    return { rows: [], errors: ['Faltam colunas obrigatórias: data, mercadologico, venda_liquida.'] };
+  }
+  const rows = [], errors = [];
+  lines.slice(1).forEach((line, i) => {
+    const c = line.split(delim).map(x => x.trim().replace(/^"|"$/g, ''));
+    const data = normalizeDate(c[pos.data]);
+    const merc = c[pos.merc];
+    if (!data || !merc) { errors.push(`Linha ${i + 2} inválida.`); return; }
+    rows.push({
+      data, mercadologico: merc,
+      vendaLiquida: parseDecimal(c[pos.venda]),
+      qtdItens: pos.itens >= 0 ? parseDecimal(c[pos.itens]) : 0,
+      qtdeVendida: pos.qtde >= 0 ? parseDecimal(c[pos.qtde]) : 0,
+      cupons: pos.cupons >= 0 ? parseDecimal(c[pos.cupons]) : 0
+    });
+  });
+  return { rows, errors };
+}
+
 function renderOnboarding(data) {
   renderCompanyInfo();
   renderEmployeesManager(data);
+  renderMercadologicoResumo(data);
   const client = data.client || { profile: {}, onboarding: {} };
   const profile = client.profile || {};
   const onboarding = client.onboarding || {};
@@ -2203,6 +2287,50 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
       link.click();
       URL.revokeObjectURL(link.href);
     };
+
+    // === IMPORTAÇÃO MERCADOLÓGICO ===
+    let pendingMercRows = [];
+    const mercInput = document.getElementById('mercCsvInput');
+    if (mercInput) {
+      mercInput.onchange = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const parsed = parseMercadologicoCsv(await file.text());
+        pendingMercRows = parsed.rows;
+        const setores = [...new Set(parsed.rows.map(r => r.mercadologico))];
+        const dias = [...new Set(parsed.rows.map(r => r.data))];
+        document.getElementById('confirmMercImport').disabled = parsed.rows.length < 1;
+        document.getElementById('mercImportPreview').innerHTML = `
+          <strong>${parsed.rows.length} linhas válidas</strong>
+          <span>${setores.length} grupos mercadológicos · ${dias.length} dias · ${parsed.errors.length} rejeições</span>
+          ${parsed.rows.length < 1 ? '<small>Verifique as colunas: data, mercadologico, venda_liquida.</small>' : '<small>Pronto para importar.</small>'}
+        `;
+      };
+    }
+    const confirmMerc = document.getElementById('confirmMercImport');
+    if (confirmMerc) {
+      confirmMerc.onclick = async () => {
+        const res = await fetch('/api/import-mercadologico', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows: pendingMercRows })
+        });
+        const result = await res.json();
+        if (!res.ok) return showToast(result.error || 'Erro ao importar mercadológico.');
+        showToast(`${result.imported} linhas importadas em ${result.setores.length} setores. Atualizando...`);
+        setTimeout(() => window.location.reload(), 1000);
+      };
+    }
+    const downloadMerc = document.getElementById('downloadMercTemplate');
+    if (downloadMerc) {
+      downloadMerc.onclick = () => {
+        const csv = 'data;mercadologico;venda_liquida;qtd_itens;qtd_vendida;cupons\n2026-06-01;Açougue;12500,00;340;180;95\n2026-06-01;Padaria;8200,00;520;610;180\n2026-06-01;Hortifruti;6400,00;410;380;140\n2026-06-01;Mercearia;31000,00;1850;2100;520\n2026-06-01;Frios e Laticínios;9800,00;430;390;160\n';
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+        link.download = 'modelo-vendas-mercadologico.csv';
+        link.click();
+        URL.revokeObjectURL(link.href);
+      };
+    }
 
     const closeDrawer = () => {
       document.getElementById('dayDrawer').classList.remove('open');

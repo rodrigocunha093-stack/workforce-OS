@@ -492,6 +492,22 @@
               <button id="confirmSalesImport" type="button" disabled>Importar dados validados</button>
             </div>
           </article>
+
+          <article class="panel import-panel merc-import-panel">
+            <div class="panel-head"><div><h3>4. Importar vendas por mercadológico <span class="new-badge">NOVO</span></h3><p class="note">Vendas por dia e por grupo mercadológico (departamento). Base para dimensionar a escala de cada setor por dados — não só o caixa.</p></div></div>
+            <div class="import-instructions">
+              <strong>Colunas aceitas</strong>
+              <code>data;mercadologico;venda_liquida;qtd_itens;qtd_vendida;cupons</code>
+              <span>Ex.: 2026-06-01;Açougue;12500,00;340;180;95 — o sistema mapeia cada grupo mercadológico ao setor responsável (Açougue, Padaria, Hortifruti, Mercearia...).</span>
+            </div>
+            <input id="mercCsvInput" type="file" accept=".csv,text/csv">
+            <div id="mercImportPreview" class="import-preview"><span>Nenhum arquivo selecionado.</span></div>
+            <div class="import-actions">
+              <button id="downloadMercTemplate" type="button" class="secondary-button">Baixar modelo</button>
+              <button id="confirmMercImport" type="button" disabled>Importar mercadológico</button>
+            </div>
+            <div id="mercResumo" class="merc-resumo"></div>
+          </article>
         </div>
 
         <article class="panel readiness-panel">
