@@ -1345,6 +1345,27 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
   return result;
 }
 
+// Gera escala agrupando por (setor + cargo): cada grupo reveza folgas/turnos internamente
+function generateGroupedSchedule(profile, employees, targetHours = 44, targetDaysOff = 1) {
+  // Agrupar por chave setor+cargo
+  const groups = {};
+  (employees || []).forEach((emp) => {
+    const setor = (emp.setor || 'Sem setor').trim() || 'Sem setor';
+    const cargo = (emp.cargo || 'Sem cargo').trim() || 'Sem cargo';
+    const key = `${setor}||${cargo}`;
+    groups[key] = groups[key] || [];
+    groups[key].push(emp);
+  });
+
+  // Gerar escala para cada grupo isoladamente (revezamento interno) e mesclar
+  const merged = {};
+  Object.values(groups).forEach((grupo) => {
+    const escalaGrupo = generateScheduleByProfile(profile, grupo, targetHours, targetDaysOff);
+    Object.assign(merged, escalaGrupo);
+  });
+  return merged;
+}
+
 function dateLabel(value) {
   const [year, month, day] = value.split('-');
   return `${day}/${month}/${year}`;
@@ -1714,10 +1735,11 @@ async function applyClientState(summary, user) {
     Object.entries(summary.weeklyScenarioSchedule).forEach(([scenarioKey, scenario]) => {
       const targetHours = scenario.targetHours || 44;
       const targetDaysOff = scenario.targetDaysOff || 1;
-      scenario.people = generateScheduleByProfile(profile, caixaEmployees, targetHours, targetDaysOff);
+      // Revezamento por grupo (setor + cargo) também dentro do caixa
+      scenario.people = generateGroupedSchedule(profile, caixaEmployees, targetHours, targetDaysOff);
     });
 
-    // ESCALA COMPLETA — todos os colaboradores (todos os setores), para a tabela com filtro
+    // ESCALA COMPLETA — todos os colaboradores, revezamento por grupo (setor + cargo)
     summary.employeeSetorMap = {};
     state.employees.forEach(e => { summary.employeeSetorMap[e.nome] = (e.setor || 'Sem setor').trim() || 'Sem setor'; });
     summary.fullSchedule = {};
@@ -1726,7 +1748,7 @@ async function applyClientState(summary, user) {
         label: sc.label,
         targetHours: sc.targetHours,
         targetDaysOff: sc.targetDaysOff,
-        people: generateScheduleByProfile(profile, state.employees, sc.targetHours || 44, sc.targetDaysOff || 1)
+        people: generateGroupedSchedule(profile, state.employees, sc.targetHours || 44, sc.targetDaysOff || 1)
       };
     });
 
