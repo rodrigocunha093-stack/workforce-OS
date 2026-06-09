@@ -63,18 +63,30 @@ async function getUserByOrgCode(orgCode) {
 
 async function listAllOrgAdmins() {
   try {
+    // Lista TODAS as orgs distintas (exceto o gestor), agrupando por orgid.
     const { data, error } = await supabase
       .from('users')
-      .select('id,name,email,orgid,orgcode,role,createdat')
-      .eq('role', 'admin');
+      .select('id,name,email,orgid,orgcode,role,createdat');
     if (error) { console.error('DB Error on listAllOrgAdmins:', error.message); return []; }
-    return (data || []).map(d => ({
-      orgId: d.orgid || d.id,
-      orgCode: d.orgcode,
-      adminName: d.name,
-      adminEmail: d.email,
-      createdAt: d.createdat
-    }));
+
+    const orgsMap = {};
+    (data || []).forEach(d => {
+      if (d.role === 'gestor') return; // gestor não é uma empresa
+      const orgId = d.orgid || d.id;
+      // Prioriza o admin (ou o dono: orgid === id) como representante da org
+      const isOwner = (d.orgid || d.id) === d.id;
+      const isAdmin = d.role === 'admin';
+      if (!orgsMap[orgId] || isAdmin || isOwner) {
+        orgsMap[orgId] = {
+          orgId,
+          orgCode: d.orgcode,
+          adminName: d.name,
+          adminEmail: d.email,
+          createdAt: d.createdat
+        };
+      }
+    });
+    return Object.values(orgsMap);
   } catch (error) {
     console.error('DB Error on listAllOrgAdmins:', error.message);
     return [];
