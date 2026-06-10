@@ -850,3 +850,8 @@ select option { background: #141b2e; color: #e8eef5; }
 .icos-matriz { display: flex; gap: 8px; margin: 8px 0 4px; }
 .icos-matriz span { font-size: 11px; padding: 3px 8px; background: rgba(255,255,255,0.05); border-radius: 8px; color: #cbd5e1; }
 .icos-foco { font-size: 11px; color: #94a3b8; font-style: italic; margin-bottom: 8px; line-height: 1.4; }
+
+/* Ícones de abertura/fechamento na escala */
+.weekly-shift { position: relative; }
+.shift-icon { font-size: 10px; margin-left: 3px; opacity: 0.9; }
+.shift-icon.abre { filter: hue-rotate(120deg); }

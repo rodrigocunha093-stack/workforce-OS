@@ -689,7 +689,27 @@ function renderStaffSchedule(data) {
 let weeklyScheduleSetorFilter = '';
 let weeklyScheduleCargoFilter = '';
 
+// Extrai início e fim de um turno ("06-14·8h" ou "06-10/14-18·8h")
+function shiftBounds(shift) {
+  if (!shift || shift === 'Folga') return null;
+  const blocks = shift.split('·')[0].trim().split('/');
+  const first = blocks[0].split('-');
+  const last = blocks[blocks.length - 1].split('-');
+  const start = Number(first[0]);
+  const end = Number(last[1]);
+  return (isNaN(start) || isNaN(end)) ? null : { start, end };
+}
+function parseLojaHora(str) {
+  const m = String(str || '').match(/(\d{1,2}):?\d{0,2}\s*-\s*(\d{1,2}):?\d{0,2}/);
+  return m ? { open: Number(m[1]), close: Number(m[2]) } : { open: 7, close: 19 };
+}
+
 function renderWeeklySchedule(data) {
+  const profile = (data.client && data.client.profile) || {};
+  const lojaSegSex = parseLojaHora(profile.horarioSegSex);
+  const lojaSab = parseLojaHora(profile.horarioSabado);
+  const lojaDom = parseLojaHora(profile.horarioDomingo);
+  const lojaPorDia = [lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSab, lojaDom];
   // Usa escala completa (todos os setores) se disponível; senão, só caixa
   const source = (data.fullSchedule && data.fullSchedule[currentCoverageScenario]) || data.weeklyScenarioSchedule[currentCoverageScenario];
   const setorMap = data.employeeSetorMap || {};
@@ -717,7 +737,7 @@ function renderWeeklySchedule(data) {
     daysOff: shifts.filter((shift) => shift === 'Folga').length
   }));
   const valid = audits.filter((audit) => Math.abs(audit.hours - source.targetHours) < 0.01 && audit.daysOff === source.targetDaysOff).length;
-  document.getElementById('weeklyScheduleNote').textContent = `${source.label}: meta de ${source.targetHours}h e ${source.targetDaysOff} folga${source.targetDaysOff > 1 ? 's' : ''} a cada 7 dias.`;
+  document.getElementById('weeklyScheduleNote').innerHTML = `${source.label}: meta de ${source.targetHours}h e ${source.targetDaysOff} folga${source.targetDaysOff > 1 ? 's' : ''} a cada 7 dias. &nbsp;<span style="opacity:.8">🔓 abre a loja · 🔒 fecha a loja</span>`;
   document.getElementById('weeklyAuditSummary').innerHTML = `
     <span class="${valid === audits.length ? 'weekly-ok' : 'weekly-bad'}">${valid}/${audits.length} conformes</span>
   `;
@@ -755,7 +775,18 @@ function renderWeeklySchedule(data) {
       return `
         <div class="weekly-row">
           <span class="weekly-person"><strong>${nome}</strong><small>${setor} · ${audit.hours.toFixed(0)}h - ${audit.daysOff} folga${audit.daysOff > 1 ? 's' : ''}</small></span>
-          ${shifts.map((shift) => `<span class="weekly-shift ${shift === 'Folga' ? 'weekly-off' : shift.includes('08-12') ? 'weekly-sunday' : ''}">${shift}</span>`).join('')}
+          ${shifts.map((shift, dayIdx) => {
+            const b = shiftBounds(shift);
+            const lh = lojaPorDia[dayIdx];
+            let badge = '';
+            if (b && lh) {
+              const abre = b.start <= lh.open;
+              const fecha = b.end >= lh.close;
+              if (abre) badge += '<span class="shift-icon abre" title="Abre a loja">🔓</span>';
+              if (fecha) badge += '<span class="shift-icon fecha" title="Fecha a loja">🔒</span>';
+            }
+            return `<span class="weekly-shift ${shift === 'Folga' ? 'weekly-off' : shift.includes('08-12') ? 'weekly-sunday' : ''}">${shift}${badge}</span>`;
+          }).join('')}
           <span class="weekly-status ${ok ? 'valid' : 'invalid'}">${ok ? 'Conforme' : 'Revisar'}</span>
         </div>
       `;
