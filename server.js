@@ -1034,11 +1034,21 @@ function buildSetorDashboard(mercRows, employees, profile) {
     const setorOp = String(emp.setor || '').toLowerCase();
     const cargoOp = String(emp.cargo || '').toLowerCase();
     if (setorOp.includes('administrativo') || cargoOp.includes('financeiro') || cargoOp.includes('fiscal') || cargoOp.includes('faturamento') || cargoOp.includes('rh') || cargoOp.includes('ti') || cargoOp.includes('mkt') || cargoOp.includes('motorista')) return;
-    const setor = empSetorOperacional(emp);
-    setorEquipe[setor] = setorEquipe[setor] || { colaboradores: 0, horas: 0, nomes: [] };
-    setorEquipe[setor].colaboradores += 1;
-    setorEquipe[setor].horas += Number(emp.horasSemanais || 44);
-    setorEquipe[setor].nomes.push(emp.nome);
+
+    // Setores operacionais que o colaborador cobre (multi-mercadológico)
+    let setoresOp;
+    if (Array.isArray(emp.mercadologicos) && emp.mercadologicos.length) {
+      setoresOp = [...new Set(emp.mercadologicos.map(mercadologicoParaSetor))];
+    } else {
+      setoresOp = [empSetorOperacional(emp)];
+    }
+    const fracao = 1 / setoresOp.length; // divide o colaborador entre os setores que cobre
+    setoresOp.forEach(setor => {
+      setorEquipe[setor] = setorEquipe[setor] || { colaboradores: 0, horas: 0, nomes: [] };
+      setorEquipe[setor].colaboradores += fracao;
+      setorEquipe[setor].horas += Number(emp.horasSemanais || 44) * fracao;
+      setorEquipe[setor].nomes.push(setoresOp.length > 1 ? `${emp.nome} (${Math.round(fracao * 100)}%)` : emp.nome);
+    });
   });
 
   // Unir todos os setores que têm venda OU equipe
@@ -1058,8 +1068,8 @@ function buildSetorDashboard(mercRows, employees, profile) {
       vendaDia: Math.round(vendaDia),
       vendaMes: Math.round(v.vendaLiquida * (30 / dias)),
       itensDia: Math.round(itensDia),
-      colaboradores,
-      horasSemanais: e.horas,
+      colaboradores: Math.round(colaboradores * 10) / 10,
+      horasSemanais: Math.round(e.horas),
       vendaPorColab: Math.round(vendaPorColab),
       itensPorColab: Math.round(itensPorColab),
       participacao: Number(participacao.toFixed(1)),
@@ -2532,19 +2542,32 @@ const server = http.createServer(async (req, res) => {
 
         const turnosValidos = ['abertura', 'intermediario', 'fechamento', 'flexivel'];
         const diasValidos = ['', 'segunda', 'terca', 'quarta', 'quinta', 'domingo'];
-        const employees = list.map((row) => ({
-          nome: sanitizeString(String(row.nome || '')).slice(0, 100),
-          sexo: ['masculino', 'feminino'].includes(String(row.sexo || '').toLowerCase()) ? String(row.sexo).toLowerCase() : 'feminino',
-          cargo: sanitizeString(String(row.cargo || 'Operador de Caixa')).slice(0, 60),
-          setor: sanitizeString(String(row.setor || 'Caixa')).slice(0, 60),
-          horasSemanais: Math.min(168, Math.max(1, Number(row.horasSemanais) || 44)),
-          salario: Math.max(0, Number(row.salario) || 0),
-          turno: turnosValidos.includes(String(row.turno || '').toLowerCase()) ? String(row.turno).toLowerCase() : 'flexivel',
-          podeDomingo: row.podeDomingo === false ? false : true,
-          folgaPreferencial: diasValidos.includes(String(row.folgaPreferencial || '').toLowerCase()) ? String(row.folgaPreferencial).toLowerCase() : '',
-          podeAbrir: Boolean(row.podeAbrir),
-          podeFechar: Boolean(row.podeFechar)
-        })).filter((e) => e.nome.length >= 2);
+        const employees = list.map((row) => {
+          const mercadologicos = Array.isArray(row.mercadologicos)
+            ? row.mercadologicos.map(m => sanitizeString(String(m)).slice(0, 80)).filter(Boolean).slice(0, 30)
+            : [];
+          // Setor operacional predominante (derivado dos mercadológicos marcados)
+          let setor = sanitizeString(String(row.setor || 'Caixa')).slice(0, 60);
+          if (mercadologicos.length) {
+            const setoresOp = mercadologicos.map(mercadologicoParaSetor);
+            // setor mais frequente
+            const freq = {};
+            setoresOp.forEach(s => { freq[s] = (freq[s] || 0) + 1; });
+            setor = Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
+          }
+          return {
+            nome: sanitizeString(String(row.nome || '')).slice(0, 100),
+            sexo: ['masculino', 'feminino'].includes(String(row.sexo || '').toLowerCase()) ? String(row.sexo).toLowerCase() : 'feminino',
+            cargo: sanitizeString(String(row.cargo || 'Operador de Caixa')).slice(0, 60),
+            setor,
+            mercadologicos,
+            horasSemanais: Math.min(168, Math.max(1, Number(row.horasSemanais) || 44)),
+            salario: Math.max(0, Number(row.salario) || 0),
+            turno: turnosValidos.includes(String(row.turno || '').toLowerCase()) ? String(row.turno).toLowerCase() : 'flexivel',
+            podeDomingo: row.podeDomingo === false ? false : true,
+            folgaPreferencial: diasValidos.includes(String(row.folgaPreferencial || '').toLowerCase()) ? String(row.folgaPreferencial).toLowerCase() : ''
+          };
+        }).filter((e) => e.nome.length >= 2);
 
         const state = await loadClientState(user.orgId);
         state.employees = employees;

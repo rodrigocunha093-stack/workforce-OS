@@ -670,3 +670,71 @@ select option { background: #141b2e; color: #e8eef5; }
 .icos-legend .st-ok { color: #6ee7b7; }
 .icos-legend .st-low { color: #fcd34d; }
 .icos-legend .st-none { color: #94a3b8; }
+
+/* ---------- SELETOR DE MERCADOLÓGICOS (multi-seleção) ---------- */
+.merc-select-btn {
+  padding: 9px 10px;
+  background: rgba(59,130,246,0.10);
+  border: 1px solid rgba(59,130,246,0.3);
+  border-radius: 8px;
+  color: #93c5fd;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.merc-select-btn:hover { background: rgba(59,130,246,0.18); }
+.merc-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5,10,20,0.7);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 9999;
+}
+.merc-modal {
+  width: min(500px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: #141b2e;
+  border: 1px solid var(--fx-border-glow);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px -20px rgba(0,0,0,0.8);
+  overflow: hidden;
+}
+.merc-modal-head { padding: 18px 20px; border-bottom: 1px solid var(--fx-border); }
+.merc-modal-head strong { display: block; color: #e8eef5; font-size: 16px; }
+.merc-modal-head span { display: block; color: #94a3b8; font-size: 12px; margin-top: 4px; }
+.merc-modal-list {
+  padding: 14px 20px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.merc-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--fx-border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #cbd5e1;
+  transition: all 0.15s;
+}
+.merc-opt:hover { border-color: var(--fx-border-glow); }
+.merc-opt input { width: auto !important; cursor: pointer; }
+.merc-opt input:checked + span { color: #5eead4; font-weight: 600; }
+.merc-modal-actions {
+  padding: 14px 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid var(--fx-border);
+}

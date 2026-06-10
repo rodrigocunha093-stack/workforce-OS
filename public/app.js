@@ -1393,6 +1393,48 @@ async function renderCompanyInfo() {
 
 let managedEmployees = [];
 
+function openMercadologicoSelector(idx, data) {
+  const emp = managedEmployees[idx];
+  const opts = data.mercadologicosM2 || [];
+  const sel = new Set(Array.isArray(emp.mercadologicos) ? emp.mercadologicos : []);
+
+  let overlay = document.getElementById('mercSelectorOverlay');
+  if (overlay) overlay.remove();
+  overlay = document.createElement('div');
+  overlay.id = 'mercSelectorOverlay';
+  overlay.className = 'merc-overlay';
+  overlay.innerHTML = `
+    <div class="merc-modal">
+      <div class="merc-modal-head">
+        <strong>Mercadológicos de ${emp.nome || 'colaborador'}</strong>
+        <span>Marque os grupos que este colaborador atende. O setor operacional é definido automaticamente.</span>
+      </div>
+      <div class="merc-modal-list">
+        ${opts.map(m => `
+          <label class="merc-opt">
+            <input type="checkbox" value="${m}" ${sel.has(m) ? 'checked' : ''}>
+            <span>${m}</span>
+          </label>
+        `).join('')}
+      </div>
+      <div class="merc-modal-actions">
+        <button id="mercCancel" type="button" class="secondary-button">Cancelar</button>
+        <button id="mercConfirm" type="button" class="optimize-button save-optimization">Confirmar seleção</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#mercCancel').onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.querySelector('#mercConfirm').onclick = () => {
+    const marcados = [...overlay.querySelectorAll('input[type=checkbox]:checked')].map(i => i.value);
+    managedEmployees[idx].mercadologicos = marcados;
+    overlay.remove();
+    renderEmployeesManager(data);
+  };
+}
+
 function renderEmployeesManager(data) {
   const el = document.getElementById('employeesManager');
   if (!el) return;
@@ -1403,6 +1445,7 @@ function renderEmployeesManager(data) {
       sexo: e.sexo || 'feminino',
       cargo: e.cargo || 'Operador de Caixa',
       setor: e.setor || 'Caixa',
+      mercadologicos: Array.isArray(e.mercadologicos) ? e.mercadologicos : [],
       horasSemanais: e.horasSemanais || 44,
       salario: e.salario || 0,
       turno: e.turno || 'flexivel',
@@ -1437,11 +1480,17 @@ function renderEmployeesManager(data) {
         <span>Nome</span><span>Cargo</span><span>Setor</span><span>Horas</span><span>Salário</span>
         <span>Turno preferencial</span><span>Folga pref.</span><span>Dom.</span><span></span>
       </div>
-      ${filtered.map(({ e, originalIdx: i }) => `
+      ${filtered.map(({ e, originalIdx: i }) => {
+        const temMerc = data.mercadologicosM2 && data.mercadologicosM2.length;
+        const mercSel = Array.isArray(e.mercadologicos) ? e.mercadologicos : [];
+        const setorCell = temMerc
+          ? `<button class="merc-select-btn" data-merc-btn="${i}" type="button" title="Selecionar mercadológicos">${mercSel.length ? `📦 ${mercSel.length} grupo${mercSel.length>1?'s':''}` : '📦 Selecionar'}</button>`
+          : `<input data-i="${i}" data-f="setor" value="${(e.setor||'').replace(/"/g,'&quot;')}" placeholder="Setor" list="setoresList">`;
+        return `
         <div class="emp-row">
           <input data-i="${i}" data-f="nome" value="${(e.nome||'').replace(/"/g,'&quot;')}" placeholder="Nome">
           <input data-i="${i}" data-f="cargo" value="${(e.cargo||'').replace(/"/g,'&quot;')}" placeholder="Cargo">
-          <input data-i="${i}" data-f="setor" value="${(e.setor||'').replace(/"/g,'&quot;')}" placeholder="Setor" list="setoresList">
+          ${setorCell}
           <input data-i="${i}" data-f="horasSemanais" type="number" min="1" max="168" value="${e.horasSemanais||44}">
           <input data-i="${i}" data-f="salario" type="number" min="0" step="50" value="${e.salario||0}">
           <select data-i="${i}" data-f="turno">
@@ -1453,7 +1502,7 @@ function renderEmployeesManager(data) {
           <label class="emp-domingo"><input data-i="${i}" data-f="podeDomingo" type="checkbox" ${e.podeDomingo!==false?'checked':''}></label>
           <button class="emp-remove" data-i="${i}" type="button" title="Remover">✕</button>
         </div>
-      `).join('')}
+      `;}).join('')}
     </div>
     <datalist id="setoresList">
       ${(data.mercadologicosM2 && data.mercadologicosM2.length)
@@ -1482,6 +1531,10 @@ function renderEmployeesManager(data) {
       }
     };
   });
+  // Botão de seleção de mercadológicos (multi-seleção)
+  el.querySelectorAll('.merc-select-btn').forEach(btn => {
+    btn.onclick = () => openMercadologicoSelector(Number(btn.dataset.mercBtn), data);
+  });
   // Filtro por setor
   el.querySelectorAll('.setor-chip').forEach(chip => {
     chip.onclick = () => {
@@ -1498,7 +1551,7 @@ function renderEmployeesManager(data) {
   });
   // Adicionar
   document.getElementById('empAddBtn').onclick = () => {
-    managedEmployees.push({ nome: '', sexo: 'feminino', cargo: 'Operador de Caixa', setor: 'Caixa', horasSemanais: 44, salario: 0, turno: 'flexivel', podeDomingo: true, folgaPreferencial: '' });
+    managedEmployees.push({ nome: '', sexo: 'feminino', cargo: 'Operador de Caixa', setor: 'Caixa', mercadologicos: [], horasSemanais: 44, salario: 0, turno: 'flexivel', podeDomingo: true, folgaPreferencial: '' });
     renderEmployeesManager(data);
   };
   // Salvar
