@@ -845,3 +845,8 @@ select option { background: #141b2e; color: #e8eef5; }
 .ops-trend-bar { width: 100%; background: linear-gradient(180deg, #2dd4bf, #3b82f6); border-radius: 3px 3px 0 0; min-height: 4px; transition: all 0.2s; }
 .ops-trend-bar-wrap:hover .ops-trend-bar { background: linear-gradient(180deg, #5eead4, #60a5fa); }
 .ops-trend-foot { display: flex; justify-content: space-between; font-size: 11px; color: #64748b; margin-top: 6px; }
+
+/* Matriz de produtividade no card ICOS */
+.icos-matriz { display: flex; gap: 8px; margin: 8px 0 4px; }
+.icos-matriz span { font-size: 11px; padding: 3px 8px; background: rgba(255,255,255,0.05); border-radius: 8px; color: #cbd5e1; }
+.icos-foco { font-size: 11px; color: #94a3b8; font-style: italic; margin-bottom: 8px; line-height: 1.4; }

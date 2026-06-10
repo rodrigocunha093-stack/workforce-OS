@@ -1170,6 +1170,27 @@ function buildOperationalDashboard(state, caixaSalesRows) {
   };
 }
 
+// Matriz de produtividade por mercadológico (benchmarks de varejo)
+const MATRIZ_PRODUTIVIDADE = {
+  'cereais': { caixasHora: '45-50', margem: '22-26%', foco: 'Abastecimento contínuo / evitar ruptura visual' },
+  'limpeza': { caixasHora: '35-40', margem: '25-35%', foco: 'Frenteamento rigoroso e organização por marca' },
+  'mercearia salgada': { caixasHora: '35-45', margem: '28-32%', foco: 'Controle de validade (PEPS)' },
+  'mercearia doce': { caixasHora: '35-45', margem: '28-32%', foco: 'Controle de validade (PEPS) / impulso' },
+  'biscoitos': { caixasHora: '50-60', margem: '30-35%', foco: 'Reposição rápida e organização por impulso' },
+  'bebidas': { caixasHora: '40-50', margem: '14-20%', foco: 'Abastecimento focado em picos (fim de semana)' },
+  'bazar': { caixasHora: '30-40', margem: '30-40%', foco: 'Exposição e organização por categoria' },
+  'perfumaria e higiene pessoal': { caixasHora: '40-50', margem: '30-38%', foco: 'Frenteamento e prevenção de perdas (furto)' },
+  'acougue': { caixasHora: '—', margem: '18-25%', foco: 'Produção, atendimento e validade rigorosa' },
+  'padaria': { caixasHora: '—', margem: '35-45%', foco: 'Produção própria e reposição de quentes' },
+  'flv': { caixasHora: '—', margem: '30-40%', foco: 'Qualidade visual e baixa de perdas' },
+  'frios e laticineos': { caixasHora: '30-40', margem: '25-30%', foco: 'Atendimento, fatiados e validade' },
+  'ilhas e congelados': { caixasHora: '35-45', margem: '22-28%', foco: 'Temperatura e reposição de freezer' }
+};
+function matrizProdutividade(merc) {
+  const k = String(merc || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return MATRIZ_PRODUTIVIDADE[k] || { caixasHora: '—', margem: '—', foco: 'Reposição geral' };
+}
+
 // Dashboard inteligente: cruza vendas POR MERCADOLÓGICO (m2) com a equipe
 function buildSetorDashboard(mercRows, employees, profile) {
   if (!mercRows || !mercRows.length) return [];
@@ -1252,6 +1273,7 @@ function buildSetorDashboard(mercRows, employees, profile) {
       horasSemanais: Math.round(e.horas),
       curvaDiaSemana,
       picoDia,
+      matriz: matrizProdutividade(setor),
       vendaPorColab: Math.round(vendaPorColab),
       itensPorColab: Math.round(itensPorColab),
       participacao: Number(participacao.toFixed(1)),

@@ -363,6 +363,7 @@ function renderSetorDashboard(data) {
               }).join('')}
             </div>
           </div>` : ''}
+          ${d.matriz ? `<div class="icos-matriz"><span title="Produtividade física de reposição">📦 ${d.matriz.caixasHora} cx/h</span><span title="Margem bruta de referência">💰 ${d.matriz.margem}</span></div><div class="icos-foco">${d.matriz.foco}</div>` : ''}
           ${d.nomes && d.nomes.length ? `<div class="icos-team">${d.nomes.slice(0, 6).map(n => `<span>${n}</span>`).join('')}${d.nomes.length > 6 ? `<span>+${d.nomes.length - 6}</span>` : ''}</div>` : '<div class="icos-team empty">Sem equipe cadastrada neste setor</div>'}
         </article>
       `).join('')}
