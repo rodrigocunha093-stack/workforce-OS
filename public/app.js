@@ -1456,7 +1456,10 @@ function renderEmployeesManager(data) {
       `).join('')}
     </div>
     <datalist id="setoresList">
-      <option value="Caixa"><option value="Açougue"><option value="Balcão"><option value="Administrativo"><option value="Padaria"><option value="Hortifruti"><option value="Estoque"><option value="Limpeza">
+      ${(data.mercadologicosM2 && data.mercadologicosM2.length)
+        ? data.mercadologicosM2.map(m => `<option value="${m}">`).join('')
+        : '<option value="Caixa"><option value="Açougue"><option value="Balcão"><option value="Administrativo"><option value="Padaria"><option value="Hortifruti"><option value="Estoque"><option value="Limpeza">'}
+      <option value="Administrativo"><option value="Caixa">
     </datalist>
     <div class="emp-actions">
       <button id="empAddBtn" class="secondary-button" type="button">+ Adicionar colaborador</button>

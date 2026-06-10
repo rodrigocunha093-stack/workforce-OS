@@ -1799,6 +1799,10 @@ async function applyClientState(summary, user, weekFilter = null) {
   }
   // Dashboard inteligente por setor (cruza vendas com equipe)
   summary.setorDashboard = buildSetorDashboard(mercRows, state.employees || [], profile);
+  // Mercadológicos nível 2 disponíveis (para o campo Setor do cadastro)
+  summary.mercadologicosM2 = mercRows.length
+    ? [...new Set(mercRows.map(r => r.mercadologico))].sort()
+    : [];
   summary.client = {
     profile: { ...profile, cnpj: '' },
     account: { name: user.name, email: user.email },
