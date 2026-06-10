@@ -1686,22 +1686,47 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
     const comercial = !reposicao && (isCargoComercial(emp) || N === 1);
     const sexo = String(emp.sexo || 'feminino').toLowerCase();
 
+    // COBERTURA GARANTIDA: no grupo, o último fecha e o primeiro abre.
+    // (respeita preferências explícitas; só força quando flexível)
+    const ehFechador = N > 1 && (idx === N - 1 || turno === 'fechamento');
+    const ehAbridor = N > 1 && idx === 0 && turno !== 'fechamento';
+
     const startHour = startForTurno(turno, segSex.open, segSex.close, idx);
     const endHour = Math.min(segSex.close, startHour + shiftHours);
     const sabStartHour = startForTurno(turno, sabado.open, sabado.close, idx);
     const sabEndHour = Math.min(sabado.close, sabStartHour + shiftHours);
 
+    // Turno de fechamento corrido (fecha a loja)
+    const fechaSeg = generateOperatorShift(Math.max(segSex.open, segSex.close - shiftHours), segSex.close);
+    const fechaSab = generateOperatorShift(Math.max(sabado.open, sabado.close - shiftHours), sabado.close);
+
     // Helper: turno do dia útil/sábado conforme tipo
     let turnoUtil, turnoSab;
     if (reposicao) {
-      turnoUtil = generateRepositorShift(segSex.open, segSex.close, idx, N, sexo);
-      turnoSab = generateRepositorShift(sabado.open, sabado.close, idx, N, sexo);
+      if (ehFechador) {
+        // Repositor noturno: cobre o fechamento para amanhecer a loja organizada
+        turnoUtil = fechaSeg;
+        turnoSab = fechaSab;
+      } else {
+        // Demais repositores: jornada partida (manhã + tarde)
+        turnoUtil = generateRepositorShift(segSex.open, segSex.close, idx, N, sexo);
+        turnoSab = generateRepositorShift(sabado.open, sabado.close, idx, N, sexo);
+      }
     } else if (comercial) {
       turnoUtil = generateComercialShift(segSex.open, segSex.close);
       turnoSab = generateComercialShift(sabado.open, sabado.close);
     } else {
-      turnoUtil = generateOperatorShift(startHour, endHour);
-      turnoSab = generateOperatorShift(sabStartHour, sabEndHour);
+      // Corrido (caixa, açougue): garante abridor e fechador
+      if (ehFechador) {
+        turnoUtil = fechaSeg;
+        turnoSab = fechaSab;
+      } else if (ehAbridor) {
+        turnoUtil = generateOperatorShift(segSex.open, Math.min(segSex.close, segSex.open + shiftHours));
+        turnoSab = generateOperatorShift(sabado.open, Math.min(sabado.close, sabado.open + shiftHours));
+      } else {
+        turnoUtil = generateOperatorShift(startHour, endHour);
+        turnoSab = generateOperatorShift(sabStartHour, sabEndHour);
+      }
     }
 
     // Folgas adicionais: prioriza a preferência da operadora (se válida: seg-qui ou domingo)
