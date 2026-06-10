@@ -1020,11 +1020,17 @@ function buildSetorDashboard(mercRows, employees, profile) {
 
   // Agregar vendas por setor operacional
   const setorVendas = {};
+  const setorDiaSemana = {}; // setor -> [dom..sab] venda + dias contados
   mercRows.forEach(r => {
     setorVendas[r.setor] = setorVendas[r.setor] || { vendaLiquida: 0, qtdItens: 0, qtdeVendida: 0 };
     setorVendas[r.setor].vendaLiquida += r.vendaLiquida;
     setorVendas[r.setor].qtdItens += r.qtdItens;
     setorVendas[r.setor].qtdeVendida += r.qtdeVendida;
+    // Curva por dia da semana
+    const dow = new Date(`${r.data}T12:00:00`).getDay();
+    setorDiaSemana[r.setor] = setorDiaSemana[r.setor] || { venda: [0,0,0,0,0,0,0], datas: [new Set(),new Set(),new Set(),new Set(),new Set(),new Set(),new Set()] };
+    setorDiaSemana[r.setor].venda[dow] += r.vendaLiquida;
+    setorDiaSemana[r.setor].datas[dow].add(r.data);
   });
 
   // Agregar colaboradores por setor operacional (exclui caixa e administrativo)
@@ -1063,6 +1069,19 @@ function buildSetorDashboard(mercRows, employees, profile) {
     const vendaPorColab = colaboradores ? vendaDia / colaboradores : 0;
     const itensPorColab = colaboradores ? itensDia / colaboradores : 0;
     const participacao = vendaTotalGeral ? (v.vendaLiquida / vendaTotalGeral) * 100 : 0;
+    // Venda média por dia da semana (curva de demanda do setor)
+    const ds = setorDiaSemana[setor];
+    let curvaDiaSemana = [0,0,0,0,0,0,0];
+    let picoDia = '—';
+    if (ds) {
+      curvaDiaSemana = ds.venda.map((vv, i) => {
+        const nd = ds.datas[i].size;
+        return nd ? Math.round(vv / nd) : 0;
+      });
+      const nomesDia = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+      const maxIdx = curvaDiaSemana.indexOf(Math.max(...curvaDiaSemana));
+      picoDia = nomesDia[maxIdx];
+    }
     dashboard.push({
       setor,
       vendaDia: Math.round(vendaDia),
@@ -1070,6 +1089,8 @@ function buildSetorDashboard(mercRows, employees, profile) {
       itensDia: Math.round(itensDia),
       colaboradores: Math.round(colaboradores * 10) / 10,
       horasSemanais: Math.round(e.horas),
+      curvaDiaSemana,
+      picoDia,
       vendaPorColab: Math.round(vendaPorColab),
       itensPorColab: Math.round(itensPorColab),
       participacao: Number(participacao.toFixed(1)),

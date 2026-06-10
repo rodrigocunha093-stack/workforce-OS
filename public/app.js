@@ -226,8 +226,20 @@ function renderSetorDashboard(data) {
             <div><small>Itens/dia</small><b>${d.itensDia.toLocaleString('pt-BR')}</b></div>
             <div><small>Venda/colab.</small><b>${d.colaboradores ? money(d.vendaPorColab) : '—'}</b></div>
             <div><small>Itens/colab.</small><b>${d.colaboradores ? d.itensPorColab.toLocaleString('pt-BR') : '—'}</b></div>
-            <div><small>Venda/mês</small><b>${money(d.vendaMes)}</b></div>
+            <div><small>Pico semanal</small><b>${d.picoDia || '—'}</b></div>
           </div>
+          ${d.curvaDiaSemana && d.curvaDiaSemana.some(v => v > 0) ? `
+          <div class="icos-curva">
+            <small>Carga por dia da semana</small>
+            <div class="icos-bars">
+              ${['D','S','T','Q','Q','S','S'].map((lbl, i) => {
+                const max = Math.max(...d.curvaDiaSemana);
+                const h = max ? Math.max(6, Math.round(d.curvaDiaSemana[i] / max * 100)) : 6;
+                const isPico = d.curvaDiaSemana[i] === max && max > 0;
+                return `<div class="icos-bar-wrap" title="${lbl}: ${money(d.curvaDiaSemana[i])}"><div class="icos-bar ${isPico?'pico':''}" style="height:${h}%"></div><span>${lbl}</span></div>`;
+              }).join('')}
+            </div>
+          </div>` : ''}
           ${d.nomes && d.nomes.length ? `<div class="icos-team">${d.nomes.slice(0, 6).map(n => `<span>${n}</span>`).join('')}${d.nomes.length > 6 ? `<span>+${d.nomes.length - 6}</span>` : ''}</div>` : '<div class="icos-team empty">Sem equipe cadastrada neste setor</div>'}
         </article>
       `).join('')}

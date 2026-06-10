@@ -752,3 +752,18 @@ select option { background: #141b2e; color: #e8eef5; }
   border-color: rgba(52,211,153,0.4);
   color: #6ee7b7;
 }
+
+/* Curva por dia da semana no card ICOS */
+.icos-curva { margin: 10px 0; }
+.icos-curva > small { display: block; color: #94a3b8; font-size: 10px; margin-bottom: 6px; }
+.icos-bars { display: flex; gap: 4px; align-items: flex-end; height: 48px; }
+.icos-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; height: 100%; justify-content: flex-end; }
+.icos-bar {
+  width: 100%;
+  background: rgba(45,212,191,0.35);
+  border-radius: 3px 3px 0 0;
+  min-height: 4px;
+  transition: all 0.2s;
+}
+.icos-bar.pico { background: linear-gradient(180deg, #2dd4bf, #3b82f6); }
+.icos-bar-wrap span { font-size: 9px; color: #64748b; }
