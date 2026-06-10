@@ -1393,6 +1393,30 @@ async function renderCompanyInfo() {
 
 let managedEmployees = [];
 
+// Espelha o mapeamento do backend: mercadológico (m2) -> setor operacional
+const MERC_SETOR_FRONT = {
+  'acougue': 'Açougue', 'carnes': 'Açougue',
+  'padaria': 'Padaria', 'panificacao': 'Padaria', 'confeitaria': 'Padaria',
+  'flv': 'Hortifruti', 'hortifruti': 'Hortifruti',
+  'frios e laticineos': 'Frios e Laticínios', 'frios e laticinios': 'Frios e Laticínios', 'frios': 'Frios e Laticínios', 'laticinios': 'Frios e Laticínios',
+  'ilhas e congelados': 'Congelados', 'congelados': 'Congelados', 'ilhas': 'Congelados',
+  'peixaria': 'Peixaria', 'pescados': 'Peixaria',
+  'bazar': 'Mercearia', 'bebidas': 'Mercearia', 'cereais': 'Mercearia',
+  'limpeza': 'Mercearia', 'mercearia doce': 'Mercearia', 'mercearia salgada': 'Mercearia',
+  'perfumaria e higiene pessoal': 'Mercearia', 'perfumaria': 'Mercearia', 'higiene': 'Mercearia'
+};
+function mercParaSetorFront(merc) {
+  const k = String(merc || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return MERC_SETOR_FRONT[k] || merc || 'Outros';
+}
+function setorDerivadoDeMercs(mercs) {
+  if (!mercs || !mercs.length) return '';
+  const setores = mercs.map(mercParaSetorFront);
+  const freq = {};
+  setores.forEach(s => { freq[s] = (freq[s] || 0) + 1; });
+  return Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
+}
+
 function openMercadologicoSelector(idx, data) {
   const emp = managedEmployees[idx];
   const opts = data.mercadologicosM2 || [];
@@ -1430,6 +1454,10 @@ function openMercadologicoSelector(idx, data) {
   overlay.querySelector('#mercConfirm').onclick = () => {
     const marcados = [...overlay.querySelectorAll('input[type=checkbox]:checked')].map(i => i.value);
     managedEmployees[idx].mercadologicos = marcados;
+    // Preenche o setor automaticamente com o setor operacional derivado
+    if (marcados.length) {
+      managedEmployees[idx].setor = setorDerivadoDeMercs(marcados);
+    }
     overlay.remove();
     renderEmployeesManager(data);
   };
@@ -1483,9 +1511,11 @@ function renderEmployeesManager(data) {
       ${filtered.map(({ e, originalIdx: i }) => {
         const temMerc = data.mercadologicosM2 && data.mercadologicosM2.length;
         const mercSel = Array.isArray(e.mercadologicos) ? e.mercadologicos : [];
-        const setorCell = temMerc
-          ? `<button class="merc-select-btn" data-merc-btn="${i}" type="button" title="Selecionar mercadológicos">${mercSel.length ? `📦 ${mercSel.length} grupo${mercSel.length>1?'s':''}` : '📦 Selecionar'}</button>`
-          : `<input data-i="${i}" data-f="setor" value="${(e.setor||'').replace(/"/g,'&quot;')}" placeholder="Setor" list="setoresList">`;
+        const setorCell = `
+          <div class="setor-cell">
+            <input data-i="${i}" data-f="setor" value="${(e.setor||'').replace(/"/g,'&quot;')}" placeholder="Setor" list="setoresList">
+            ${temMerc ? `<button class="merc-select-btn ${mercSel.length?'has-sel':''}" data-merc-btn="${i}" type="button" title="${mercSel.length ? mercSel.join(', ') : 'Selecionar mercadológicos'}">📦${mercSel.length ? ' '+mercSel.length : ''}</button>` : ''}
+          </div>`;
         return `
         <div class="emp-row">
           <input data-i="${i}" data-f="nome" value="${(e.nome||'').replace(/"/g,'&quot;')}" placeholder="Nome">

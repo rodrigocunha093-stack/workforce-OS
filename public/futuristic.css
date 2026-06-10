@@ -738,3 +738,17 @@ select option { background: #141b2e; color: #e8eef5; }
   gap: 10px;
   border-top: 1px solid var(--fx-border);
 }
+
+/* Célula de setor: input + botão mercadológico lado a lado */
+.setor-cell { display: flex; gap: 4px; align-items: center; }
+.setor-cell input { flex: 1; min-width: 0; }
+.setor-cell .merc-select-btn {
+  flex-shrink: 0;
+  padding: 9px 8px;
+  font-size: 13px;
+}
+.merc-select-btn.has-sel {
+  background: rgba(52,211,153,0.15);
+  border-color: rgba(52,211,153,0.4);
+  color: #6ee7b7;
+}
