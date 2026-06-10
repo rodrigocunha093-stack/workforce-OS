@@ -58,6 +58,76 @@ const dayTypeLabels = {
   sunday: 'domingo'
 };
 
+let opsPeriod = 'dia';
+
+function renderOpsDashboard(data) {
+  const el = document.getElementById('opsDashboard');
+  if (!el) return;
+  const ops = data.operationalDashboard;
+  if (!ops) { el.innerHTML = '<div class="summary-empty"><strong>Importe vendas para ativar o painel</strong><span>Importe vendas VRSoft e/ou mercadológico na aba Implantação.</span></div>'; return; }
+
+  const periodoLabel = { dia: 'por dia', semana: 'por semana', mes: 'por mês' }[opsPeriod];
+  const fat = ops.faturamento[opsPeriod];
+  const fc = ops.frenteCaixa;
+  const hc = ops.headcount;
+  const hcColor = hc.status === 'baixo' ? 'ops-bad' : hc.status === 'alto' ? 'ops-warn' : 'ops-ok';
+
+  el.innerHTML = `
+    <div class="ops-kpis">
+      <article class="ops-kpi ops-primary">
+        <small>Faturamento ${periodoLabel}</small>
+        <strong>${money(fat)}</strong>
+        <span>fonte: ${ops.fonteFat}</span>
+      </article>
+      <article class="ops-kpi ${hcColor}">
+        <small>Dimensionamento da equipe</small>
+        <strong>${hc.atual} <span class="ops-vs">/ ~${hc.ideal} ideal</span></strong>
+        <span>${hc.status === 'baixo' ? '⚠️ Abaixo do ideal' : hc.status === 'alto' ? 'Acima do ideal' : '✓ Dentro do ideal'} (1 colab. / R$33-40k)</span>
+      </article>
+      <article class="ops-kpi">
+        <small>Pico de fluxo (caixa)</small>
+        <strong>${fc.clientesPicoHora}<span class="ops-vs">/h às ${fc.horaPico}</span></strong>
+        <span>${fc.checkoutsPico} checkouts no pico · ${fc.operadoresCaixa} operadores</span>
+      </article>
+      <article class="ops-kpi">
+        <small>Ticket médio</small>
+        <strong>${money(fc.ticketMedio)}</strong>
+        <span>${fc.clientesDia} clientes/dia · TMA ${fc.tmaMin}min</span>
+      </article>
+    </div>
+
+    <div class="ops-grid">
+      <article class="ops-card">
+        <h4>👤 Frente de Caixa</h4>
+        <div class="ops-row"><span>Clientes/hora (meta)</span><b>${fc.clientesPorHora}</b></div>
+        <div class="ops-row"><span>Pico observado</span><b>${fc.clientesPicoHora}/h às ${fc.horaPico}</b></div>
+        <div class="ops-row ${fc.checkoutsPico > fc.operadoresCaixa ? 'ops-row-bad' : ''}"><span>Checkouts no pico</span><b>${fc.checkoutsPico} (tem ${fc.operadoresCaixa})</b></div>
+        <div class="ops-row"><span>Faturamento/checkout·hora</span><b>${money(fc.fatCheckoutHora)}</b></div>
+      </article>
+      <article class="ops-card">
+        <h4>📦 Dimensionamento Global</h4>
+        <div class="ops-row"><span>Faturamento/mês</span><b>${money(ops.faturamento.mes)}</b></div>
+        <div class="ops-row"><span>Equipe ideal (faixa)</span><b>${hc.idealMin} a ${hc.idealMax}</b></div>
+        <div class="ops-row"><span>Equipe atual</span><b>${hc.atual}</b></div>
+        <div class="ops-row ${hcColor === 'ops-bad' ? 'ops-row-bad' : ''}"><span>Status</span><b>${hc.status === 'baixo' ? 'Subdimensionado' : hc.status === 'alto' ? 'Superdimensionado' : 'Equilibrado'}</b></div>
+      </article>
+      <article class="ops-card ops-alerts">
+        <h4>🚨 Alertas inteligentes</h4>
+        ${ops.alertas.map(a => `<div class="ops-alert ops-alert-${a.nivel}">${a.texto}</div>`).join('')}
+      </article>
+    </div>
+  `;
+
+  // Seletor de período
+  document.querySelectorAll('#opsPeriodSwitch .ops-period-btn').forEach(btn => {
+    btn.onclick = () => {
+      opsPeriod = btn.dataset.period;
+      document.querySelectorAll('#opsPeriodSwitch .ops-period-btn').forEach(b => b.classList.toggle('active', b === btn));
+      renderOpsDashboard(data);
+    };
+  });
+}
+
 function renderKpis(scenarios, metadata) {
   const base = scenarios[0];
   const transition = scenarios[1];
@@ -2168,6 +2238,7 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
       };
     }
     safeRender('acesso do cliente', () => applyClientAccess(data));
+    safeRender('painel operacional', () => renderOpsDashboard(data));
     safeRender('indicadores', () => renderKpis(data.scenarios, data.metadata));
     safeRender('prontidao enterprise', () => renderEnterpriseReadiness(data));
     safeRender('forca semanal', () => renderMonthlyWeekAnalysis(data));

@@ -1012,6 +1012,102 @@ function empSetorOperacional(emp) {
   return mercadologicoParaSetor(emp.setor);
 }
 
+// Benchmarks operacionais de supermercado (calibráveis)
+const BENCH = {
+  fatPorFuncionario: 36500,    // R$/mês por colaborador total (faixa 33k-40k)
+  fatPorCheckoutHora: 1500,    // R$/hora de checkout ativo
+  clientesPorHoraCaixa: 20,    // 18-22 clientes/hora por caixa
+  tmaMin: 2.5,                 // tempo médio de atendimento (min)
+  ipm: 22,                     // itens por minuto
+  rupturaMeta: 5,              // % meta de ruptura
+  ticketMedio: 75              // R$ ticket médio referência
+};
+
+// Dashboard executivo operacional (KPIs por dia/semana/mês)
+function buildOperationalDashboard(state, caixaSalesRows) {
+  const mercRows = Array.isArray(state.salesByMercadologico) ? state.salesByMercadologico : [];
+  const employees = state.employees || [];
+  const caixaRows = caixaSalesRows || state.salesRows || [];
+
+  // --- FATURAMENTO ---
+  let fatDia = 0, fonteFat = 'sem dados';
+  if (mercRows.length) {
+    const diasMerc = new Set(mercRows.map(r => r.data)).size || 1;
+    fatDia = mercRows.reduce((s, r) => s + r.vendaLiquida, 0) / diasMerc;
+    fonteFat = 'mercadológico';
+  } else if (caixaRows.length) {
+    const diasCx = new Set(caixaRows.map(r => r.data)).size || 1;
+    fatDia = caixaRows.reduce((s, r) => s + Number(r.vendaLiquida || 0), 0) / diasCx;
+    fonteFat = 'caixa VRSoft';
+  }
+  const fatMes = fatDia * 30;
+  const fatSemana = fatDia * 7;
+
+  // --- DIMENSIONAMENTO GLOBAL (1 func / R$33-40k/mês) ---
+  const headcountIdeal = fatMes ? Math.round(fatMes / BENCH.fatPorFuncionario) : 0;
+  const headcountIdealMin = fatMes ? Math.round(fatMes / 40000) : 0;
+  const headcountIdealMax = fatMes ? Math.round(fatMes / 33000) : 0;
+  const headcountAtual = employees.length;
+  let headcountStatus = 'ok';
+  if (headcountAtual && headcountIdeal) {
+    if (headcountAtual < headcountIdeal * 0.85) headcountStatus = 'baixo';
+    else if (headcountAtual > headcountIdeal * 1.15) headcountStatus = 'alto';
+  }
+
+  // --- FRENTE DE CAIXA (do VRSoft) ---
+  let clientesPicoHora = 0, horaPico = '—', clientesDia = 0, ticketMedio = BENCH.ticketMedio;
+  if (caixaRows.length) {
+    const porHora = {};
+    const diasCx = new Set(caixaRows.map(r => r.data)).size || 1;
+    let totalCupons = 0, totalVenda = 0;
+    caixaRows.forEach(r => {
+      const h = String(r.horaInicio || '').slice(0, 2);
+      porHora[h] = (porHora[h] || 0) + Number(r.cupons || 0);
+      totalCupons += Number(r.cupons || 0);
+      totalVenda += Number(r.vendaLiquida || 0);
+    });
+    // média por hora por dia
+    const picoEntry = Object.entries(porHora).sort((a, b) => b[1] - a[1])[0];
+    if (picoEntry) { clientesPicoHora = Math.round(picoEntry[1] / diasCx); horaPico = `${picoEntry[0]}h`; }
+    clientesDia = Math.round(totalCupons / diasCx);
+    ticketMedio = totalCupons ? Math.round(totalVenda / totalCupons) : BENCH.ticketMedio;
+  }
+  const checkoutsPico = Math.max(1, Math.ceil(clientesPicoHora / BENCH.clientesPorHoraCaixa));
+  const operadoresCaixa = employees.filter(isOperadorCaixa).length;
+
+  // --- ALERTAS INTELIGENTES ---
+  const alertas = [];
+  if (headcountIdeal && headcountStatus === 'baixo') {
+    alertas.push({ nivel: 'alto', texto: `Equipe abaixo do ideal: ${headcountAtual} de ~${headcountIdeal} sugeridos para R$ ${Math.round(fatMes/1000)}k/mês.` });
+  } else if (headcountStatus === 'alto') {
+    alertas.push({ nivel: 'medio', texto: `Equipe acima do dimensionamento (${headcountAtual} vs ~${headcountIdeal}). Avaliar produtividade.` });
+  }
+  if (clientesPicoHora && checkoutsPico > operadoresCaixa) {
+    alertas.push({ nivel: 'alto', texto: `Pico às ${horaPico} exige ${checkoutsPico} caixas, mas há ${operadoresCaixa} operadores. Risco de fila > 8min.` });
+  }
+  // Setores sem equipe (risco de ruptura)
+  const setoresSemEquipe = (state._setoresSemEquipe || []);
+  if (setoresSemEquipe.length) {
+    alertas.push({ nivel: 'medio', texto: `${setoresSemEquipe.length} setor(es) com venda mas sem equipe — risco de ruptura: ${setoresSemEquipe.slice(0,3).join(', ')}.` });
+  }
+  if (!alertas.length) alertas.push({ nivel: 'ok', texto: 'Operação equilibrada nos indicadores analisados.' });
+
+  return {
+    fonteFat,
+    faturamento: { dia: Math.round(fatDia), semana: Math.round(fatSemana), mes: Math.round(fatMes) },
+    headcount: { ideal: headcountIdeal, idealMin: headcountIdealMin, idealMax: headcountIdealMax, atual: headcountAtual, status: headcountStatus },
+    frenteCaixa: {
+      clientesPicoHora, horaPico, clientesDia, ticketMedio,
+      checkoutsPico, operadoresCaixa,
+      fatCheckoutHora: BENCH.fatPorCheckoutHora,
+      clientesPorHora: BENCH.clientesPorHoraCaixa,
+      tmaMin: BENCH.tmaMin
+    },
+    benchmarks: BENCH,
+    alertas
+  };
+}
+
 // Dashboard inteligente: cruza vendas POR MERCADOLÓGICO (m2) com a equipe
 function buildSetorDashboard(mercRows, employees, profile) {
   if (!mercRows || !mercRows.length) return [];
@@ -1833,6 +1929,10 @@ async function applyClientState(summary, user, weekFilter = null) {
   }
   // Dashboard inteligente por setor (cruza vendas com equipe)
   summary.setorDashboard = buildSetorDashboard(mercRows, state.employees || [], profile);
+  // Setores sem equipe (para alertas do dashboard operacional)
+  state._setoresSemEquipe = (summary.setorDashboard || []).filter(s => s.colaboradores === 0 && s.vendaDia > 0).map(s => s.setor);
+  // Dashboard executivo operacional (KPIs por dia/semana/mês)
+  summary.operationalDashboard = buildOperationalDashboard(state, state.salesRows);
   // Mercadológicos nível 2 disponíveis (para o campo Setor do cadastro)
   summary.mercadologicosM2 = mercRows.length
     ? [...new Set(mercRows.map(r => r.mercadologico))].sort()

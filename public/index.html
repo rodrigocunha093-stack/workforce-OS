@@ -78,6 +78,21 @@
           <div class="confidence"><small>Confiança da análise</small><strong id="confidenceValue"></strong><span><i id="confidenceBar"></i></span></div>
         </div>
 
+        <article class="panel ops-dashboard-panel">
+          <div class="panel-head">
+            <div>
+              <h3>⚡ Painel Operacional</h3>
+              <p class="note">Indicadores-chave da operação cruzando faturamento, fluxo de caixa e equipe.</p>
+            </div>
+            <div class="ops-period-switch" id="opsPeriodSwitch">
+              <button class="ops-period-btn active" data-period="dia">Dia</button>
+              <button class="ops-period-btn" data-period="semana">Semana</button>
+              <button class="ops-period-btn" data-period="mes">Mês</button>
+            </div>
+          </div>
+          <div id="opsDashboard"></div>
+        </article>
+
         <div id="kpis" class="kpis"></div>
 
         <article class="panel enterprise-readiness-panel">
