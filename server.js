@@ -1012,28 +1012,31 @@ function empSetorOperacional(emp) {
   return mercadologicoParaSetor(emp.setor);
 }
 
-// Dashboard inteligente por setor: cruza vendas (mercadológico) com a equipe
+// Dashboard inteligente: cruza vendas POR MERCADOLÓGICO (m2) com a equipe
 function buildSetorDashboard(mercRows, employees, profile) {
   if (!mercRows || !mercRows.length) return [];
   const dias = new Set(mercRows.map(r => r.data)).size || 1;
   const vendaTotalGeral = mercRows.reduce((s, r) => s + r.vendaLiquida, 0);
+  const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-  // Agregar vendas por setor operacional
+  // Agregar vendas POR MERCADOLÓGICO (m2) — chave normalizada, nome original preservado
   const setorVendas = {};
-  const setorDiaSemana = {}; // setor -> [dom..sab] venda + dias contados
+  const setorDiaSemana = {};
+  const nomeOriginal = {};
   mercRows.forEach(r => {
-    setorVendas[r.setor] = setorVendas[r.setor] || { vendaLiquida: 0, qtdItens: 0, qtdeVendida: 0 };
-    setorVendas[r.setor].vendaLiquida += r.vendaLiquida;
-    setorVendas[r.setor].qtdItens += r.qtdItens;
-    setorVendas[r.setor].qtdeVendida += r.qtdeVendida;
-    // Curva por dia da semana
+    const k = norm(r.mercadologico);
+    nomeOriginal[k] = r.mercadologico; // preserva o nome como veio (ex: "BEBIDAS")
+    setorVendas[k] = setorVendas[k] || { vendaLiquida: 0, qtdItens: 0, qtdeVendida: 0 };
+    setorVendas[k].vendaLiquida += r.vendaLiquida;
+    setorVendas[k].qtdItens += r.qtdItens;
+    setorVendas[k].qtdeVendida += r.qtdeVendida;
     const dow = new Date(`${r.data}T12:00:00`).getDay();
-    setorDiaSemana[r.setor] = setorDiaSemana[r.setor] || { venda: [0,0,0,0,0,0,0], datas: [new Set(),new Set(),new Set(),new Set(),new Set(),new Set(),new Set()] };
-    setorDiaSemana[r.setor].venda[dow] += r.vendaLiquida;
-    setorDiaSemana[r.setor].datas[dow].add(r.data);
+    setorDiaSemana[k] = setorDiaSemana[k] || { venda: [0,0,0,0,0,0,0], datas: [new Set(),new Set(),new Set(),new Set(),new Set(),new Set(),new Set()] };
+    setorDiaSemana[k].venda[dow] += r.vendaLiquida;
+    setorDiaSemana[k].datas[dow].add(r.data);
   });
 
-  // Agregar colaboradores por setor operacional (exclui caixa e administrativo)
+  // Agregar colaboradores POR MERCADOLÓGICO (m2) que cada um cobre
   const setorEquipe = {};
   (employees || []).forEach(emp => {
     if (isOperadorCaixa(emp)) return;
@@ -1041,36 +1044,36 @@ function buildSetorDashboard(mercRows, employees, profile) {
     const cargoOp = String(emp.cargo || '').toLowerCase();
     if (setorOp.includes('administrativo') || cargoOp.includes('financeiro') || cargoOp.includes('fiscal') || cargoOp.includes('faturamento') || cargoOp.includes('rh') || cargoOp.includes('ti') || cargoOp.includes('mkt') || cargoOp.includes('motorista')) return;
 
-    // Setores operacionais que o colaborador cobre (multi-mercadológico)
-    let setoresOp;
-    if (Array.isArray(emp.mercadologicos) && emp.mercadologicos.length) {
-      setoresOp = [...new Set(emp.mercadologicos.map(mercadologicoParaSetor))];
-    } else {
-      setoresOp = [empSetorOperacional(emp)];
-    }
-    const fracao = 1 / setoresOp.length; // divide o colaborador entre os setores que cobre
-    setoresOp.forEach(setor => {
-      setorEquipe[setor] = setorEquipe[setor] || { colaboradores: 0, horas: 0, nomes: [] };
-      setorEquipe[setor].colaboradores += fracao;
-      setorEquipe[setor].horas += Number(emp.horasSemanais || 44) * fracao;
-      setorEquipe[setor].nomes.push(setoresOp.length > 1 ? `${emp.nome} (${Math.round(fracao * 100)}%)` : emp.nome);
+    // Mercadológicos m2 que o colaborador cobre (ou o setor, se não marcou)
+    const mercs = (Array.isArray(emp.mercadologicos) && emp.mercadologicos.length)
+      ? emp.mercadologicos
+      : [emp.setor];
+    const fracao = 1 / mercs.length; // divide entre os m2 que cobre
+    mercs.forEach(m => {
+      const k = norm(m);
+      if (!nomeOriginal[k]) nomeOriginal[k] = m;
+      setorEquipe[k] = setorEquipe[k] || { colaboradores: 0, horas: 0, nomes: [] };
+      setorEquipe[k].colaboradores += fracao;
+      setorEquipe[k].horas += Number(emp.horasSemanais || 44) * fracao;
+      setorEquipe[k].nomes.push(mercs.length > 1 ? `${emp.nome} (${Math.round(fracao * 100)}%)` : emp.nome);
     });
   });
 
-  // Unir todos os setores que têm venda OU equipe
-  const todosSetores = new Set([...Object.keys(setorVendas), ...Object.keys(setorEquipe)]);
+  // Unir todos os mercadológicos com venda OU equipe
+  const todasChaves = new Set([...Object.keys(setorVendas), ...Object.keys(setorEquipe)]);
   const dashboard = [];
-  todosSetores.forEach(setor => {
-    const v = setorVendas[setor] || { vendaLiquida: 0, qtdItens: 0, qtdeVendida: 0 };
-    const e = setorEquipe[setor] || { colaboradores: 0, horas: 0, nomes: [] };
+  todasChaves.forEach(k => {
+    const setor = nomeOriginal[k] || k;
+    const v = setorVendas[k] || { vendaLiquida: 0, qtdItens: 0, qtdeVendida: 0 };
+    const e = setorEquipe[k] || { colaboradores: 0, horas: 0, nomes: [] };
     const vendaDia = v.vendaLiquida / dias;
     const itensDia = v.qtdItens / dias;
     const colaboradores = e.colaboradores;
     const vendaPorColab = colaboradores ? vendaDia / colaboradores : 0;
     const itensPorColab = colaboradores ? itensDia / colaboradores : 0;
     const participacao = vendaTotalGeral ? (v.vendaLiquida / vendaTotalGeral) * 100 : 0;
-    // Venda média por dia da semana (curva de demanda do setor)
-    const ds = setorDiaSemana[setor];
+    // Venda média por dia da semana (curva de demanda do mercadológico)
+    const ds = setorDiaSemana[k];
     let curvaDiaSemana = [0,0,0,0,0,0,0];
     let picoDia = '—';
     if (ds) {
