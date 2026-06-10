@@ -1092,6 +1092,65 @@ function buildOperationalDashboard(state, caixaSalesRows) {
   }
   if (!alertas.length) alertas.push({ nivel: 'ok', texto: 'Operação equilibrada nos indicadores analisados.' });
 
+  // --- KPIs DE RUPTURA E PERDAS (estimados) ---
+  // Ruptura sobe quando setores estão subdimensionados. Base de mercado ~11%, meta <5%.
+  const setoresSemEq = (state._setoresSemEquipe || []).length;
+  const totalSetoresVenda = (state._totalSetoresVenda || 1);
+  const fatorCobertura = totalSetoresVenda ? 1 - (setoresSemEq / totalSetoresVenda) : 1;
+  const rupturaEstimada = Number((11 - fatorCobertura * 6).toFixed(1)); // 5% (cobertura total) a 11% (sem cobertura)
+  const impactoRuptura = Math.round(fatMes * (rupturaEstimada / 100));
+  const perdaValidade = Math.round(fatMes * 0.0175); // 1,75% médio
+  // Abandono: se o pico não tem checkouts suficientes, ~3% das vendas do pico
+  const vendaPicoHora = clientesPicoHora * ticketMedio;
+  const abandonoFila = checkoutsPico > operadoresCaixa ? Math.round(vendaPicoHora * 0.03 * 30) : 0;
+  const perdas = {
+    rupturaEstimada,
+    rupturaMeta: BENCH.rupturaMeta,
+    impactoRuptura,
+    perdaValidade,
+    abandonoFila,
+    totalPerdas: impactoRuptura + perdaValidade + abandonoFila
+  };
+
+  // --- MULTIFUNCIONALIDADE (repositor leve como reforço de caixa no pico) ---
+  let horasCriticas = [];
+  if (caixaRows.length) {
+    const porHora = {};
+    const diasCx = new Set(caixaRows.map(r => r.data)).size || 1;
+    caixaRows.forEach(r => {
+      const h = String(r.horaInicio || '').slice(0, 2);
+      porHora[h] = (porHora[h] || 0) + Number(r.cupons || 0);
+    });
+    horasCriticas = Object.entries(porHora)
+      .map(([h, c]) => ({ hora: `${h}h`, clientes: Math.round(c / diasCx), checkouts: Math.ceil((c / diasCx) / BENCH.clientesPorHoraCaixa) }))
+      .filter(x => x.checkouts > operadoresCaixa)
+      .sort((a, b) => b.clientes - a.clientes)
+      .slice(0, 5);
+  }
+  // Repositores "leves" candidatos a reforço (perfumaria, biscoitos, bebidas leves)
+  const repositoresLeves = employees.filter(e => {
+    const m = (Array.isArray(e.mercadologicos) ? e.mercadologicos.join(' ') : (e.setor || '')).toLowerCase();
+    const c = String(e.cargo || '').toLowerCase();
+    return c.includes('repos') && (m.includes('perfumaria') || m.includes('higiene') || m.includes('biscoito') || m.includes('matinal') || m.includes('bebida') || m.includes('bazar'));
+  }).map(e => e.nome);
+  const multifuncionalidade = {
+    horasCriticas,
+    repositoresLeves,
+    reforcoNecessario: horasCriticas.length ? Math.max(...horasCriticas.map(h => h.checkouts - operadoresCaixa)) : 0
+  };
+
+  // --- TENDÊNCIA DE FATURAMENTO (série diária) ---
+  let tendencia = [];
+  const fonteSerie = mercRows.length ? mercRows : caixaRows;
+  if (fonteSerie.length) {
+    const porData = {};
+    fonteSerie.forEach(r => {
+      porData[r.data] = (porData[r.data] || 0) + Number(r.vendaLiquida || 0);
+    });
+    tendencia = Object.entries(porData).sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([data, valor]) => ({ data, valor: Math.round(valor) }));
+  }
+
   return {
     fonteFat,
     faturamento: { dia: Math.round(fatDia), semana: Math.round(fatSemana), mes: Math.round(fatMes) },
@@ -1103,6 +1162,9 @@ function buildOperationalDashboard(state, caixaSalesRows) {
       clientesPorHora: BENCH.clientesPorHoraCaixa,
       tmaMin: BENCH.tmaMin
     },
+    perdas,
+    multifuncionalidade,
+    tendencia,
     benchmarks: BENCH,
     alertas
   };
@@ -1931,6 +1993,7 @@ async function applyClientState(summary, user, weekFilter = null) {
   summary.setorDashboard = buildSetorDashboard(mercRows, state.employees || [], profile);
   // Setores sem equipe (para alertas do dashboard operacional)
   state._setoresSemEquipe = (summary.setorDashboard || []).filter(s => s.colaboradores === 0 && s.vendaDia > 0).map(s => s.setor);
+  state._totalSetoresVenda = (summary.setorDashboard || []).filter(s => s.vendaDia > 0).length;
   // Dashboard executivo operacional (KPIs por dia/semana/mês)
   summary.operationalDashboard = buildOperationalDashboard(state, state.salesRows);
   // Mercadológicos nível 2 disponíveis (para o campo Setor do cadastro)

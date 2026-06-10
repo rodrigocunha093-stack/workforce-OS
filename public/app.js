@@ -116,6 +116,59 @@ function renderOpsDashboard(data) {
         ${ops.alertas.map(a => `<div class="ops-alert ops-alert-${a.nivel}">${a.texto}</div>`).join('')}
       </article>
     </div>
+
+    ${ops.perdas ? `
+    <div class="ops-section-title">📉 Perdas e gargalos estimados (${periodoLabel === 'por dia' ? 'projeção mensal' : 'mês'})</div>
+    <div class="ops-kpis">
+      <article class="ops-kpi ops-loss">
+        <small>Ruptura estimada de gôndola</small>
+        <strong>${ops.perdas.rupturaEstimada}%</strong>
+        <span>meta < ${ops.perdas.rupturaMeta}% · impacto ${money(ops.perdas.impactoRuptura)}/mês</span>
+      </article>
+      <article class="ops-kpi ops-loss">
+        <small>Perda por validade/quebra</small>
+        <strong>${money(ops.perdas.perdaValidade)}</strong>
+        <span>~1,75% do faturamento/mês</span>
+      </article>
+      <article class="ops-kpi ops-loss">
+        <small>Abandono por fila</small>
+        <strong>${money(ops.perdas.abandonoFila)}</strong>
+        <span>${ops.perdas.abandonoFila ? 'filas no pico > 8min' : 'sem fila crítica detectada'}</span>
+      </article>
+      <article class="ops-kpi ops-loss-total">
+        <small>Perda total potencial</small>
+        <strong>${money(ops.perdas.totalPerdas)}</strong>
+        <span>oportunidade de recuperação/mês</span>
+      </article>
+    </div>` : ''}
+
+    ${ops.multifuncionalidade && ops.multifuncionalidade.horasCriticas.length ? `
+    <div class="ops-section-title">🔄 Multifuncionalidade planejada</div>
+    <div class="ops-card ops-multi">
+      <p class="note">Horários onde o caixa precisa de reforço (checkouts &gt; operadores). Treine repositores leves para cobrir.</p>
+      <div class="ops-multi-hours">
+        ${ops.multifuncionalidade.horasCriticas.map(h => `<span class="ops-hour-chip">${h.hora}: ${h.clientes} cli → ${h.checkouts} caixas</span>`).join('')}
+      </div>
+      <div class="ops-multi-sug">
+        <b>Reforço sugerido:</b> +${ops.multifuncionalidade.reforcoNecessario} operador(es) no pico.
+        ${ops.multifuncionalidade.repositoresLeves.length
+          ? `Candidatos (repositores leves): ${ops.multifuncionalidade.repositoresLeves.slice(0,5).join(', ')}.`
+          : 'Cadastre repositores de perfumaria/bazar/bebidas para sugerir candidatos.'}
+      </div>
+    </div>` : ''}
+
+    ${ops.tendencia && ops.tendencia.length > 1 ? `
+    <div class="ops-section-title">📈 Tendência de faturamento (${ops.tendencia.length} dias)</div>
+    <div class="ops-card ops-trend">
+      <div class="ops-trend-bars">
+        ${(() => { const max = Math.max(...ops.tendencia.map(t => t.valor)); return ops.tendencia.map(t => {
+          const h = max ? Math.max(4, Math.round(t.valor / max * 100)) : 4;
+          const dia = t.data.slice(8, 10) + '/' + t.data.slice(5, 7);
+          return `<div class="ops-trend-bar-wrap" title="${dia}: ${money(t.valor)}"><div class="ops-trend-bar" style="height:${h}%"></div></div>`;
+        }).join(''); })()}
+      </div>
+      <div class="ops-trend-foot"><span>${ops.tendencia[0].data.slice(8,10)}/${ops.tendencia[0].data.slice(5,7)}</span><span>${ops.tendencia[ops.tendencia.length-1].data.slice(8,10)}/${ops.tendencia[ops.tendencia.length-1].data.slice(5,7)}</span></div>
+    </div>` : ''}
   `;
 
   // Seletor de período
