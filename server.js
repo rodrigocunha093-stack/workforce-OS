@@ -1309,6 +1309,25 @@ function isReposicao(emp) {
   return cargo.includes('repositor') || cargo.includes('reposicao') || cargo.includes('repos');
 }
 
+// Cargos de apoio/administrativo com horário comercial (cobrem o miolo do dia)
+function isCargoComercial(emp) {
+  const c = String(emp.cargo || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return ['conferente', 'motorista', 'entregador', 'entrega', 'financeiro', 'fiscal',
+    'administrativo', 'faturamento', 'gerente', 'encarregado', 'auxiliar administrativo',
+    'rh', ' ti', 'mkt', 'escritorio', 'compras', 'tesouraria', 'cpd', 'recursos humanos']
+    .some(x => c.includes(x.trim()));
+}
+
+// Turno comercial centralizado: 8h + 1h almoço, cobrindo o miolo do dia (ex: 08-17)
+function generateComercialShift(open, close) {
+  const jornada = 8;
+  const ocupacao = jornada + 1; // inclui 1h de almoço
+  const dur = close - open;
+  const start = open + Math.max(0, Math.round((dur - ocupacao) / 2));
+  const end = Math.min(close, start + ocupacao);
+  return `${formatScheduleHour(start)}-${formatScheduleHour(end)} · ${jornada}h`;
+}
+
 // Jornada PARTIDA para reposição: manhã + tarde, cobrindo os dois períodos.
 // Intervalo conforme sexo: homens podem ter >2h (até 3h); mulheres até 2h.
 function generateRepositorShift(open, close, idx, N, sexo) {
@@ -1663,6 +1682,8 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
     const podeDomingo = emp.podeDomingo !== false;
     const folgaPref = emp.folgaPreferencial || '';
     const reposicao = isReposicao(emp);
+    // Comercial: cargos de apoio/admin OU função única no grupo (1 pessoa)
+    const comercial = !reposicao && (isCargoComercial(emp) || N === 1);
     const sexo = String(emp.sexo || 'feminino').toLowerCase();
 
     const startHour = startForTurno(turno, segSex.open, segSex.close, idx);
@@ -1670,13 +1691,18 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
     const sabStartHour = startForTurno(turno, sabado.open, sabado.close, idx);
     const sabEndHour = Math.min(sabado.close, sabStartHour + shiftHours);
 
-    // Helper: turno do dia útil/sábado conforme tipo (reposição = jornada partida)
-    const turnoUtil = reposicao
-      ? generateRepositorShift(segSex.open, segSex.close, idx, N, sexo)
-      : generateOperatorShift(startHour, endHour);
-    const turnoSab = reposicao
-      ? generateRepositorShift(sabado.open, sabado.close, idx, N, sexo)
-      : generateOperatorShift(sabStartHour, sabEndHour);
+    // Helper: turno do dia útil/sábado conforme tipo
+    let turnoUtil, turnoSab;
+    if (reposicao) {
+      turnoUtil = generateRepositorShift(segSex.open, segSex.close, idx, N, sexo);
+      turnoSab = generateRepositorShift(sabado.open, sabado.close, idx, N, sexo);
+    } else if (comercial) {
+      turnoUtil = generateComercialShift(segSex.open, segSex.close);
+      turnoSab = generateComercialShift(sabado.open, sabado.close);
+    } else {
+      turnoUtil = generateOperatorShift(startHour, endHour);
+      turnoSab = generateOperatorShift(sabStartHour, sabEndHour);
+    }
 
     // Folgas adicionais: prioriza a preferência da operadora (se válida: seg-qui ou domingo)
     const folgaDaysAllowed = [0, 1, 2, 3];
@@ -1702,7 +1728,7 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
         if (sundayClosed || !podeDomingo) {
           shifts.push('Folga');
         } else if (domingo) {
-          shifts.push(reposicao ? generateRepositorShift(domingo.open, domingo.close, idx, N, sexo) : generateOperatorShift(domingo.open, domingo.close));
+          shifts.push(reposicao ? generateRepositorShift(domingo.open, domingo.close, idx, N, sexo) : comercial ? generateComercialShift(domingo.open, domingo.close) : generateOperatorShift(domingo.open, domingo.close));
         } else {
           shifts.push('Folga');
         }
