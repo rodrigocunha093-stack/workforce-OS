@@ -8,4 +8,7 @@ node_modules/
 .env.*
 !.env.example
 
+# Credenciais reais e contas de teste — NUNCA versionar
+SECRETS.md
+
 .vercel
