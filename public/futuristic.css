@@ -855,3 +855,14 @@ select option { background: #141b2e; color: #e8eef5; }
 .weekly-shift { position: relative; }
 .shift-icon { font-size: 10px; margin-left: 3px; opacity: 0.9; }
 .shift-icon.abre { filter: hue-rotate(120deg); }
+
+/* FASE 1: Compliance CLT */
+.clt-box { padding: 14px 16px; margin-bottom: 14px; border-radius: 10px; }
+.clt-box.clt-ok { background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.3); }
+.clt-box.clt-bad { background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.3); }
+.clt-box strong { display: block; font-size: 14px; color: #e8eef5; margin-bottom: 6px; }
+.clt-box.clt-ok strong { color: #6ee7b7; }
+.clt-box.clt-bad strong { color: #fca5a5; }
+.clt-box span { font-size: 12px; color: #94a3b8; }
+.clt-list { font-size: 12px; color: #cbd5e1; line-height: 1.6; }
+.clt-list b { color: #fcd34d; }

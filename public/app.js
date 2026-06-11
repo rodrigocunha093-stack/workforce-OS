@@ -764,7 +764,16 @@ function renderWeeklySchedule(data) {
       }).join('')}
     </div>` : '';
 
+  // FASE 1: Compliance CLT
+  const compliance = (data.complianceCLT && data.complianceCLT[currentCoverageScenario]) || [];
+  const complianceBox = `
+    <div class="clt-box ${compliance.length ? 'clt-bad' : 'clt-ok'}">
+      <strong>${compliance.length ? '⚠️ ' + compliance.length + ' colaborador(es) com alerta CLT' : '✅ Escala em conformidade CLT'}</strong>
+      ${compliance.length ? `<div class="clt-list">${compliance.slice(0, 8).map(c => `<div><b>${c.nome}:</b> ${c.violacoes.join(' · ')}</div>`).join('')}${compliance.length > 8 ? `<div>+${compliance.length - 8} outros</div>` : ''}</div>` : '<span>Interjornada 11h, DSR, máx 44h e 6 dias consecutivos validados.</span>'}
+    </div>`;
+
   document.getElementById('weeklySchedule').innerHTML = `
+    ${complianceBox}
     ${setorChips}
     ${cargoChips}
     <div class="weekly-row weekly-head"><span>Colaborador(a)</span>${days.map((day) => `<span>${day}</span>`).join('')}<span>Auditoria</span></div>
@@ -792,6 +801,41 @@ function renderWeeklySchedule(data) {
       `;
     }).join('')}
   `;
+
+  // FASE 1: Exportar/imprimir escala
+  const exportBtn = document.getElementById('exportSchedule');
+  if (exportBtn) {
+    exportBtn.onclick = () => {
+      const empresa = (data.client && data.client.profile && data.client.profile.empresa) || 'Loja';
+      const loja = (data.client && data.client.profile && data.client.profile.loja) || '';
+      const dias2 = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+      const rows = Object.entries(source.people).map(([nome, shifts]) => {
+        const setor = setorMap[nome] || '';
+        return `<tr><td class="nm">${nome}<small>${setor}</small></td>${shifts.map(s => `<td class="${s === 'Folga' ? 'fg' : ''}">${s.replace(' · ', '<br>')}</td>`).join('')}</tr>`;
+      }).join('');
+      const win = window.open('', '_blank');
+      win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Escala — ${empresa}</title>
+        <style>
+          body{font-family:Arial,sans-serif;margin:24px;color:#111}
+          h1{font-size:20px;margin:0}h2{font-size:13px;color:#555;margin:4px 0 16px;font-weight:400}
+          table{width:100%;border-collapse:collapse;font-size:11px}
+          th,td{border:1px solid #ccc;padding:6px 4px;text-align:center}
+          th{background:#0d7d6f;color:#fff}
+          td.nm{text-align:left;font-weight:700;white-space:nowrap}
+          td.nm small{display:block;font-weight:400;color:#777;font-size:9px}
+          td.fg{background:#f1f1f1;color:#999}
+          .ft{margin-top:16px;font-size:10px;color:#888}
+          @media print{button{display:none}}
+        </style></head><body>
+        <h1>Escala de Trabalho — ${empresa}${loja ? ' · ' + loja : ''}</h1>
+        <h2>${source.label} · gerado pelo TáÓtimo! em ${new Date().toLocaleDateString('pt-BR')}</h2>
+        <table><thead><tr><th>Colaborador</th>${dias2.map(d => `<th>${d}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>
+        <p class="ft">🔓 abre · 🔒 fecha · Folga = descanso. Documento gerado automaticamente — confira a conformidade CLT antes de afixar.</p>
+        <button onclick="window.print()" style="margin-top:16px;padding:10px 20px;background:#0d7d6f;color:#fff;border:none;border-radius:6px;cursor:pointer">Imprimir / Salvar PDF</button>
+        </body></html>`);
+      win.document.close();
+    };
+  }
 
   // Handlers dos chips
   document.querySelectorAll('#weeklySchedule .setor-chip').forEach(chip => {

@@ -1309,6 +1309,52 @@ function isReposicao(emp) {
   return cargo.includes('repositor') || cargo.includes('reposicao') || cargo.includes('repos');
 }
 
+// ===== FASE 1: COMPLIANCE CLT =====
+function shiftStartEnd(shift) {
+  if (!shift || shift === 'Folga') return null;
+  const blocks = String(shift).split('·')[0].trim().split('/');
+  const first = blocks[0].split('-');
+  const last = blocks[blocks.length - 1].split('-');
+  const start = Number(first[0]); const end = Number(last[1]);
+  return (isNaN(start) || isNaN(end)) ? null : { start, end };
+}
+function shiftWorkedHours(shift) {
+  if (!shift || shift === 'Folga') return 0;
+  const m = String(shift).match(/·\s*(\d+)h/);
+  return m ? Number(m[1]) : 0;
+}
+
+// Analisa a escala de um cenário e retorna violações CLT por colaborador
+function checkComplianceCLT(people) {
+  const violacoes = [];
+  Object.entries(people).forEach(([nome, shifts]) => {
+    const v = [];
+    // 1) Horas semanais > 44h
+    const totalHoras = shifts.reduce((s, sh) => s + shiftWorkedHours(sh), 0);
+    if (totalHoras > 44) v.push(`Jornada ${totalHoras}h/sem excede 44h`);
+    // 2) DSR — pelo menos 1 folga na semana
+    const folgas = shifts.filter(sh => sh === 'Folga').length;
+    if (folgas < 1) v.push('Sem descanso semanal (DSR)');
+    // 3) Dias consecutivos > 6
+    let consec = 0, maxConsec = 0;
+    [...shifts, ...shifts].forEach(sh => { // duplica p/ pegar virada de semana
+      if (sh !== 'Folga') { consec++; maxConsec = Math.max(maxConsec, consec); } else consec = 0;
+    });
+    if (maxConsec > 6) v.push(`${maxConsec} dias consecutivos sem folga (máx 6)`);
+    // 4) Interjornada < 11h (fim de um dia ao início do próximo)
+    for (let d = 0; d < 7; d++) {
+      const hoje = shiftStartEnd(shifts[d]);
+      const amanha = shiftStartEnd(shifts[(d + 1) % 7]);
+      if (hoje && amanha) {
+        const descanso = (24 - hoje.end) + amanha.start;
+        if (descanso < 11) { v.push(`Interjornada de ${descanso}h (mín 11h)`); break; }
+      }
+    }
+    if (v.length) violacoes.push({ nome, violacoes: v });
+  });
+  return violacoes;
+}
+
 // Cargos de apoio/administrativo com horário comercial (cobrem o miolo do dia)
 function isCargoComercial(emp) {
   const c = String(emp.cargo || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -2220,6 +2266,11 @@ async function applyClientState(summary, user, weekFilter = null) {
         targetDaysOff: sc.targetDaysOff,
         people: generateGroupedSchedule(profile, state.employees, sc.targetHours || 44, sc.targetDaysOff || 1)
       };
+    });
+    // FASE 1: Compliance CLT — violações por cenário
+    summary.complianceCLT = {};
+    Object.entries(summary.fullSchedule).forEach(([key, sc]) => {
+      summary.complianceCLT[key] = checkComplianceCLT(sc.people);
     });
 
     summary.sundayRotation.forEach((item) => {
