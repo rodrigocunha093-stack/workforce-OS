@@ -2594,6 +2594,40 @@ const server = http.createServer(async (req, res) => {
     const members = await dbSupabase.listOrgMembers(user.orgId);
     return json(res, { ok: true, orgCode: user.orgCode, role: user.role, members });
   }
+  // FASE 3: Self-service — colaborador consulta a própria escala (público, por código + nome)
+  if (req.url === '/api/colaborador/escala' && req.method === 'POST') {
+    (async () => {
+      try {
+        enforceRateLimit(req, 'colab', 30, 60 * 60 * 1000);
+        const body = await readJsonBody(req, 10_000);
+        const orgCode = sanitizeString(String(body.orgCode || '').trim()).toUpperCase();
+        const nome = sanitizeString(String(body.nome || '').trim());
+        if (!orgCode || !nome) throw new Error('Informe o código da empresa e seu nome.');
+        const orgOwner = await dbSupabase.getUserByOrgCode(orgCode);
+        if (!orgOwner) throw new Error('Código de empresa inválido.');
+        const summary = await summaryFromDatabase(orgOwner);
+        const full = summary.fullSchedule && (summary.fullSchedule.atual || Object.values(summary.fullSchedule)[0]);
+        if (!full) throw new Error('Escala ainda não disponível.');
+        // Busca o colaborador (case-insensitive, contém)
+        const nomeNorm = nome.toLowerCase();
+        const match = Object.keys(full.people).find(n => n.toLowerCase() === nomeNorm)
+          || Object.keys(full.people).find(n => n.toLowerCase().includes(nomeNorm));
+        if (!match) throw new Error('Nome não encontrado na escala. Confira com seu gestor.');
+        return json(res, {
+          ok: true,
+          nome: match,
+          setor: (summary.employeeSetorMap || {})[match] || '',
+          cargo: (summary.employeeCargoMap || {})[match] || '',
+          escala: full.people[match],
+          label: full.label,
+          empresa: (summary.client && summary.client.profile && summary.client.profile.empresa) || ''
+        });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
+    })();
+    return;
+  }
   if (req.url === '/api/company/add-member' && req.method === 'POST') {
     (async () => {
       try {
