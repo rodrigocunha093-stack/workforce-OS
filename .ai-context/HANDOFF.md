@@ -22,8 +22,19 @@
 - `public/app.js` — toggle de tema (IIFE no topo) + correção do badge de fonte de dados (2 pontos: linha ~362 e ~2433).
 - `public/index.html` — botão `#themeToggle` no header; co-branding/footer (sessão anterior).
 - `public/futuristic.css` — `.theme-toggle` + bloco completo do tema claro.
+- `AGENTS.md` — atualizado (TáÓtimo!/Contagil, ordem de leitura, regras, deploy).
 - `.ai-context/SYSTEM_CONTEXT.md` — reescrito para o estado real.
 - `.ai-context/HANDOFF.md` — este registro.
+- `.ai-context/CODEMAP.md` — **NOVO**: mapa completo de funções/endpoints + receita de feature.
+- `.ai-context/UPDATE_CHECKLIST.md` — melhorado (validação `node -c`, CODEMAP, regra de inconsistência).
+- `.ai-context/README.md` — índice atualizado com CODEMAP e ANALISE-E-ROADMAP.
+
+## Estado da documentação (handoff completo)
+
+Os 4 arquivos pedidos estão atualizados e consistentes com o código em produção:
+`AGENTS.md` ✅ · `SYSTEM_CONTEXT.md` ✅ · `HANDOFF.md` ✅ · `UPDATE_CHECKLIST.md` ✅.
+Criado `CODEMAP.md` para que qualquer dev/IA ache as funções no `server.js` (3150 linhas, arquivo único).
+`ANALISE-E-ROADMAP.md` (raiz) cobre estratégia e próximos passos.
 
 ## Decisões tomadas
 
