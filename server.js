@@ -2594,6 +2594,49 @@ const server = http.createServer(async (req, res) => {
     const members = await dbSupabase.listOrgMembers(user.orgId);
     return json(res, { ok: true, orgCode: user.orgCode, role: user.role, members });
   }
+  // FASE 4: What-if — simula impacto de mudança de equipe/faturamento
+  if (req.url === '/api/whatif' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login.');
+        const body = await readJsonBody(req, 10_000);
+        const summary = await summaryFromDatabase(user);
+        const ops = summary.operationalDashboard || {};
+        const fatMesBase = ops.faturamento ? ops.faturamento.mes : 0;
+        const equipeBase = ops.headcount ? ops.headcount.atual : 0;
+        const custoColab = Number(body.custoColaborador || 2700); // custo total/colab/mês
+
+        // Cenário simulado
+        const deltaEquipe = Number(body.deltaEquipe || 0);   // +/- colaboradores
+        const deltaFatPct = Number(body.deltaFatPct || 0);   // % variação faturamento
+        const equipeSim = Math.max(0, equipeBase + deltaEquipe);
+        const fatMesSim = Math.round(fatMesBase * (1 + deltaFatPct / 100));
+        const idealSim = Math.round(fatMesSim / 36500);
+        const custoFolhaSim = equipeSim * custoColab;
+        const custoFolhaBase = equipeBase * custoColab;
+        // Ruptura estimada conforme gap equipe vs ideal
+        const gapSim = idealSim ? (idealSim - equipeSim) / idealSim : 0;
+        const rupturaSim = Math.max(2, Math.min(15, 5 + gapSim * 12));
+        const perdaRupturaSim = Math.round(fatMesSim * (rupturaSim / 100));
+
+        return json(res, {
+          ok: true,
+          base: { equipe: equipeBase, fatMes: fatMesBase, custoFolha: custoFolhaBase, ideal: ops.headcount ? ops.headcount.ideal : 0 },
+          simulado: {
+            equipe: equipeSim, fatMes: fatMesSim, ideal: idealSim,
+            custoFolha: custoFolhaSim,
+            deltaCusto: custoFolhaSim - custoFolhaBase,
+            rupturaEstimada: Number(rupturaSim.toFixed(1)),
+            perdaRuptura: perdaRupturaSim,
+            cobertura: idealSim ? Math.round((equipeSim / idealSim) * 100) : 100
+          }
+        });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
+    })();
+    return;
+  }
   // FASE 3: Self-service — colaborador consulta a própria escala (público, por código + nome)
   if (req.url === '/api/colaborador/escala' && req.method === 'POST') {
     (async () => {

@@ -877,3 +877,17 @@ select option { background: #141b2e; color: #e8eef5; }
 .banco-neg b { color: #93c5fd; }
 .banco-pos { border-left: 3px solid #f87171; }
 .banco-neg { border-left: 3px solid #3b82f6; }
+
+/* FASE 4: What-if simulador */
+.whatif-controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; margin-bottom: 16px; }
+.whatif-controls label { font-size: 12px; color: #94a3b8; display: flex; flex-direction: column; gap: 5px; }
+.whatif-controls input { width: 110px; padding: 8px 10px; }
+.wf-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 10px; margin-bottom: 12px; }
+.wf-card { padding: 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--fx-border); border-radius: 10px; }
+.wf-card small { display: block; color: #94a3b8; font-size: 11px; }
+.wf-card b { display: block; font-family: 'Space Grotesk', sans-serif; font-size: 18px; color: #e8eef5; margin: 3px 0; }
+.wf-card span { font-size: 11px; color: #94a3b8; }
+.wf-bad { color: #fca5a5 !important; }
+.wf-warn { color: #fcd34d !important; }
+.wf-ok { color: #6ee7b7 !important; }
+.wf-verdict { padding: 12px 14px; background: rgba(45,212,191,0.06); border-radius: 8px; font-size: 13px; color: #cbd5e1; line-height: 1.5; }
