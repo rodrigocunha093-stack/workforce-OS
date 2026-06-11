@@ -891,3 +891,45 @@ select option { background: #141b2e; color: #e8eef5; }
 .wf-warn { color: #fcd34d !important; }
 .wf-ok { color: #6ee7b7 !important; }
 .wf-verdict { padding: 12px 14px; background: rgba(45,212,191,0.06); border-radius: 8px; font-size: 13px; color: #cbd5e1; line-height: 1.5; }
+
+/* ---------- CO-BRANDING CONTAGIL ---------- */
+.by-contagil {
+  font-size: 11px;
+  font-weight: 500;
+  font-family: Inter, sans-serif;
+  color: #3b82f6;
+  text-decoration: none;
+  padding: 2px 9px;
+  margin-left: 8px;
+  background: rgba(59,130,246,0.12);
+  border: 1px solid rgba(59,130,246,0.3);
+  border-radius: 12px;
+  vertical-align: middle;
+  letter-spacing: 0;
+  -webkit-text-fill-color: #93c5fd;
+  transition: all 0.2s;
+}
+.by-contagil:hover { background: rgba(59,130,246,0.2); -webkit-text-fill-color: #bfdbfe; }
+
+.app-footer {
+  margin-top: 40px;
+  padding: 24px 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  background: rgba(13, 19, 32, 0.6);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--fx-border);
+}
+.app-footer-brand { display: flex; align-items: center; gap: 12px; }
+.footer-logo { display: grid; place-items: center; filter: drop-shadow(0 2px 8px rgba(45,212,191,0.3)); }
+.app-footer-brand strong { color: #e8eef5; font-family: 'Space Grotesk', sans-serif; }
+.app-footer-brand a { color: #93c5fd; text-decoration: none; font-weight: 600; }
+.app-footer-brand a:hover { color: #bfdbfe; }
+.app-footer-brand span { display: block; color: #64748b; font-size: 11px; margin-top: 2px; }
+.app-footer-links { display: flex; gap: 18px; }
+.app-footer-links a { color: #94a3b8; text-decoration: none; font-size: 13px; }
+.app-footer-links a:hover { color: #5eead4; }
+@media (max-width: 600px) { .app-footer { flex-direction: column; align-items: flex-start; } }
