@@ -1,6 +1,28 @@
 ﻿const tabs = document.querySelectorAll('.sidebar button');
 let authState = { authenticated: false, user: null };
-console.log('App loaded with weekly scenarios - v2.1');
+
+// Toggle de tema claro/escuro (alinhado à Contagil). Persiste em localStorage.
+(function initTheme() {
+  const saved = localStorage.getItem('taotimo-theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+  function applyIcon() {
+    const btn = document.getElementById('themeToggle');
+    if (btn) btn.textContent = document.documentElement.getAttribute('data-theme') === 'light' ? '☀️' : '🌙';
+  }
+  function bind() {
+    const btn = document.getElementById('themeToggle');
+    if (!btn) return;
+    applyIcon();
+    btn.onclick = () => {
+      const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('taotimo-theme', next);
+      applyIcon();
+    };
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);
+  else bind();
+})();
 
 tabs.forEach((button) => {
   button.onclick = () => {
@@ -359,9 +381,9 @@ function renderEnterpriseReadiness(data) {
   const readiness = [
     {
       label: 'Base de dados',
-      value: source.mode === 'postgresql' ? 'PostgreSQL ativo' : 'Local seguro',
-      detail: source.mode === 'postgresql' ? 'Persistencia pronta para operacao assistida' : 'Conta isolada com migracao preparada',
-      tone: source.mode === 'postgresql' ? 'ready' : 'watch'
+      value: (authenticated && source.mode !== 'demo') ? 'Supabase ativo' : 'Base demonstrativa',
+      detail: (authenticated && source.mode !== 'demo') ? 'Dados reais da empresa persistidos' : 'Faça login para usar os dados da sua loja',
+      tone: (authenticated && source.mode !== 'demo') ? 'ready' : 'watch'
     },
     {
       label: 'Historico de vendas',
@@ -2429,9 +2451,12 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     window.currentSummary = data;
     authState = authentication || { authenticated: false, user: null };
     const source = data.dataSource || { mode: 'demo' };
+    // Dados reais = conectado ao Supabase (postgresql OU rest) com usuário logado.
+    // Só é "demonstrativa" quando não há login (dados-modelo).
+    const dadosReais = authState.authenticated && source.mode !== 'demo';
     const sourceStatus = document.getElementById('dataSourceStatus');
-    sourceStatus.textContent = source.mode === 'postgresql' ? `PostgreSQL - ${source.database}` : 'Ambiente local seguro - base demonstrativa';
-    sourceStatus.className = source.mode === 'postgresql' ? 'source-connected' : 'source-demo';
+    sourceStatus.textContent = dadosReais ? 'Supabase · dados reais da empresa' : 'Base demonstrativa (faça login para ver seus dados)';
+    sourceStatus.className = dadosReais ? 'source-connected' : 'source-demo';
     safeRender('estado de login', renderAuthState);
     safeRender('modulos', () => applyEnabledModules(data));
     safeRender('gestor', () => renderGestorPanel(data));

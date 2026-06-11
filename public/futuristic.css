@@ -933,3 +933,104 @@ select option { background: #141b2e; color: #e8eef5; }
 .app-footer-links a { color: #94a3b8; text-decoration: none; font-size: 13px; }
 .app-footer-links a:hover { color: #5eead4; }
 @media (max-width: 600px) { .app-footer { flex-direction: column; align-items: flex-start; } }
+
+/* ============================================================
+   TOGGLE: botão + TEMA CLARO (data-theme="light")
+   ============================================================ */
+.theme-toggle {
+  width: 36px; height: 36px;
+  border-radius: 9px;
+  border: 1px solid var(--fx-border);
+  background: rgba(255,255,255,0.06);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: all 0.2s;
+}
+.theme-toggle:hover { background: rgba(255,255,255,0.12); transform: translateY(-1px); }
+
+html[data-theme="light"] {
+  --fx-border: rgba(15, 23, 42, 0.10);
+  --fx-border-glow: rgba(45, 212, 191, 0.45);
+}
+/* Fundo geral claro */
+html[data-theme="light"] body {
+  background:
+    radial-gradient(1200px 800px at 15% -10%, rgba(59,130,246,0.07), transparent 60%),
+    radial-gradient(1000px 700px at 100% 0%, rgba(45,212,191,0.06), transparent 55%),
+    #f1f5f9 !important;
+  color: #1e293b;
+}
+/* Topbar / sidebar claras */
+html[data-theme="light"] .topbar { background: rgba(255,255,255,0.85) !important; border-bottom-color: rgba(15,23,42,0.08); }
+html[data-theme="light"] .topbar h1 { background: none; -webkit-text-fill-color: #0f172a; }
+html[data-theme="light"] .sidebar { background: rgba(255,255,255,0.7) !important; border-right-color: rgba(15,23,42,0.08); }
+html[data-theme="light"] .sidebar button { color: #475569; }
+html[data-theme="light"] .sidebar button:hover { background: rgba(15,23,42,0.04); }
+html[data-theme="light"] .theme-toggle { background: rgba(15,23,42,0.05); border-color: rgba(15,23,42,0.1); }
+
+/* Superfícies brancas + texto escuro */
+html[data-theme="light"] .panel,
+html[data-theme="light"] .kpi,
+html[data-theme="light"] .ops-kpi,
+html[data-theme="light"] .ops-card,
+html[data-theme="light"] .icos-card,
+html[data-theme="light"] .scenario-card,
+html[data-theme="light"] .finance-scenario,
+html[data-theme="light"] .enterprise-card,
+html[data-theme="light"] .weekly-strength-card,
+html[data-theme="light"] .benchmark-card,
+html[data-theme="light"] .gestor-org-card,
+html[data-theme="light"] .wf-card,
+html[data-theme="light"] .banco-item,
+html[data-theme="light"] [class*="-card"],
+html[data-theme="light"] .data-strip,
+html[data-theme="light"] .week-selector-panel,
+html[data-theme="light"] .merc-resumo-card {
+  background: #ffffff !important;
+  border-color: rgba(15,23,42,0.08) !important;
+  box-shadow: 0 2px 12px -6px rgba(15,23,42,0.15) !important;
+}
+/* Texto escuro no claro */
+html[data-theme="light"] body,
+html[data-theme="light"] .panel,
+html[data-theme="light"] .kpi strong,
+html[data-theme="light"] .ops-kpi strong,
+html[data-theme="light"] .ops-card,
+html[data-theme="light"] .panel h3,
+html[data-theme="light"] h2, html[data-theme="light"] h3, html[data-theme="light"] h4,
+html[data-theme="light"] .icos-card strong,
+html[data-theme="light"] strong, html[data-theme="light"] b,
+html[data-theme="light"] .coverage-number, html[data-theme="light"] .coverage-hour,
+html[data-theme="light"] .weekly-person strong,
+html[data-theme="light"] .ops-row b, html[data-theme="light"] .wf-card b {
+  color: #0f172a !important;
+}
+html[data-theme="light"] small,
+html[data-theme="light"] .note,
+html[data-theme="light"] .ops-kpi small, html[data-theme="light"] .ops-kpi span,
+html[data-theme="light"] .kpi small, html[data-theme="light"] .kpi span,
+html[data-theme="light"] .ops-row span, html[data-theme="light"] label,
+html[data-theme="light"] .icos-card small {
+  color: #64748b !important;
+}
+/* Hero permanece com gradiente escuro (contraste/identidade) */
+html[data-theme="light"] .hero-panel { color: #e8eef5; }
+html[data-theme="light"] .hero-panel h2, html[data-theme="light"] .hero-panel #conclusion { color: #e8eef5 !important; }
+/* Inputs claros */
+html[data-theme="light"] input, html[data-theme="light"] select, html[data-theme="light"] textarea {
+  background: #ffffff !important;
+  border-color: rgba(15,23,42,0.15) !important;
+  color: #0f172a !important;
+}
+html[data-theme="light"] select option { background: #fff; color: #0f172a; }
+/* Linhas de tabela */
+html[data-theme="light"] .coverage-row, html[data-theme="light"] .weekly-row > span,
+html[data-theme="light"] .emp-row input, html[data-theme="light"] .icos-metrics > div {
+  background: #ffffff !important;
+}
+html[data-theme="light"] .coverage-row:nth-child(even) { background: #f8fafc !important; }
+/* Footer claro */
+html[data-theme="light"] .app-footer { background: rgba(255,255,255,0.8) !important; border-top-color: rgba(15,23,42,0.08); }
+html[data-theme="light"] .app-footer-brand strong { color: #0f172a; }
+html[data-theme="light"] .scrollbar, html[data-theme="light"] ::-webkit-scrollbar-thumb { background: rgba(45,212,191,0.4); }
