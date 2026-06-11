@@ -861,8 +861,45 @@ function renderWeeklySchedule(data) {
       }).join('')}
     </div>` : '';
 
+  // FASE 1: Período fechado (escala oficial imutável)
+  const fechada = data.escalaFechada;
+  const verRascunho = window._verRascunho === true;
+  let usarFechada = false;
+  let peopleSource = source.people;
+  let sourceLabelTxt = source.label;
+  if (fechada && !verRascunho) {
+    usarFechada = true;
+    peopleSource = fechada.people;
+    sourceLabelTxt = `${fechada.cenarioLabel} · período ${fechada.label}`;
+    people = Object.entries(fechada.people);
+  }
+
+  const periodoBox = `
+    <div class="periodo-box ${usarFechada ? 'periodo-fechado' : 'periodo-aberto'}">
+      ${usarFechada ? `
+        <div class="periodo-info">
+          <strong>🔒 PERÍODO FECHADO — escala oficial</strong>
+          <span>${fechada.label} · ${fechada.cenarioLabel} · fechado por ${fechada.fechadoPor} em ${new Date(fechada.fechadoEm).toLocaleDateString('pt-BR')}</span>
+          <small>Esta escala está congelada. Mudanças no cadastro NÃO a alteram.</small>
+        </div>
+        <div class="periodo-actions">
+          <button id="verRascunhoBtn" class="optimize-button" type="button">Ver rascunho atual</button>
+          <button id="reabrirBtn" class="optimize-button" type="button">Reabrir período</button>
+        </div>
+      ` : `
+        <div class="periodo-info">
+          <strong>📝 RASCUNHO ${fechada ? '(há um período fechado vigente)' : '— escala dinâmica'}</strong>
+          <span>Esta escala é recalculada automaticamente. Feche o período para gerar a versão oficial imutável.</span>
+        </div>
+        <div class="periodo-actions">
+          ${fechada ? '<button id="verFechadaBtn" class="optimize-button" type="button">Ver escala oficial</button>' : ''}
+          <button id="fecharPeriodoBtn" class="optimize-button save-optimization" type="button">🔒 Fechar período</button>
+        </div>
+      `}
+    </div>`;
+
   // FASE 1: Compliance CLT
-  const compliance = (data.complianceCLT && data.complianceCLT[currentCoverageScenario]) || [];
+  const compliance = usarFechada ? (fechada.compliance || []) : ((data.complianceCLT && data.complianceCLT[currentCoverageScenario]) || []);
   const complianceBox = `
     <div class="clt-box ${compliance.length ? 'clt-bad' : 'clt-ok'}">
       <strong>${compliance.length ? '⚠️ ' + compliance.length + ' colaborador(es) com alerta CLT' : '✅ Escala em conformidade CLT'}</strong>

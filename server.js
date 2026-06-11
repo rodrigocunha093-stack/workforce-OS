@@ -177,6 +177,8 @@ function defaultClientState() {
     salesRows: [],
     salesByMercadologico: [],
     enabledModules: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    escalaFechada: null,      // período vigente fechado (snapshot imutável)
+    escalaHistorico: [],      // períodos fechados anteriores
     updatedAt: null
   };
 }
@@ -2329,6 +2331,12 @@ async function applyClientState(summary, user, weekFilter = null) {
     });
     // FASE 2: Banco de horas
     summary.bancoHoras = buildBancoHoras(summary.fullSchedule, state.employees);
+    // FASE 1: Período de escala fechado (vigente) + histórico
+    summary.escalaFechada = state.escalaFechada || null;
+    summary.escalaHistorico = (state.escalaHistorico || []).map(h => ({
+      label: h.label, dataInicio: h.dataInicio, dataFim: h.dataFim,
+      cenarioLabel: h.cenarioLabel, fechadoEm: h.fechadoEm, fechadoPor: h.fechadoPor
+    }));
 
     summary.sundayRotation.forEach((item) => {
       item.folga = item.folga.map((name) => names[name] || name);
@@ -2882,6 +2890,74 @@ const server = http.createServer(async (req, res) => {
         state.updatedAt = new Date().toISOString();
         await saveClientState(user.orgId, state);
         await audit(user.id, 'SKILLS_SAVED', { count: people.length, ip: requestIp(req) });
+        return json(res, { ok: true });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
+    })();
+    return;
+  }
+  // FASE 1: FECHAR PERÍODO DA ESCALA (congela snapshot imutável)
+  if (req.url === '/api/escala/fechar' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login.');
+        if (user.role !== 'admin' && user.role !== 'gestor') throw new Error('Apenas o administrador pode fechar o período.');
+        const body = await readJsonBody(req);
+        const cenario = ['atual', 'transicao', 'final'].includes(body.cenario) ? body.cenario : 'atual';
+        const dataInicio = String(body.dataInicio || '').slice(0, 10);
+        const dataFim = String(body.dataFim || '').slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dataInicio) || !/^\d{4}-\d{2}-\d{2}$/.test(dataFim)) {
+          throw new Error('Informe o período (data início e fim).');
+        }
+        // Gera a escala atual e captura o snapshot do cenário escolhido
+        const summary = await summaryFromDatabase(user);
+        const full = summary.fullSchedule && summary.fullSchedule[cenario];
+        if (!full || !Object.keys(full.people || {}).length) throw new Error('Não há escala para fechar. Cadastre a equipe primeiro.');
+
+        const snapshot = {
+          id: `${user.orgId}-${dataInicio}`,
+          label: `${dataInicio.split('-').reverse().join('/')} a ${dataFim.split('-').reverse().join('/')}`,
+          dataInicio, dataFim, cenario,
+          cenarioLabel: full.label,
+          fechadoEm: new Date().toISOString(),
+          fechadoPor: user.email,
+          people: full.people,
+          setorMap: summary.employeeSetorMap || {},
+          cargoMap: summary.employeeCargoMap || {},
+          compliance: (summary.complianceCLT && summary.complianceCLT[cenario]) || []
+        };
+
+        const state = await loadClientState(user.orgId);
+        // Move a vigente anterior (se houver) para o histórico
+        if (state.escalaFechada) {
+          state.escalaHistorico = [state.escalaFechada, ...(state.escalaHistorico || [])].slice(0, 12);
+        }
+        state.escalaFechada = snapshot;
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.orgId, state);
+        await audit(user.id, 'ESCALA_FECHADA', { periodo: snapshot.label, cenario, ip: requestIp(req) });
+        return json(res, { ok: true, escalaFechada: snapshot });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
+    })();
+    return;
+  }
+  // FASE 1: REABRIR PERÍODO (volta ao rascunho dinâmico)
+  if (req.url === '/api/escala/reabrir' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login.');
+        if (user.role !== 'admin' && user.role !== 'gestor') throw new Error('Apenas o administrador pode reabrir o período.');
+        const state = await loadClientState(user.orgId);
+        if (state.escalaFechada) {
+          state.escalaHistorico = [state.escalaFechada, ...(state.escalaHistorico || [])].slice(0, 12);
+          state.escalaFechada = null;
+          state.updatedAt = new Date().toISOString();
+          await saveClientState(user.orgId, state);
+          await audit(user.id, 'ESCALA_REABERTA', { ip: requestIp(req) });
+        }
         return json(res, { ok: true });
       } catch (error) {
         return json(res, { ok: false, error: error.message }, 400);
