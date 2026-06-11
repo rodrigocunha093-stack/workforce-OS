@@ -169,6 +169,38 @@ function renderOpsDashboard(data) {
       </div>
       <div class="ops-trend-foot"><span>${ops.tendencia[0].data.slice(8,10)}/${ops.tendencia[0].data.slice(5,7)}</span><span>${ops.tendencia[ops.tendencia.length-1].data.slice(8,10)}/${ops.tendencia[ops.tendencia.length-1].data.slice(5,7)}</span></div>
     </div>` : ''}
+
+    ${data.forecast ? `
+    <div class="ops-section-title">🔮 Previsão dos próximos 7 dias (sazonalidade)</div>
+    <div class="ops-grid">
+      <article class="ops-card">
+        <h4>Previsão por dia</h4>
+        ${data.forecast.proximos.map(p => `<div class="ops-row"><span>${p.diaSemana} ${p.data.slice(8,10)}/${p.data.slice(5,7)}</span><b>${money(p.previsao)}</b></div>`).join('')}
+      </article>
+      <article class="ops-card">
+        <h4>Índice de sazonalidade</h4>
+        ${data.forecast.sazonalidade.filter(s=>s.valor>0).map(s => `<div class="ops-row"><span>${s.dia}</span><b>${s.indice}x ${s.indice>1.1?'🔥':s.indice<0.9?'🔻':''}</b></div>`).join('')}
+        <div class="ops-row" style="border-top:1px solid rgba(255,255,255,0.1);margin-top:4px"><span>Pico</span><b>${data.forecast.picoDiaSemana.dia}</b></div>
+      </article>
+      <article class="ops-card">
+        <h4>Eventos com impacto</h4>
+        ${data.forecast.eventos.map(e => `<div class="ops-row"><span>${e.tipo} <small style="color:#64748b">(${e.regra})</small></span><b>+${Math.round((e.fator-1)*100)}%</b></div>`).join('')}
+      </article>
+    </div>` : ''}
+
+    ${data.bancoHoras && data.bancoHoras.length ? `
+    <div class="ops-section-title">⏱️ Banco de horas (escala vs contrato)</div>
+    <div class="ops-card">
+      <div class="banco-grid">
+        ${data.bancoHoras.slice(0, 12).map(b => `
+          <div class="banco-item ${b.saldo > 0 ? 'banco-pos' : 'banco-neg'}">
+            <strong>${b.nome}</strong>
+            <span>${b.trabalhadas}h / ${b.contrato}h</span>
+            <b>${b.saldo > 0 ? '+' : ''}${b.saldo}h</b>
+          </div>
+        `).join('')}
+      </div>
+    </div>` : ''}
   `;
 
   // Seletor de período

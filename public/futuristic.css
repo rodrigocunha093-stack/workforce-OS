@@ -866,3 +866,14 @@ select option { background: #141b2e; color: #e8eef5; }
 .clt-box span { font-size: 12px; color: #94a3b8; }
 .clt-list { font-size: 12px; color: #cbd5e1; line-height: 1.6; }
 .clt-list b { color: #fcd34d; }
+
+/* FASE 2: Banco de horas */
+.banco-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.banco-item { padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--fx-border); border-radius: 8px; }
+.banco-item strong { display: block; font-size: 12px; color: #e8eef5; }
+.banco-item span { display: block; font-size: 11px; color: #94a3b8; }
+.banco-item b { font-size: 15px; font-family: 'Space Grotesk', sans-serif; }
+.banco-pos b { color: #fca5a5; }
+.banco-neg b { color: #93c5fd; }
+.banco-pos { border-left: 3px solid #f87171; }
+.banco-neg { border-left: 3px solid #3b82f6; }

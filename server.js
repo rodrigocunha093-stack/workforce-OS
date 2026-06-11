@@ -1023,6 +1023,59 @@ const BENCH = {
   ticketMedio: 75              // R$ ticket médio referência
 };
 
+// FASE 2: Forecast com sazonalidade (média ponderada por dia da semana + tendência)
+function buildForecast(mercRows, caixaRows) {
+  const fonte = (mercRows && mercRows.length) ? mercRows : (caixaRows || []);
+  if (!fonte.length) return null;
+  // Venda média por dia da semana
+  const dow = { v: [0,0,0,0,0,0,0], n: [new Set(),new Set(),new Set(),new Set(),new Set(),new Set(),new Set()] };
+  fonte.forEach(r => {
+    const d = new Date(`${r.data}T12:00:00`).getDay();
+    dow.v[d] += Number(r.vendaLiquida || 0);
+    dow.n[d].add(r.data);
+  });
+  const nomesDia = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+  const mediaPorDia = dow.v.map((v, i) => ({ dia: nomesDia[i], valor: dow.n[i].size ? Math.round(v / dow.n[i].size) : 0 }));
+  const mediaGeral = mediaPorDia.reduce((s, d) => s + d.valor, 0) / (mediaPorDia.filter(d => d.valor).length || 1);
+  // Índice de sazonalidade (1.0 = média)
+  const sazonalidade = mediaPorDia.map(d => ({ ...d, indice: mediaGeral ? Number((d.valor / mediaGeral).toFixed(2)) : 1 }));
+  // Próximos 7 dias (projeção pela média do dia da semana)
+  const hoje = new Date();
+  const proximos = [];
+  for (let i = 1; i <= 7; i++) {
+    const dt = new Date(hoje); dt.setDate(hoje.getDate() + i);
+    const dw = dt.getDay();
+    proximos.push({
+      data: dt.toISOString().slice(0, 10),
+      diaSemana: nomesDia[dw],
+      previsao: mediaPorDia[dw].valor
+    });
+  }
+  // Eventos com fator (feriados/pagamento/promoção — calendário base)
+  const eventos = [
+    { tipo: 'Pagamento', regra: 'dias 5 e 20', fator: 1.25 },
+    { tipo: 'Véspera de feriado', regra: 'antecede feriado', fator: 1.4 },
+    { tipo: 'Promoção/Encarte', regra: 'fim de semana', fator: 1.2 }
+  ];
+  return { sazonalidade, proximos, eventos, picoDiaSemana: sazonalidade.reduce((a, b) => b.valor > a.valor ? b : a) };
+}
+
+// FASE 2: Banco de horas (saldo por colaborador conforme escala vs jornada contratual)
+function buildBancoHoras(fullSchedule, employees) {
+  const sc = fullSchedule && (fullSchedule.atual || Object.values(fullSchedule)[0]);
+  if (!sc) return [];
+  const contratoMap = {};
+  (employees || []).forEach(e => { contratoMap[e.nome] = Number(e.horasSemanais || 44); });
+  return Object.entries(sc.people).map(([nome, shifts]) => {
+    const trabalhadas = shifts.reduce((s, sh) => {
+      const m = String(sh).match(/·\s*(\d+)h/); return s + (m ? Number(m[1]) : 0);
+    }, 0);
+    const contrato = contratoMap[nome] || 44;
+    const saldo = trabalhadas - contrato;
+    return { nome, trabalhadas, contrato, saldo };
+  }).filter(b => Math.abs(b.saldo) >= 1).sort((a, b) => b.saldo - a.saldo);
+}
+
 // Dashboard executivo operacional (KPIs por dia/semana/mês)
 function buildOperationalDashboard(state, caixaSalesRows) {
   const mercRows = Array.isArray(state.salesByMercadologico) ? state.salesByMercadologico : [];
@@ -2115,6 +2168,8 @@ async function applyClientState(summary, user, weekFilter = null) {
   state._totalSetoresVenda = (summary.setorDashboard || []).filter(s => s.vendaDia > 0).length;
   // Dashboard executivo operacional (KPIs por dia/semana/mês)
   summary.operationalDashboard = buildOperationalDashboard(state, state.salesRows);
+  // FASE 2: Forecast com sazonalidade
+  summary.forecast = buildForecast(mercRows, state.salesRows);
   // Mercadológicos nível 2 disponíveis (para o campo Setor do cadastro)
   summary.mercadologicosM2 = mercRows.length
     ? [...new Set(mercRows.map(r => r.mercadologico))].sort()
@@ -2272,6 +2327,8 @@ async function applyClientState(summary, user, weekFilter = null) {
     Object.entries(summary.fullSchedule).forEach(([key, sc]) => {
       summary.complianceCLT[key] = checkComplianceCLT(sc.people);
     });
+    // FASE 2: Banco de horas
+    summary.bancoHoras = buildBancoHoras(summary.fullSchedule, state.employees);
 
     summary.sundayRotation.forEach((item) => {
       item.folga = item.folga.map((name) => names[name] || name);
