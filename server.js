@@ -995,9 +995,23 @@ function formatScheduleHour(h) {
   return String(Math.floor(h)).padStart(2, '0');
 }
 
+// Hora decimal -> "HH:MM" (ex: 13.333 -> "13:20"). Arredonda minutos a 5min.
+function formatHM(h) {
+  let hh = Math.floor(h);
+  let mm = Math.round((h - hh) * 60 / 5) * 5;
+  if (mm === 60) { hh += 1; mm = 0; }
+  return mm === 0 ? `${String(hh).padStart(2, '0')}:00` : `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+// Duração decimal -> "7h" ou "7h20"
+function formatDur(h) {
+  const hh = Math.floor(h);
+  const mm = Math.round((h - hh) * 60 / 5) * 5;
+  return mm === 0 ? `${hh}h` : `${hh}h${String(mm).padStart(2, '0')}`;
+}
+
 function generateOperatorShift(startHour, endHour) {
   const duration = endHour - startHour;
-  return `${formatScheduleHour(startHour)}-${formatScheduleHour(endHour)} · ${duration}h`;
+  return `${formatHM(startHour)}-${formatHM(endHour)} · ${formatDur(duration)}`;
 }
 
 // Mapeia um colaborador ao setor operacional (para cruzar com vendas mercadológico)
@@ -1365,12 +1379,13 @@ function isReposicao(emp) {
 }
 
 // ===== FASE 1: COMPLIANCE CLT =====
+function hhToNum(s) { const p = String(s).split(':'); const h = Number(p[0]); return isNaN(h) ? NaN : h + (Number(p[1] || 0) / 60); }
 function shiftStartEnd(shift) {
   if (!shift || shift === 'Folga') return null;
   const blocks = String(shift).split('·')[0].trim().split('/');
   const first = blocks[0].split('-');
   const last = blocks[blocks.length - 1].split('-');
-  const start = Number(first[0]); const end = Number(last[1]);
+  const start = hhToNum(first[0]); const end = hhToNum(last[1]);
   return (isNaN(start) || isNaN(end)) ? null : { start, end };
 }
 function shiftWorkedHours(shift) {
@@ -1419,29 +1434,25 @@ function isCargoComercial(emp) {
     .some(x => c.includes(x.trim()));
 }
 
-// Turno comercial centralizado: 8h + 1h almoço, cobrindo o miolo do dia (ex: 08-17)
-function generateComercialShift(open, close) {
-  const jornada = 8;
+// Turno comercial centralizado: jornada + 1h almoço, cobrindo o miolo do dia (ex: 08-17).
+function generateComercialShift(open, close, jornada = 8) {
   const ocupacao = jornada + 1; // inclui 1h de almoço
   const dur = close - open;
   const start = open + Math.max(0, Math.round((dur - ocupacao) / 2));
   const end = Math.min(close, start + ocupacao);
-  return `${formatScheduleHour(start)}-${formatScheduleHour(end)} · ${jornada}h`;
+  return `${formatHM(start)}-${formatHM(end)} · ${formatDur(jornada)}`;
 }
 
-// Jornada PARTIDA para reposição: manhã + tarde, cobrindo os dois períodos.
-// Intervalo conforme sexo: homens podem ter >2h (até 3h); mulheres até 2h.
-function generateRepositorShift(open, close, idx, N, sexo) {
-  const bloco = 4; // 4h manhã + 4h tarde = 8h trabalhadas
-  const intervalo = (sexo === 'masculino') ? 3 : 2; // homem até 3h, mulher até 2h
-  const jornadaTotal = bloco * 2 + intervalo; // ocupação do dia (com almoço)
-  // Escalona o início entre os repositores para variar quem abre cedo
+// Jornada PARTIDA para reposição: manhã + tarde. Intervalo por sexo (homem até 3h, mulher 2h).
+function generateRepositorShift(open, close, idx, N, sexo, jornada = 8) {
+  const bloco = jornada / 2; // metade manhã, metade tarde
+  const intervalo = (sexo === 'masculino') ? 3 : 2;
+  const jornadaTotal = bloco * 2 + intervalo;
   const faixa = Math.max(0, (close - open) - jornadaTotal);
   let manhaStart = open + Math.round((N > 1 ? idx / (N - 1) : 0) * faixa);
   let manhaFim = manhaStart + bloco;
   let tardeStart = manhaFim + intervalo;
   let tardeFim = tardeStart + bloco;
-  // Não ultrapassar o fechamento — ancora a tarde no fechamento se necessário
   if (tardeFim > close) {
     tardeFim = close;
     tardeStart = tardeFim - bloco;
@@ -1449,7 +1460,7 @@ function generateRepositorShift(open, close, idx, N, sexo) {
     manhaStart = manhaFim - bloco;
     if (manhaStart < open) manhaStart = open;
   }
-  return `${formatScheduleHour(manhaStart)}-${formatScheduleHour(manhaFim)}/${formatScheduleHour(tardeStart)}-${formatScheduleHour(tardeFim)} · ${bloco * 2}h`;
+  return `${formatHM(manhaStart)}-${formatHM(manhaFim)}/${formatHM(tardeStart)}-${formatHM(tardeFim)} · ${formatDur(bloco * 2)}`;
 }
 
 function buildOptimizationSavings(salesRows, profile, employees, summary) {
@@ -1751,8 +1762,10 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
   const segSexDuration = segSex.close - segSex.open;
   const sabadoDuration = sabado.close - sabado.open;
 
-  // Determinar turnos: abertura, meio, fechamento
-  const shiftHours = 8; // 8h por dia padrão
+  // Jornada diária = carga semanal / dias trabalhados (CLT: 44h em 6 dias = 7h20).
+  // 6x1 44h → 7.33h/dia; 5x2 40h → 8h/dia; 5x2 42h → 8.4h/dia.
+  const diasTrabalhados = Math.max(1, 7 - targetDaysOff);
+  const shiftHours = Math.min(8, targetHours / diasTrabalhados); // teto de 8h/dia por turno
   const numShifts = Math.max(1, Math.ceil(segSexDuration / 4));
 
   // Quando loja fecha no domingo, o domingo já conta como 1 folga
@@ -1810,12 +1823,12 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
         turnoSab = fechaSab;
       } else {
         // Demais repositores: jornada partida (manhã + tarde)
-        turnoUtil = generateRepositorShift(segSex.open, segSex.close, idx, N, sexo);
-        turnoSab = generateRepositorShift(sabado.open, sabado.close, idx, N, sexo);
+        turnoUtil = generateRepositorShift(segSex.open, segSex.close, idx, N, sexo, shiftHours);
+        turnoSab = generateRepositorShift(sabado.open, sabado.close, idx, N, sexo, shiftHours);
       }
     } else if (comercial) {
-      turnoUtil = generateComercialShift(segSex.open, segSex.close);
-      turnoSab = generateComercialShift(sabado.open, sabado.close);
+      turnoUtil = generateComercialShift(segSex.open, segSex.close, shiftHours);
+      turnoSab = generateComercialShift(sabado.open, sabado.close, shiftHours);
     } else {
       // Corrido (caixa, açougue): garante abridor e fechador
       if (ehFechador) {
@@ -1854,7 +1867,7 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
         if (sundayClosed || !podeDomingo) {
           shifts.push('Folga');
         } else if (domingo) {
-          shifts.push(reposicao ? generateRepositorShift(domingo.open, domingo.close, idx, N, sexo) : comercial ? generateComercialShift(domingo.open, domingo.close) : generateOperatorShift(domingo.open, domingo.close));
+          shifts.push(reposicao ? generateRepositorShift(domingo.open, domingo.close, idx, N, sexo, shiftHours) : comercial ? generateComercialShift(domingo.open, domingo.close, shiftHours) : generateOperatorShift(domingo.open, domingo.close));
         } else {
           shifts.push('Folga');
         }

@@ -786,14 +786,15 @@ function renderStaffSchedule(data) {
 let weeklyScheduleSetorFilter = '';
 let weeklyScheduleCargoFilter = '';
 
-// Extrai início e fim de um turno ("06-14·8h" ou "06-10/14-18·8h")
+// Extrai início e fim de um turno ("06:00-13:20·7h20" ou "06:00-10:00/14:00-18:00·8h")
+function hhToNum(s) { const p = String(s).split(':'); const h = Number(p[0]); return isNaN(h) ? NaN : h + (Number(p[1] || 0) / 60); }
 function shiftBounds(shift) {
   if (!shift || shift === 'Folga') return null;
   const blocks = shift.split('·')[0].trim().split('/');
   const first = blocks[0].split('-');
   const last = blocks[blocks.length - 1].split('-');
-  const start = Number(first[0]);
-  const end = Number(last[1]);
+  const start = hhToNum(first[0]);
+  const end = hhToNum(last[1]);
   return (isNaN(start) || isNaN(end)) ? null : { start, end };
 }
 function parseLojaHora(str) {
