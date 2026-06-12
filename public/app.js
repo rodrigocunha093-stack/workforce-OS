@@ -731,25 +731,30 @@ function renderCoverage(data) {
 
 function renderStaffSchedule(data) {
   const dayIndex = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].indexOf(currentCoverageDay);
-  const scenario = data.weeklyScenarioSchedule[currentCoverageScenario];
-  const staff = currentCoverageScenario === 'atual'
-    ? data.staffSchedule[currentCoverageDay]
-    : Object.entries(scenario.people).map(([nome, shifts]) => {
-      const shift = shifts[dayIndex];
-      if (shift === 'Folga') return { nome, status: 'Folga', perfil: 'Folga do cenário 5x2', inicio: null, fim: null, intervalo: null, horas: 0 };
-      const [period, hours] = shift.split(' · ');
-      const [inicio, fim] = period.split('-');
-      const perfil = fim === '19' ? 'Fechamento' : Number(inicio.split(':')[0]) <= 7 ? 'Abertura' : 'Intermediario';
-      return {
-        nome,
-        status: 'Trabalhando',
-        perfil,
-        inicio,
-        fim,
-        intervalo: period === '08-12' ? 'Sem intervalo' : '1h escalonado',
-        horas: hours.replace('h', 'h')
-      };
-    });
+  // Fonte ÚNICA: mesmo motor da "Semana completa" (fullSchedule). Se há período fechado, usa o snapshot.
+  const fechada = data.escalaFechada;
+  const usarFechada = Boolean(fechada) && window._verRascunho !== true;
+  const scenario = usarFechada
+    ? { people: fechada.people, label: fechada.cenarioLabel, targetHours: (data.fullSchedule?.[currentCoverageScenario]?.targetHours) || 44 }
+    : ((data.fullSchedule && data.fullSchedule[currentCoverageScenario]) || data.weeklyScenarioSchedule[currentCoverageScenario]);
+  const lojaClose = parseLojaHora((data.client?.profile?.horarioSegSex)).close;
+  const staff = Object.entries(scenario.people).map(([nome, shifts]) => {
+    const shift = shifts[dayIndex];
+    if (!shift || shift === 'Folga') return { nome, status: 'Folga', perfil: 'Folga semanal', inicio: null, fim: null, intervalo: null, horas: 0 };
+    const b = shiftBounds(shift);
+    const partido = shift.includes('/');
+    const horasM = shift.match(/·\s*(\S+)$/);
+    const horas = horasM ? horasM[1] : '';
+    const perfil = b && b.end >= lojaClose ? 'Fechamento' : b && b.start <= 7 ? 'Abertura' : 'Intermediario';
+    const periodo = shift.split('·')[0].trim();
+    return {
+      nome, status: 'Trabalhando', perfil,
+      inicio: periodo.split('-')[0],
+      fim: partido ? periodo.split('/')[1].split('-')[1] : periodo.split('-')[1],
+      intervalo: partido ? 'Jornada partida' : '1h escalonado',
+      horas
+    };
+  });
   const weeklyHours = Object.fromEntries(Object.keys(scenario.people).map((nome) => [nome, scenario.targetHours]));
   const working = staff.filter((person) => person.status === 'Trabalhando');
   const off = staff.filter((person) => person.status === 'Folga');
