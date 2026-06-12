@@ -1153,8 +1153,14 @@ function assignCoverageRolesBySector(employees) {
 function distribuirJornada(targetHours, diasTrabalho, pesos, piso = 5, teto = 8) {
   const n = diasTrabalho.length;
   if (!n) return {};
-  // Pesos normalizados dos dias trabalhados (fallback uniforme se sem dados)
-  const pd = diasTrabalho.map(d => Math.max(0.1, (pesos && pesos[d]) || 1));
+  // Pesos normalizados dos dias trabalhados.
+  // Sáb (5) e Sex (4) recebem piso de peso para garantir prioridade mesmo sem dados de vendas.
+  const pesoMinPico = { 5: 1.35, 4: 1.20 }; // sáb 35% acima da média, sex 20%
+  const pd = diasTrabalho.map(d => {
+    const base = Math.max(0.1, (pesos && pesos[d]) || 1);
+    const minimo = pesoMinPico[d] || 0;
+    return Math.max(base, minimo);
+  });
   const somaPesos = pd.reduce((s, p) => s + p, 0);
   // Alocação inicial proporcional
   let horas = pd.map(p => (targetHours * p) / somaPesos);
@@ -2256,9 +2262,12 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
       return generateOperatorShift(start, Math.min(loja.close, start + jd));
     }
 
-    const shifts = [];
-    for (let day = 0; day < 7; day++) {
-      shifts.push(diasTrabalho.includes(day) ? gerarTurnoDia(day) : 'Folga');
+    // Monta a semana priorizando sáb (5) > sex (4) > restante,
+    // garantindo que nos dias de pico o turno seja gerado primeiro.
+    const shifts = new Array(7).fill(null);
+    const ordemPrioridade = [5, 4, 0, 1, 2, 3, 6]; // sáb, sex, seg-qui, dom
+    for (const day of ordemPrioridade) {
+      shifts[day] = diasTrabalho.includes(day) ? gerarTurnoDia(day) : 'Folga';
     }
     result[emp.nome] = shifts;
   });
