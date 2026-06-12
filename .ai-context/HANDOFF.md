@@ -2,6 +2,18 @@
 
 > Última sessão: 2026-06-11 (Claude). Leia antes de agir.
 
+## 🔭 Sessão mais recente (fechar período + correção 44h)
+
+**Feito:**
+1. **Fechar/reabrir período da escala** (metáfora de fechamento contábil): `escalaFechada` (snapshot imutável) + `escalaHistorico[]` no clientState. Endpoints `POST /api/escala/fechar` e `/api/escala/reabrir`. Aba Escala mostra "PERÍODO FECHADO" (oficial, congelado) vs "RASCUNHO" (dinâmico), com alternância e histórico. Dono da org (orgId===id) ou admin/gestor pode fechar.
+2. **Correção CLT 48h→44h**: jornada diária agora = `targetHours / (7 - targetDaysOff)`. 6x1 = **7h20/dia** (44h), não mais 8h×6=48h. Turnos passaram a exibir minutos (`06:00-13:20 · 7h20`). Novos helpers `formatHM`/`formatDur`; `shiftStartEnd`/`shiftBounds` (back e front) agora parseiam `HH:MM` via `hhToNum`. **Compliance CLT zerou (0 alertas).**
+
+**Arquivos:** `server.js` (defaultClientState +escalaFechada/Historico; geradores de turno; endpoints fechar/reabrir; expor no summary), `public/app.js` (periodoBox + handlers + parsers HH:MM), `public/futuristic.css` (.periodo-box).
+
+**Risco/observação:** o snapshot fechado é "semana padrão" (não datado dia-a-dia); o rótulo do período é só informativo. Se quiser escala por data real (calendário), é evolução futura.
+
+---
+
 ## Estado atual (resumo honesto)
 
 - Produto vivo em `https://escala.contagilpb.com.br` (Vercel `mvp-web-proprio`, push em `main` faz deploy).
