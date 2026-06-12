@@ -1259,6 +1259,23 @@ i.red { background: var(--red); }
   background: rgba(255,255,255,0.04);
   border-color: #cfe8e2;
   font-weight: 700;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.25;
+}
+
+.weekly-shift .shift-main {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.weekly-shift .shift-meta {
+  display: block;
+  font-size: 9px;
+  font-weight: 600;
+  color: #94a3b8;
 }
 
 .weekly-row .weekly-off {

@@ -793,6 +793,16 @@ let weeklyScheduleCargoFilter = '';
 
 // Extrai início e fim de um turno ("06:00-13:20·7h20" ou "06:00-10:00/14:00-18:00·8h")
 function hhToNum(s) { const p = String(s).split(':'); const h = Number(p[0]); return isNaN(h) ? NaN : h + (Number(p[1] || 0) / 60); }
+function hmToMinutes(str) {
+  const m = String(str || '').match(/(\d{1,2}):(\d{2})/);
+  return m ? (Number(m[1]) * 60) + Number(m[2]) : null;
+}
+function minutesToHM(total) {
+  const safe = Math.max(0, Math.round(total));
+  const hh = Math.floor(safe / 60) % 24;
+  const mm = safe % 60;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
 function shiftBounds(shift) {
   if (!shift || shift === 'Folga') return null;
   const blocks = shift.split('·')[0].trim().split('/');
@@ -801,6 +811,44 @@ function shiftBounds(shift) {
   const start = hhToNum(first[0]);
   const end = hhToNum(last[1]);
   return (isNaN(start) || isNaN(end)) ? null : { start, end };
+}
+function renderShiftWithInterval(shift, badge = '') {
+  if (!shift || shift === 'Folga') return shift;
+  const [periodoRaw, horasRaw = ''] = String(shift).split('·').map((part) => part.trim());
+  const horas = horasRaw || '';
+  if (periodoRaw.includes('/')) {
+    const [bloco1, bloco2] = periodoRaw.split('/');
+    const fim1 = bloco1.split('-')[1];
+    const ini2 = bloco2.split('-')[0];
+    return `
+      <span class="shift-main">${bloco1}/${bloco2}${badge}</span>
+      <small class="shift-meta">int. ${fim1}-${ini2}${horas ? ` · ${horas}` : ''}</small>
+    `;
+  }
+
+  const worked = parseHours(shift);
+  const [ini, fimOriginal] = periodoRaw.split('-');
+  const startMin = hmToMinutes(ini);
+  const endMin = hmToMinutes(fimOriginal);
+  if (startMin === null || endMin === null || worked < 6) {
+    return `
+      <span class="shift-main">${periodoRaw}${badge}</span>
+      <small class="shift-meta">${horas || 'Sem intervalo'}</small>
+    `;
+  }
+
+  const intervaloMin = 60;
+  const workedMin = Math.round(worked * 60);
+  const beforeMin = Math.round((workedMin / 2) / 5) * 5;
+  const afterMin = workedMin - beforeMin;
+  const intStart = startMin + beforeMin;
+  const intEnd = intStart + intervaloMin;
+  const fimReal = intEnd + afterMin;
+
+  return `
+    <span class="shift-main">${ini}-${minutesToHM(intStart)}/${minutesToHM(intEnd)}-${minutesToHM(fimReal)}${badge}</span>
+    <small class="shift-meta">int. ${minutesToHM(intStart)}-${minutesToHM(intEnd)}${horas ? ` · ${horas}` : ''}</small>
+  `;
 }
 function parseLojaHora(str) {
   const m = String(str || '').match(/(\d{1,2}):?\d{0,2}\s*-\s*(\d{1,2}):?\d{0,2}/);
@@ -934,7 +982,7 @@ function renderWeeklySchedule(data) {
               if (abre) badge += '<span class="shift-icon abre" title="Abre a loja">🔓</span>';
               if (fecha) badge += '<span class="shift-icon fecha" title="Fecha a loja">🔒</span>';
             }
-            return `<span class="weekly-shift ${shift === 'Folga' ? 'weekly-off' : shift.includes('08-12') ? 'weekly-sunday' : ''}">${shift}${badge}</span>`;
+            return `<span class="weekly-shift ${shift === 'Folga' ? 'weekly-off' : shift.includes('08-12') ? 'weekly-sunday' : ''}">${renderShiftWithInterval(shift, badge)}</span>`;
           }).join('')}
           <span class="weekly-status ${ok ? 'valid' : 'invalid'}">${ok ? 'Conforme' : 'Revisar'}</span>
         </div>
