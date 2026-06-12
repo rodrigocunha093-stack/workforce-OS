@@ -692,10 +692,15 @@ function renderCoverage(data) {
   const dayIndex = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].indexOf(currentCoverageDay);
   const weeklyPeople = selectedScenario.people;
   const availableWorkers = Object.values(weeklyPeople).filter((shifts) => shifts[dayIndex] !== 'Folga').length;
-  const baseRows = cfg.rows.map((row) => ({
-    ...row,
-    [currentCoverageScenario]: Math.min(countWorkersAtHourLabel(weeklyPeople, dayIndex, row.hora), availableWorkers)
-  }));
+  const pdvs = window.currentSummary?.storeConfig?.pdvs || 99;
+  const baseRows = cfg.rows.map((row) => {
+    const workers = countWorkersAtHourLabel(weeklyPeople, dayIndex, row.hora);
+    const demanda = Math.max(Number(row.demanda || 0), 1);
+    return {
+      ...row,
+      [currentCoverageScenario]: Math.min(workers, availableWorkers, pdvs, demanda)
+    };
+  });
   const effectiveRows = applyCoverageAdjustment(baseRows, currentCoverageScenario, availableWorkers);
   const evaluated = effectiveRows.map((row) => ({ row, status: coverageStatus(row, currentCoverageScenario) }));
   const known = evaluated.filter((item) => item.row.demanda !== null);
@@ -794,8 +799,8 @@ let weeklyScheduleCargoFilter = '';
 // Extrai início e fim de um turno ("06:00-13:20·7h20" ou "06:00-10:00/14:00-18:00·8h")
 function hhToNum(s) { const p = String(s).split(':'); const h = Number(p[0]); return isNaN(h) ? NaN : h + (Number(p[1] || 0) / 60); }
 function hmToMinutes(str) {
-  const m = String(str || '').match(/(\d{1,2}):(\d{2})/);
-  return m ? (Number(m[1]) * 60) + Number(m[2]) : null;
+  const m = String(str || '').match(/(\d{1,2})(?::(\d{2}))?/);
+  return m ? (Number(m[1]) * 60) + Number(m[2] || 0) : null;
 }
 function minutesToHM(total) {
   const safe = Math.max(0, Math.round(total));

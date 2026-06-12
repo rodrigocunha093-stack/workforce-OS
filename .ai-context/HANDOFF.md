@@ -110,6 +110,13 @@ Criado `CODEMAP.md` para que qualquer dev/IA ache as funções no `server.js` (3
 - Pendência futura importante:
   - unificar o modelo de persistência/representação dos turnos corridos de caixa, porque hoje a tela reconstrói o intervalo a partir da jornada enquanto alguns setores já salvam a pausa no próprio horário.
 
+## Atualização 2026-06-12 — auditoria escala vs cobertura
+
+- **Bug corrigido: "Caixas ativos" inflados no frontend.** `renderCoverage` (app.js) calculava `min(operadores, disponíveis)` sem considerar PDVs e demanda. Agora aplica `min(operadores, disponíveis, PDVs, demanda)`, espelhando a fórmula do servidor (`recalculateCoverageFromSchedules`).
+- **Bug corrigido: otimização salva não alterava a "Semana completa por colaboradora".** O endpoint `/api/save-optimization` salvava apenas os targets de cobertura no `optimizedCoverage`, mas o servidor regenerava a escala do zero a cada request sem redistribuir intervalos. Nova função `applyOptimizationToSchedule` (server.js) agora redistribui os intervalos de almoço dos operadores de caixa para que a contagem hora-a-hora bata com os targets salvos — mesma lógica que o frontend fazia em `optimizePeopleAgainstCoverage`, mas persistida no backend.
+- **Bug corrigido: `shiftWorkedHours` ignorava minutos.** Turno `7h20` retornava 7 em vez de 7.33. Agora captura `NNhMM` com a regex `/·\s*(\d+)h(\d{2})?/`.
+- Pipeline pós-otimização: (1) redistribui intervalos na escala, (2) recalcula cobertura a partir dos turnos modificados, (3) aplica targets finais.
+
 ## Referências
 
 - Roadmap completo e análise vs Blue Yonder: `ANALISE-E-ROADMAP.md`.

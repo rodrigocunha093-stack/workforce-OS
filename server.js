@@ -105,6 +105,16 @@ function requestIp(req) {
   return String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
 }
 
+function isLoopbackRequest(req) {
+  const ip = requestIp(req).replace('::ffff:', '');
+  return ip === '127.0.0.1' || ip === '::1' || ip === 'localhost';
+}
+
+function canUseSupportOrgLookup(req, user) {
+  if (isLoopbackRequest(req)) return true;
+  return Boolean(user && (user.role === 'admin' || user.role === 'gestor' || user.orgId === user.id));
+}
+
 function requireSameOrigin(req) {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return;
   const origin = req.headers.origin;
@@ -1565,8 +1575,9 @@ function shiftStartEnd(shift) {
 }
 function shiftWorkedHours(shift) {
   if (!shift || shift === 'Folga') return 0;
-  const m = String(shift).match(/·\s*(\d+)h/);
-  return m ? Number(m[1]) : 0;
+  const m = String(shift).match(/·\s*(\d+)h(\d{2})?/);
+  if (!m) return 0;
+  return Number(m[1]) + (m[2] ? Number(m[2]) / 60 : 0);
 }
 
 // Analisa a escala de um cenário e retorna violações CLT por colaborador
@@ -2001,6 +2012,121 @@ function recalculateCoverageFromSchedules(summary, pdvs) {
         // Mas se há demanda alta, abre até o limite dos PDVs
         const idealCaixas = Math.max(demanda, 1);
         row[scenarioKey] = Math.min(workers, pdvs, idealCaixas);
+      });
+    });
+  });
+}
+
+function applyOptimizationToSchedule(summary, optimizedCoverage) {
+  const dayKeyMap = { monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4, saturday: 5, sunday: 6 };
+  const scenarioKeys = ['atual', 'transicao', 'final'];
+
+  scenarioKeys.forEach(scenarioKey => {
+    const dayMap = optimizedCoverage[scenarioKey];
+    if (!dayMap) return;
+    const scenario = summary.weeklyScenarioSchedule[scenarioKey];
+    if (!scenario || !scenario.people) return;
+    const people = scenario.people;
+
+    Object.entries(dayMap).forEach(([dayKey, optimizedRows]) => {
+      if (!Array.isArray(optimizedRows)) return;
+      const dayIndex = dayKeyMap[dayKey];
+      if (dayIndex === undefined) return;
+
+      const targets = {};
+      optimizedRows.forEach(o => { targets[o.hora] = Number(o.atual || 0); });
+
+      const workers = Object.entries(people)
+        .map(([nome, shifts]) => {
+          const shift = shifts[dayIndex];
+          if (!shift || shift === 'Folga') return null;
+          const workedHours = shiftWorkedHours(shift) || 0;
+          const intervalMin = getLegalIntervalMinutes(workedHours);
+          if (intervalMin !== 60) return null;
+
+          const [periodoRaw] = String(shift).split('·').map(p => p.trim());
+          let shiftStart, shiftEnd;
+          if (periodoRaw.includes('/')) {
+            const blocks = periodoRaw.split('/');
+            shiftStart = hmTextToMinutes(blocks[0].split('-')[0]);
+            shiftEnd = hmTextToMinutes(blocks[blocks.length - 1].split('-')[1]);
+          } else {
+            const [ini, fim] = periodoRaw.split('-').map(p => p.trim());
+            shiftStart = hmTextToMinutes(ini);
+            shiftEnd = hmTextToMinutes(fim);
+          }
+          if (shiftStart === null || shiftEnd === null) return null;
+
+          const workedMin = Math.round(workedHours * 60);
+          const beforeBase = Math.round((workedMin / 2) / 5) * 5;
+          const minAntes = workedHours > 6 ? 180 : 120;
+          const minDepois = 120;
+          const beforeMin = Math.max(minAntes, Math.min(beforeBase, workedMin - minDepois));
+          const currentBreakStart = shiftStart + beforeMin;
+
+          const earliest = Math.max(shiftStart + 180, Math.ceil(shiftStart / 60) * 60);
+          const latest = Math.min(shiftEnd - 180, Math.floor((shiftEnd - 60) / 60) * 60);
+          if (earliest > latest) return null;
+
+          return { nome, shifts, dayIndex, shiftStart, shiftEnd, workedHours, breakStart: currentBreakStart, earliest, latest };
+        })
+        .filter(Boolean);
+
+      if (!workers.length) return;
+
+      const currentCounts = {};
+      Object.keys(targets).forEach(hora => {
+        currentCounts[hora] = countWorkersAtHour(Number(hora.split('-')[0]), Number(hora.split('-')[1]), dayIndex, people);
+      });
+
+      const breakHourOf = (w) => {
+        const h = Math.floor(w.breakStart / 60);
+        return `${String(h).padStart(2, '0')}-${String(h + 1).padStart(2, '0')}`;
+      };
+      const feasibleHours = (w) => {
+        const hours = [];
+        for (let s = w.earliest; s <= w.latest; s += 60) {
+          const h = Math.floor(s / 60);
+          hours.push({ label: `${String(h).padStart(2, '0')}-${String(h + 1).padStart(2, '0')}`, start: s });
+        }
+        return hours;
+      };
+
+      const rebuildShift = (w) => {
+        const s = formatHM(w.shiftStart / 60);
+        const bkS = formatHM(w.breakStart / 60);
+        const bkE = formatHM((w.breakStart + 60) / 60);
+        const e = formatHM(w.shiftEnd / 60);
+        return `${s}-${bkS}/${bkE}-${e} · ${formatDur(w.workedHours)}`;
+      };
+
+      Object.keys(targets).forEach(hourLabel => {
+        while ((currentCounts[hourLabel] || 0) < (targets[hourLabel] || 0)) {
+          const candidates = workers.filter(w => breakHourOf(w) === hourLabel);
+          if (!candidates.length) break;
+
+          let moved = false;
+          for (const worker of candidates) {
+            const options = feasibleHours(worker)
+              .filter(o => o.label !== hourLabel)
+              .map(o => ({
+                ...o,
+                surplus: (currentCounts[o.label] || 0) - (targets[o.label] || 0)
+              }))
+              .filter(o => o.surplus > 0)
+              .sort((a, b) => b.surplus - a.surplus);
+
+            if (!options.length) continue;
+            const chosen = options[0];
+            currentCounts[hourLabel] = (currentCounts[hourLabel] || 0) + 1;
+            currentCounts[chosen.label] = (currentCounts[chosen.label] || 0) - 1;
+            worker.breakStart = chosen.start;
+            worker.shifts[worker.dayIndex] = rebuildShift(worker);
+            moved = true;
+            break;
+          }
+          if (!moved) break;
+        }
       });
     });
   });
@@ -2690,6 +2816,13 @@ async function applyClientState(summary, user, weekFilter = null) {
   // APLICAR otimização salva (se houver)
   if (state.optimizedCoverage) {
     summary.optimizationSavedAt = state.optimizedCoverage.savedAt;
+    // 1. Redistribuir intervalos na escala de caixa para bater com a cobertura otimizada
+    applyOptimizationToSchedule(summary, state.optimizedCoverage);
+    // 2. Recalcular cobertura a partir dos turnos agora otimizados
+    if (caixaEmployees.length >= 1) {
+      recalculateCoverageFromSchedules(summary, Number(profile.quantidadePdvs || 3));
+    }
+    // 3. Aplicar os targets finais da otimização salva
     ['atual', 'transicao', 'final'].forEach(scenario => {
       const dayMap = state.optimizedCoverage[scenario];
       if (!dayMap) return;
@@ -2889,6 +3022,28 @@ const server = http.createServer(async (req, res) => {
   if (req.url === '/api/db-status') return json(res, await db.status());
   if (req.url === '/api/persistence-status') return json(res, await db.appPersistenceStatus());
   if (req.url === '/api/auth/status') return json(res, { authenticated: Boolean(user), user: user ? { name: user.name, email: user.email, orgCode: user.orgCode, role: user.role } : null });
+  const supportSummaryMatch = req.url.match(/^\/api\/support\/summary\/([A-Z0-9-]+)$/i);
+  if (supportSummaryMatch) {
+    try {
+      if (!canUseSupportOrgLookup(req, user)) {
+        return json(res, { ok: false, error: 'Acesso restrito ao suporte local ou gestor autenticado.' }, 403);
+      }
+      const orgCode = sanitizeString(String(decodeURIComponent(supportSummaryMatch[1]) || '').trim()).toUpperCase();
+      if (!orgCode) return json(res, { ok: false, error: 'Informe o código da empresa.' }, 400);
+      const orgOwner = await dbSupabase.getUserByOrgCode(orgCode);
+      if (!orgOwner) return json(res, { ok: false, error: 'Código de empresa não encontrado.' }, 404);
+      const summary = await summaryFromDatabase(orgOwner);
+      return json(res, {
+        ok: true,
+        orgCode,
+        company: (summary.client && summary.client.profile && summary.client.profile.empresa) || '',
+        account: (summary.client && summary.client.account) || null,
+        summary
+      });
+    } catch (error) {
+      return json(res, { ok: false, error: error.message }, 400);
+    }
+  }
   if (req.url === '/api/company/info') {
     if (!user) return json(res, { ok: false, error: 'Faça login.' }, 401);
     const members = await dbSupabase.listOrgMembers(user.orgId);
