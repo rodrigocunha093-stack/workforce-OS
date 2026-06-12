@@ -2902,7 +2902,7 @@ const server = http.createServer(async (req, res) => {
     (async () => {
       try {
         if (!user) throw new Error('Faça login.');
-        if (user.role !== 'admin' && user.role !== 'gestor') throw new Error('Apenas o administrador pode fechar o período.');
+        if (user.role !== 'admin' && user.role !== 'gestor' && user.orgId !== user.id) throw new Error('Apenas o administrador pode fechar o período.');
         const body = await readJsonBody(req);
         const cenario = ['atual', 'transicao', 'final'].includes(body.cenario) ? body.cenario : 'atual';
         const dataInicio = String(body.dataInicio || '').slice(0, 10);
@@ -2949,7 +2949,7 @@ const server = http.createServer(async (req, res) => {
     (async () => {
       try {
         if (!user) throw new Error('Faça login.');
-        if (user.role !== 'admin' && user.role !== 'gestor') throw new Error('Apenas o administrador pode reabrir o período.');
+        if (user.role !== 'admin' && user.role !== 'gestor' && user.orgId !== user.id) throw new Error('Apenas o administrador pode reabrir o período.');
         const state = await loadClientState(user.orgId);
         if (state.escalaFechada) {
           state.escalaHistorico = [state.escalaFechada, ...(state.escalaHistorico || [])].slice(0, 12);
