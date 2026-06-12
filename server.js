@@ -220,6 +220,14 @@ function isOperadorCaixa(emp) {
   return false;
 }
 
+function isOperadorCaixaSnapshot(nome, snapshot) {
+  const setor = normalizeSetor(snapshot?.setorMap?.[nome]);
+  const cargo = normalizeSetor(snapshot?.cargoMap?.[nome]);
+  if (setor.includes('caixa') || setor.includes('frente')) return true;
+  if (cargo.includes('caixa') || cargo.includes('operador')) return true;
+  return false;
+}
+
 function groupBySetor(employees) {
   const groups = {};
   (employees || []).forEach((e) => {
@@ -2610,6 +2618,12 @@ async function applyClientState(summary, user, weekFilter = null) {
     summary.bancoHoras = buildBancoHoras(summary.fullSchedule, state.employees);
     // FASE 1: Período de escala fechado (vigente) + histórico
     summary.escalaFechada = state.escalaFechada || null;
+    if (summary.escalaFechada && (!summary.escalaFechada.caixaPeople || !Object.keys(summary.escalaFechada.caixaPeople).length)) {
+      const people = summary.escalaFechada.people || {};
+      summary.escalaFechada.caixaPeople = Object.fromEntries(
+        Object.entries(people).filter(([nome]) => isOperadorCaixaSnapshot(nome, summary.escalaFechada))
+      );
+    }
     summary.escalaHistorico = (state.escalaHistorico || []).map(h => ({
       label: h.label, dataInicio: h.dataInicio, dataFim: h.dataFim,
       cenarioLabel: h.cenarioLabel, fechadoEm: h.fechadoEm, fechadoPor: h.fechadoPor

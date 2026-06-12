@@ -667,6 +667,7 @@ function renderCashierLoadPanel(rows, scenario) {
 
 function renderCoverage(data) {
   const cfg = data.dailyCoverage[currentCoverageDay];
+  const selectedScenario = getSelectedCashierScenario(data);
   if (cfg.closed) {
     document.getElementById('coverageNote').textContent = `${cfg.source} · ${cfg.note}`;
     document.getElementById('coverageSummary').innerHTML = `
@@ -689,11 +690,11 @@ function renderCoverage(data) {
     return;
   }
   const dayIndex = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].indexOf(currentCoverageDay);
-  const weeklyPeople = data.weeklyScenarioSchedule[currentCoverageScenario].people;
+  const weeklyPeople = selectedScenario.people;
   const availableWorkers = Object.values(weeklyPeople).filter((shifts) => shifts[dayIndex] !== 'Folga').length;
   const baseRows = cfg.rows.map((row) => ({
     ...row,
-    [currentCoverageScenario]: Math.min(Number(row[currentCoverageScenario]), availableWorkers)
+    [currentCoverageScenario]: Math.min(countWorkersAtHourLabel(weeklyPeople, dayIndex, row.hora), availableWorkers)
   }));
   const effectiveRows = applyCoverageAdjustment(baseRows, currentCoverageScenario, availableWorkers);
   const evaluated = effectiveRows.map((row) => ({ row, status: coverageStatus(row, currentCoverageScenario) }));
@@ -738,12 +739,7 @@ function renderCoverage(data) {
 
 function renderStaffSchedule(data) {
   const dayIndex = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].indexOf(currentCoverageDay);
-  // Fonte ÚNICA da frente de caixa: mesma base usada pela cobertura horária.
-  const fechada = data.escalaFechada;
-  const usarFechada = Boolean(fechada) && window._verRascunho !== true;
-  const scenario = usarFechada
-    ? { people: fechada.caixaPeople || fechada.people, label: fechada.cenarioLabel, targetHours: (data.fullSchedule?.[currentCoverageScenario]?.targetHours) || 44 }
-    : data.weeklyScenarioSchedule[currentCoverageScenario];
+  const scenario = getSelectedCashierScenario(data);
   const lojaClose = parseLojaHora((data.client?.profile?.horarioSegSex)).close;
   const staff = Object.entries(scenario.people).map(([nome, shifts]) => {
     const shift = shifts[dayIndex];
@@ -863,6 +859,60 @@ function getShiftIntervalPlan(shift) {
     horas
   };
 }
+
+function getSelectedCashierScenario(data) {
+  const fechada = data.escalaFechada;
+  const usarFechada = Boolean(fechada) && window._verRascunho !== true;
+  if (usarFechada) {
+    return {
+      usarFechada: true,
+      people: fechada.caixaPeople || fechada.people || {},
+      label: fechada.cenarioLabel,
+      fullLabel: `${fechada.cenarioLabel} · ${fechada.label}`,
+      targetHours: (data.weeklyScenarioSchedule?.[currentCoverageScenario]?.targetHours) || 44,
+      targetDaysOff: (data.weeklyScenarioSchedule?.[currentCoverageScenario]?.targetDaysOff) || 1
+    };
+  }
+  const scenario = data.weeklyScenarioSchedule[currentCoverageScenario];
+  return {
+    usarFechada: false,
+    people: scenario?.people || {},
+    label: scenario?.label || '',
+    fullLabel: scenario?.label || '',
+    targetHours: scenario?.targetHours || 44,
+    targetDaysOff: scenario?.targetDaysOff || 1
+  };
+}
+
+function shiftBlocksFromDisplay(shift) {
+  const plan = getShiftIntervalPlan(shift);
+  if (!plan) return [];
+  return plan.display
+    .split('/')
+    .map((block) => {
+      const [ini, fim] = block.split('-');
+      const start = hmToMinutes(ini);
+      const end = hmToMinutes(fim);
+      return start === null || end === null ? null : { start, end };
+    })
+    .filter(Boolean);
+}
+
+function countWorkersAtHourLabel(people, dayIndex, hourLabel) {
+  const [startStr, endStr] = String(hourLabel).split('-');
+  const faixaStart = Number(startStr) * 60;
+  const faixaEnd = Number(endStr) * 60;
+  let count = 0;
+  Object.values(people || {}).forEach((shifts) => {
+    const shift = shifts?.[dayIndex];
+    if (!shift || shift === 'Folga') return;
+    const blocks = shiftBlocksFromDisplay(shift);
+    if (blocks.some((block) => block.start < faixaEnd && block.end > faixaStart)) {
+      count++;
+    }
+  });
+  return count;
+}
 function shiftBounds(shift) {
   if (!shift || shift === 'Folga') return null;
   const blocks = shift.split('·')[0].trim().split('/');
@@ -893,16 +943,9 @@ function renderWeeklySchedule(data) {
   const lojaSab = parseLojaHora(profile.horarioSabado);
   const lojaDom = parseLojaHora(profile.horarioDomingo);
   const lojaPorDia = [lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSab, lojaDom];
-  // Nesta aba, a semana exibida deve bater com a mesma base da cobertura horária: frente de caixa.
-  const rascunho = data.weeklyScenarioSchedule[currentCoverageScenario];
-
-  // FASE 1: Período fechado (escala oficial imutável). Quando vigente e não pediram rascunho, usa o snapshot.
+  const source = getSelectedCashierScenario(data);
   const fechada = data.escalaFechada;
-  const verRascunho = window._verRascunho === true;
-  const usarFechada = Boolean(fechada) && !verRascunho;
-  const source = usarFechada
-    ? { people: fechada.caixaPeople || fechada.people, label: `${fechada.cenarioLabel} · ${fechada.label}`, targetHours: rascunho.targetHours, targetDaysOff: rascunho.targetDaysOff }
-    : rascunho;
+  const usarFechada = source.usarFechada;
   const setorMap = usarFechada ? (fechada.setorMap || {}) : (data.employeeSetorMap || {});
   const cargoMap = usarFechada ? (fechada.cargoMap || {}) : (data.employeeCargoMap || {});
   const days = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];

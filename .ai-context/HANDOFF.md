@@ -98,10 +98,12 @@ Criado `CODEMAP.md` para que qualquer dev/IA ache as funções no `server.js` (3
   - `server.js`: `getLegalIntervalMinutes(...)` passou a reger jornada curta e comercial;
   - `server.js`: `distribuirJornada(...)` passou a repetir a redistribuição final até fechar a carga semanal exata do cenário (ex.: 44h trabalhadas), evitando sobras de 43hxx;
   - `server.js`: a cobertura horária agora conta blocos realmente trabalhados (`parseWorkedBlocks`) e respeita intervalos inferidos ou explícitos;
+  - `server.js`: snapshots antigos de período fechado passam a derivar `caixaPeople` automaticamente a partir de `setorMap/cargoMap` quando esse recorte não existia salvo;
   - reposição com jornada até 6h deixa de criar partida longa e vira faixa contínua com pausa legal;
   - `public/app.js`: a visualização semanal e os cards do dia agora mostram intervalo de 15min quando a jornada ultrapassa 4h sem passar de 6h, e 1h quando ultrapassa 6h;
   - `public/app.js`: o cabeçalho do colaborador na grade semanal passou a exibir horas trabalhadas com precisão (`44h`, `43h20`) em vez de arredondamento inteiro;
   - `public/app.js`: a grade semanal da aba Escala passou a usar a mesma base da cobertura de caixa (não a escala completa de todos os setores);
+  - `public/app.js`: a cobertura da aba Escala passou a recalcular `Caixas ativos` a partir da mesma escala selecionada na tela (rascunho ou período fechado), evitando divergência visual entre cards e heatmap;
   - a regra operacional de posicionamento evita intervalo na abertura ou colado no encerramento, puxando a pausa para o miolo da jornada.
 - Pendência futura importante:
   - unificar o modelo de persistência/representação dos turnos corridos de caixa, porque hoje a tela reconstrói o intervalo a partir da jornada enquanto alguns setores já salvam a pausa no próprio horário.
