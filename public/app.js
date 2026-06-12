@@ -848,7 +848,11 @@ function renderWeeklySchedule(data) {
     daysOff: shifts.filter((shift) => shift === 'Folga').length
   }));
   const valid = audits.filter((audit) => Math.abs(audit.hours - source.targetHours) < 0.01 && audit.daysOff === source.targetDaysOff).length;
-  document.getElementById('weeklyScheduleNote').innerHTML = `${source.label}: meta de ${source.targetHours}h e ${source.targetDaysOff} folga${source.targetDaysOff > 1 ? 's' : ''} a cada 7 dias. &nbsp;<span style="opacity:.8">🔓 abre a loja · 🔒 fecha a loja</span>`;
+  const jv = data.jornadaVariavel;
+  const jvTxt = (jv && jv.ativa)
+    ? ` &nbsp;<span style="color:#5eead4">📊 jornada otimizada por demanda (${jv.pesos.filter(p => p.peso >= 1.15).map(p => p.dia).join('/') || 'sex/sáb'} reforçados)</span>`
+    : '';
+  document.getElementById('weeklyScheduleNote').innerHTML = `${source.label}: meta de ${source.targetHours}h e ${source.targetDaysOff} folga${source.targetDaysOff > 1 ? 's' : ''} a cada 7 dias. &nbsp;<span style="opacity:.8">🔓 abre · 🔒 fecha</span>${jvTxt}`;
   document.getElementById('weeklyAuditSummary').innerHTML = `
     <span class="${valid === audits.length ? 'weekly-ok' : 'weekly-bad'}">${valid}/${audits.length} conformes</span>
   `;
