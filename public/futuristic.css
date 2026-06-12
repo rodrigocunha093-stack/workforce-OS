@@ -1392,3 +1392,22 @@ html[data-theme="light"] .coverage-row:nth-child(even) { background: #f8fafc !im
 html[data-theme="light"] .app-footer { background: rgba(255,255,255,0.8) !important; border-top-color: rgba(15,23,42,0.08); }
 html[data-theme="light"] .app-footer-brand strong { color: #0f172a; }
 html[data-theme="light"] .scrollbar, html[data-theme="light"] ::-webkit-scrollbar-thumb { background: rgba(45,212,191,0.4); }
+
+/* FASE 1: Fechar período da escala */
+.periodo-box {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;
+  padding: 14px 16px; margin-bottom: 14px; border-radius: 12px;
+}
+.periodo-box.periodo-fechado { background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.35); }
+.periodo-box.periodo-aberto { background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.25); }
+.periodo-info strong { display: block; font-size: 14px; }
+.periodo-box.periodo-fechado .periodo-info strong { color: #6ee7b7; }
+.periodo-box.periodo-aberto .periodo-info strong { color: #fcd34d; }
+.periodo-info span { display: block; color: #94a3b8; font-size: 12px; margin-top: 3px; }
+.periodo-info small { display: block; color: #64748b; font-size: 11px; margin-top: 2px; }
+.periodo-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* Tema claro */
+html[data-theme="light"] .periodo-box.periodo-fechado { background: rgba(52,211,153,0.1); }
+html[data-theme="light"] .periodo-box.periodo-aberto { background: rgba(251,191,36,0.1); }
+html[data-theme="light"] .periodo-info span { color: #475569; }

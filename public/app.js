@@ -808,9 +808,17 @@ function renderWeeklySchedule(data) {
   const lojaDom = parseLojaHora(profile.horarioDomingo);
   const lojaPorDia = [lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSab, lojaDom];
   // Usa escala completa (todos os setores) se disponível; senão, só caixa
-  const source = (data.fullSchedule && data.fullSchedule[currentCoverageScenario]) || data.weeklyScenarioSchedule[currentCoverageScenario];
-  const setorMap = data.employeeSetorMap || {};
-  const cargoMap = data.employeeCargoMap || {};
+  const rascunho = (data.fullSchedule && data.fullSchedule[currentCoverageScenario]) || data.weeklyScenarioSchedule[currentCoverageScenario];
+
+  // FASE 1: Período fechado (escala oficial imutável). Quando vigente e não pediram rascunho, usa o snapshot.
+  const fechada = data.escalaFechada;
+  const verRascunho = window._verRascunho === true;
+  const usarFechada = Boolean(fechada) && !verRascunho;
+  const source = usarFechada
+    ? { people: fechada.people, label: `${fechada.cenarioLabel} · ${fechada.label}`, targetHours: rascunho.targetHours, targetDaysOff: rascunho.targetDaysOff }
+    : rascunho;
+  const setorMap = usarFechada ? (fechada.setorMap || {}) : (data.employeeSetorMap || {});
+  const cargoMap = usarFechada ? (fechada.cargoMap || {}) : (data.employeeCargoMap || {});
   const days = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
   let people = Object.entries(source.people);
 
@@ -861,19 +869,6 @@ function renderWeeklySchedule(data) {
       }).join('')}
     </div>` : '';
 
-  // FASE 1: Período fechado (escala oficial imutável)
-  const fechada = data.escalaFechada;
-  const verRascunho = window._verRascunho === true;
-  let usarFechada = false;
-  let peopleSource = source.people;
-  let sourceLabelTxt = source.label;
-  if (fechada && !verRascunho) {
-    usarFechada = true;
-    peopleSource = fechada.people;
-    sourceLabelTxt = `${fechada.cenarioLabel} · período ${fechada.label}`;
-    people = Object.entries(fechada.people);
-  }
-
   const periodoBox = `
     <div class="periodo-box ${usarFechada ? 'periodo-fechado' : 'periodo-aberto'}">
       ${usarFechada ? `
@@ -907,6 +902,7 @@ function renderWeeklySchedule(data) {
     </div>`;
 
   document.getElementById('weeklySchedule').innerHTML = `
+    ${periodoBox}
     ${complianceBox}
     ${setorChips}
     ${cargoChips}
@@ -935,6 +931,49 @@ function renderWeeklySchedule(data) {
       `;
     }).join('')}
   `;
+
+  // FASE 1: Handlers de fechar/reabrir/ver período
+  const fecharBtn = document.getElementById('fecharPeriodoBtn');
+  if (fecharBtn) {
+    fecharBtn.onclick = async () => {
+      // Sugere a semana corrente (segunda a domingo)
+      const hoje = new Date();
+      const diaSemana = (hoje.getDay() + 6) % 7; // seg=0
+      const seg = new Date(hoje); seg.setDate(hoje.getDate() - diaSemana);
+      const dom = new Date(seg); dom.setDate(seg.getDate() + 6);
+      const fmt = d => d.toISOString().slice(0, 10);
+      const ini = prompt('Data INÍCIO do período (AAAA-MM-DD):', fmt(seg));
+      if (!ini) return;
+      const fim = prompt('Data FIM do período (AAAA-MM-DD):', fmt(dom));
+      if (!fim) return;
+      fecharBtn.disabled = true; fecharBtn.textContent = 'Fechando...';
+      try {
+        const r = await fetch('/api/escala/fechar', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cenario: currentCoverageScenario, dataInicio: ini, dataFim: fim })
+        });
+        const d = await r.json();
+        if (d.ok) { showToast('Período fechado! Escala oficial congelada.'); window._verRascunho = false; window.location.reload(); }
+        else { showToast(d.error || 'Erro ao fechar período.'); fecharBtn.disabled = false; fecharBtn.textContent = '🔒 Fechar período'; }
+      } catch (e) { showToast('Erro de conexão.'); fecharBtn.disabled = false; fecharBtn.textContent = '🔒 Fechar período'; }
+    };
+  }
+  const reabrirBtn = document.getElementById('reabrirBtn');
+  if (reabrirBtn) {
+    reabrirBtn.onclick = async () => {
+      if (!confirm('Reabrir o período? A escala volta a ser recalculada dinamicamente (a versão atual vai para o histórico).')) return;
+      try {
+        const r = await fetch('/api/escala/reabrir', { method: 'POST' });
+        const d = await r.json();
+        if (d.ok) { showToast('Período reaberto.'); window._verRascunho = false; window.location.reload(); }
+        else showToast(d.error || 'Erro.');
+      } catch (e) { showToast('Erro de conexão.'); }
+    };
+  }
+  const verRascunhoBtn = document.getElementById('verRascunhoBtn');
+  if (verRascunhoBtn) verRascunhoBtn.onclick = () => { window._verRascunho = true; renderWeeklySchedule(data); };
+  const verFechadaBtn = document.getElementById('verFechadaBtn');
+  if (verFechadaBtn) verFechadaBtn.onclick = () => { window._verRascunho = false; renderWeeklySchedule(data); };
 
   // FASE 1: Exportar/imprimir escala
   const exportBtn = document.getElementById('exportSchedule');
