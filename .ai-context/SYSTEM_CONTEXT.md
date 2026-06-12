@@ -57,12 +57,16 @@ Importação **mercadológico** (m1/m2) → **ICOS por mercadológico** (Açougu
 ## Regras de negócio consolidadas (NÃO QUEBRAR)
 
 - **Operadores ≠ PDVs** — conceitos separados. Caixas ativos = `min(operadores trabalhando, PDVs, demanda)`. PDV é gargalo físico.
+- **Cobertura horária da frente de caixa** deve sair da mesma base da escala semanal da aba Escala:
+  - a contagem respeita blocos realmente trabalhados;
+  - intervalos/jornada partida não contam como presença;
+  - a linha da cobertura mostra caixas efetivamente abríveis (`min(pessoas ativas, PDVs, demanda)`), não apenas pessoas escaladas no dia.
 - **Domingo configurável** — loja pode fechar domingo; domingo fechado conta como 1 folga (6x1 não gera folga extra na semana).
 - **Folga nunca em sexta/sábado** (dias de maior movimento). Permitidas seg–qui (e domingo se aberto).
 - **3 tipos de jornada por cargo:**
-  - *Corrida* (caixa, açougue): 8h direto, turnos escalonados no grupo.
-  - *Partida* (reposição): manhã+tarde; intervalo por sexo (homem >2h até 3h, mulher ≤2h).
-  - *Comercial* (apoio/admin OU cargo único no grupo: conferente, motorista, financeiro...): turno centralizado tipo 08-17.
+  - *Corrida* (caixa, açougue): turnos escalonados no grupo; na leitura operacional, a pausa segue o art. 71 da CLT (`>4h e <=6h = 15min`, `>6h = mínimo 1h`).
+  - *Partida* (reposição): manhã+tarde com presença distribuída entre abertura, manutenção e fechamento; em jornada curta vira turno contínuo com pausa legal curta. Para jornadas acima de 6h, o motor posiciona a pausa fora da primeira e da última faixa do expediente.
+  - *Comercial* (apoio/admin OU cargo único no grupo: conferente, motorista, financeiro...): turno centralizado no miolo do dia, com intervalo calculado pela mesma régua legal.
 - **Cobertura por SETOR operacional**: o motor divide a equipe do setor em abertura e fechamento. Regra padrão:
   - setor com 1 colaborador: jornada centralizada no miolo do dia;
   - setor com N colaboradores: `floor(N/2)` fixos na abertura, `floor(N/2)` fixos no fechamento;

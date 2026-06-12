@@ -40,7 +40,7 @@
 
 ### Forças reais (diferenciais)
 1. **Dados reais, não suposição** — VRSoft + mercadológico alimentam tudo. A "Economia comprovada" quantifica perda (R$106k/mês no exemplo). Isso é argumento de venda forte.
-2. **Conhecimento de domínio brasileiro** — jornada partida de reposição, intervalos por sexo, cultura de fechamento/abertura, mercadológico m1/m2. Blue Yonder é genérico/global; aqui há regra fina do varejo nacional.
+2. **Conhecimento de domínio brasileiro** — jornada partida de reposição, regras CLT/CCT de intrajornada, cultura de fechamento/abertura, mercadológico m1/m2. Blue Yonder é genérico/global; aqui há regra fina do varejo nacional.
 3. **Time-to-value baixo** — importa CSV e em minutos tem escala + diagnóstico. Blue Yonder leva meses de implantação.
 4. **Modelo SaaS pronto** — multi-empresa, gestor de módulos por plano, isolamento de dados.
 

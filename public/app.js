@@ -66,6 +66,13 @@ function parseHours(value) {
   return 0;
 }
 
+function formatWorkedHours(value) {
+  const totalMin = Math.round(Number(value || 0) * 60);
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  return mm === 0 ? `${hh}h` : `${hh}h${String(mm).padStart(2, '0')}`;
+}
+
 let currentCoverageDay = 'monday';
 let currentCoverageScenario = 'atual';
 let coverageAdjustmentMode = false;
@@ -731,28 +738,25 @@ function renderCoverage(data) {
 
 function renderStaffSchedule(data) {
   const dayIndex = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].indexOf(currentCoverageDay);
-  // Fonte ÚNICA: mesmo motor da "Semana completa" (fullSchedule). Se há período fechado, usa o snapshot.
+  // Fonte ÚNICA da frente de caixa: mesma base usada pela cobertura horária.
   const fechada = data.escalaFechada;
   const usarFechada = Boolean(fechada) && window._verRascunho !== true;
   const scenario = usarFechada
-    ? { people: fechada.people, label: fechada.cenarioLabel, targetHours: (data.fullSchedule?.[currentCoverageScenario]?.targetHours) || 44 }
-    : ((data.fullSchedule && data.fullSchedule[currentCoverageScenario]) || data.weeklyScenarioSchedule[currentCoverageScenario]);
+    ? { people: fechada.caixaPeople || fechada.people, label: fechada.cenarioLabel, targetHours: (data.fullSchedule?.[currentCoverageScenario]?.targetHours) || 44 }
+    : data.weeklyScenarioSchedule[currentCoverageScenario];
   const lojaClose = parseLojaHora((data.client?.profile?.horarioSegSex)).close;
   const staff = Object.entries(scenario.people).map(([nome, shifts]) => {
     const shift = shifts[dayIndex];
     if (!shift || shift === 'Folga') return { nome, status: 'Folga', perfil: 'Folga semanal', inicio: null, fim: null, intervalo: null, horas: 0 };
     const b = shiftBounds(shift);
-    const partido = shift.includes('/');
-    const horasM = shift.match(/·\s*(\S+)$/);
-    const horas = horasM ? horasM[1] : '';
+    const plan = getShiftIntervalPlan(shift);
     const perfil = b && b.end >= lojaClose ? 'Fechamento' : b && b.start <= 7 ? 'Abertura' : 'Intermediario';
-    const periodo = shift.split('·')[0].trim();
     return {
       nome, status: 'Trabalhando', perfil,
-      inicio: periodo.split('-')[0],
-      fim: partido ? periodo.split('/')[1].split('-')[1] : periodo.split('-')[1],
-      intervalo: partido ? 'Jornada partida' : '1h escalonado',
-      horas
+      inicio: plan?.start || shift.split('·')[0].trim().split('-')[0],
+      fim: plan?.end || shift.split('·')[0].trim().split('-').slice(-1)[0],
+      intervalo: plan?.intervalLabel || 'Sem intervalo',
+      horas: plan?.horas || ''
     };
   });
   const weeklyHours = Object.fromEntries(Object.keys(scenario.people).map((nome) => [nome, scenario.targetHours]));
@@ -760,7 +764,7 @@ function renderStaffSchedule(data) {
   const off = staff.filter((person) => person.status === 'Folga');
   document.getElementById('staffScheduleNote').textContent = currentCoverageScenario === 'atual'
     ? `${data.dailyCoverage[currentCoverageDay].label} - formacao-base atual 6x1 44h.`
-    : `${data.dailyCoverage[currentCoverageDay].label} · formacao individual ${scenario.label}; intervalos serão posicionados pela otimização horária.`;
+    : `${data.dailyCoverage[currentCoverageDay].label} · formacao individual ${scenario.label}; intervalos aplicados pela regra CLT e ajuste operacional.`;
   document.getElementById('staffDaySummary').innerHTML = `
     <span class="working-summary">${working.length} trabalhando</span>
     <span class="off-summary">${off.length} de folga</span>
@@ -803,6 +807,62 @@ function minutesToHM(total) {
   const mm = safe % 60;
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
+function getLegalIntervalMinutes(workedHours) {
+  if (workedHours > 6) return 60;
+  if (workedHours > 4) return 15;
+  return 0;
+}
+function getShiftIntervalPlan(shift) {
+  if (!shift || shift === 'Folga') return null;
+  const [periodoRaw, horasRaw = ''] = String(shift).split('·').map((part) => part.trim());
+  const horas = horasRaw || '';
+  if (periodoRaw.includes('/')) {
+    const [bloco1, bloco2] = periodoRaw.split('/');
+    const fim1 = bloco1.split('-')[1];
+    const ini2 = bloco2.split('-')[0];
+    return {
+      display: `${bloco1}/${bloco2}`,
+      start: bloco1.split('-')[0],
+      end: bloco2.split('-')[1],
+      intervalLabel: `${fim1}-${ini2}`,
+      hasInterval: true,
+      horas
+    };
+  }
+
+  const worked = parseHours(shift);
+  const [ini, fimOriginal] = periodoRaw.split('-');
+  const startMin = hmToMinutes(ini);
+  const endMin = hmToMinutes(fimOriginal);
+  if (startMin === null || endMin === null) {
+    return { display: periodoRaw, start: ini, end: fimOriginal, intervalLabel: 'Sem intervalo', hasInterval: false, horas };
+  }
+
+  const legalIntervalMin = getLegalIntervalMinutes(worked);
+  if (!legalIntervalMin) {
+    return { display: periodoRaw, start: ini, end: fimOriginal, intervalLabel: 'Sem intervalo', hasInterval: false, horas };
+  }
+
+  const workedMin = Math.round(worked * 60);
+  const rawSpanMin = endMin - startMin;
+  const explicitIntervalMin = Math.max(0, rawSpanMin - workedMin);
+  const intervaloMin = explicitIntervalMin >= legalIntervalMin ? explicitIntervalMin : legalIntervalMin;
+  const endReal = explicitIntervalMin >= legalIntervalMin ? endMin : endMin + intervaloMin;
+  const beforeBase = Math.round((workedMin / 2) / 5) * 5;
+  const minAntes = worked > 6 ? 180 : 120;
+  const minDepois = 120;
+  const beforeMin = Math.max(minAntes, Math.min(beforeBase, workedMin - minDepois));
+  const intervalStart = startMin + beforeMin;
+  const intervalEnd = intervalStart + intervaloMin;
+  return {
+    display: `${ini}-${minutesToHM(intervalStart)}/${minutesToHM(intervalEnd)}-${minutesToHM(endReal)}`,
+    start: ini,
+    end: minutesToHM(endReal),
+    intervalLabel: `${minutesToHM(intervalStart)}-${minutesToHM(intervalEnd)}`,
+    hasInterval: true,
+    horas
+  };
+}
 function shiftBounds(shift) {
   if (!shift || shift === 'Folga') return null;
   const blocks = shift.split('·')[0].trim().split('/');
@@ -814,40 +874,12 @@ function shiftBounds(shift) {
 }
 function renderShiftWithInterval(shift, badge = '') {
   if (!shift || shift === 'Folga') return shift;
-  const [periodoRaw, horasRaw = ''] = String(shift).split('·').map((part) => part.trim());
-  const horas = horasRaw || '';
-  if (periodoRaw.includes('/')) {
-    const [bloco1, bloco2] = periodoRaw.split('/');
-    const fim1 = bloco1.split('-')[1];
-    const ini2 = bloco2.split('-')[0];
-    return `
-      <span class="shift-main">${bloco1}/${bloco2}${badge}</span>
-      <small class="shift-meta">int. ${fim1}-${ini2}${horas ? ` · ${horas}` : ''}</small>
-    `;
-  }
-
-  const worked = parseHours(shift);
-  const [ini, fimOriginal] = periodoRaw.split('-');
-  const startMin = hmToMinutes(ini);
-  const endMin = hmToMinutes(fimOriginal);
-  if (startMin === null || endMin === null || worked < 6) {
-    return `
-      <span class="shift-main">${periodoRaw}${badge}</span>
-      <small class="shift-meta">${horas || 'Sem intervalo'}</small>
-    `;
-  }
-
-  const intervaloMin = 60;
-  const workedMin = Math.round(worked * 60);
-  const beforeMin = Math.round((workedMin / 2) / 5) * 5;
-  const afterMin = workedMin - beforeMin;
-  const intStart = startMin + beforeMin;
-  const intEnd = intStart + intervaloMin;
-  const fimReal = intEnd + afterMin;
+  const plan = getShiftIntervalPlan(shift);
+  if (!plan) return shift;
 
   return `
-    <span class="shift-main">${ini}-${minutesToHM(intStart)}/${minutesToHM(intEnd)}-${minutesToHM(fimReal)}${badge}</span>
-    <small class="shift-meta">int. ${minutesToHM(intStart)}-${minutesToHM(intEnd)}${horas ? ` · ${horas}` : ''}</small>
+    <span class="shift-main">${plan.display}${badge}</span>
+    <small class="shift-meta">${plan.hasInterval ? `int. ${plan.intervalLabel}` : 'Sem intervalo'}${plan.horas ? ` · ${plan.horas}` : ''}</small>
   `;
 }
 function parseLojaHora(str) {
@@ -861,15 +893,15 @@ function renderWeeklySchedule(data) {
   const lojaSab = parseLojaHora(profile.horarioSabado);
   const lojaDom = parseLojaHora(profile.horarioDomingo);
   const lojaPorDia = [lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSab, lojaDom];
-  // Usa escala completa (todos os setores) se disponível; senão, só caixa
-  const rascunho = (data.fullSchedule && data.fullSchedule[currentCoverageScenario]) || data.weeklyScenarioSchedule[currentCoverageScenario];
+  // Nesta aba, a semana exibida deve bater com a mesma base da cobertura horária: frente de caixa.
+  const rascunho = data.weeklyScenarioSchedule[currentCoverageScenario];
 
   // FASE 1: Período fechado (escala oficial imutável). Quando vigente e não pediram rascunho, usa o snapshot.
   const fechada = data.escalaFechada;
   const verRascunho = window._verRascunho === true;
   const usarFechada = Boolean(fechada) && !verRascunho;
   const source = usarFechada
-    ? { people: fechada.people, label: `${fechada.cenarioLabel} · ${fechada.label}`, targetHours: rascunho.targetHours, targetDaysOff: rascunho.targetDaysOff }
+    ? { people: fechada.caixaPeople || fechada.people, label: `${fechada.cenarioLabel} · ${fechada.label}`, targetHours: rascunho.targetHours, targetDaysOff: rascunho.targetDaysOff }
     : rascunho;
   const setorMap = usarFechada ? (fechada.setorMap || {}) : (data.employeeSetorMap || {});
   const cargoMap = usarFechada ? (fechada.cargoMap || {}) : (data.employeeCargoMap || {});
@@ -969,9 +1001,12 @@ function renderWeeklySchedule(data) {
       const audit = audits.find((item) => item.nome === nome);
       const ok = Math.abs(audit.hours - source.targetHours) < 0.01 && audit.daysOff === source.targetDaysOff;
       const setor = setorMap[nome] || 'Sem setor';
+      const workedLabel = Math.abs(audit.hours - source.targetHours) < 0.01
+        ? formatWorkedHours(source.targetHours)
+        : `${formatWorkedHours(audit.hours)} prev.`;
       return `
         <div class="weekly-row">
-          <span class="weekly-person"><strong>${nome}</strong><small>${setor} · ${audit.hours.toFixed(0)}h - ${audit.daysOff} folga${audit.daysOff > 1 ? 's' : ''}</small></span>
+          <span class="weekly-person"><strong>${nome}</strong><small>${setor} · ${workedLabel} trabalhadas · ${audit.daysOff} folga${audit.daysOff > 1 ? 's' : ''}</small></span>
           ${shifts.map((shift, dayIdx) => {
             const b = shiftBounds(shift);
             const lh = lojaPorDia[dayIdx];

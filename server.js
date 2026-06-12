@@ -1009,6 +1009,62 @@ function formatDur(h) {
   return mm === 0 ? `${hh}h` : `${hh}h${String(mm).padStart(2, '0')}`;
 }
 
+function getLegalIntervalMinutes(workedHours) {
+  if (workedHours > 6) return 60;
+  if (workedHours > 4) return 15;
+  return 0;
+}
+
+function hmTextToMinutes(value) {
+  const m = String(value || '').match(/(\d{1,2})(?::(\d{2}))?/);
+  if (!m) return null;
+  return (Number(m[1]) * 60) + Number(m[2] || 0);
+}
+
+function parseWorkedBlocks(shift) {
+  if (!shift || shift === 'Folga') return [];
+  const [periodoRaw] = String(shift).split('·').map((part) => part.trim());
+  if (!periodoRaw) return [];
+
+  if (periodoRaw.includes('/')) {
+    return periodoRaw
+      .split('/')
+      .map((bloco) => {
+        const [ini, fim] = bloco.split('-').map((part) => part.trim());
+        const start = hmTextToMinutes(ini);
+        const end = hmTextToMinutes(fim);
+        return start === null || end === null ? null : { start, end };
+      })
+      .filter(Boolean);
+  }
+
+  const [ini, fimOriginal] = periodoRaw.split('-').map((part) => part.trim());
+  const startMin = hmTextToMinutes(ini);
+  const endMin = hmTextToMinutes(fimOriginal);
+  if (startMin === null || endMin === null) return [];
+
+  const workedHours = shiftWorkedHours(shift) || ((endMin - startMin) / 60);
+  const legalIntervalMin = getLegalIntervalMinutes(workedHours);
+  if (!legalIntervalMin) return [{ start: startMin, end: endMin }];
+
+  const workedMin = Math.round(workedHours * 60);
+  const rawSpanMin = endMin - startMin;
+  const explicitIntervalMin = Math.max(0, rawSpanMin - workedMin);
+  const intervaloMin = explicitIntervalMin >= legalIntervalMin ? explicitIntervalMin : legalIntervalMin;
+  const endReal = explicitIntervalMin >= legalIntervalMin ? endMin : endMin + intervaloMin;
+  const beforeBase = Math.round((workedMin / 2) / 5) * 5;
+  const minAntes = workedHours > 6 ? 180 : 120;
+  const minDepois = 120;
+  const beforeMin = Math.max(minAntes, Math.min(beforeBase, workedMin - minDepois));
+  const intervalStart = startMin + beforeMin;
+  const intervalEnd = intervalStart + intervaloMin;
+
+  return [
+    { start: startMin, end: intervalStart },
+    { start: intervalEnd, end: endReal }
+  ].filter((block) => block.end > block.start);
+}
+
 function generateOperatorShift(startHour, endHour) {
   const duration = endHour - startHour;
   return `${formatHM(startHour)}-${formatHM(endHour)} · ${formatDur(duration)}`;
@@ -1102,12 +1158,23 @@ function distribuirJornada(targetHours, diasTrabalho, pesos, piso = 5, teto = 8)
   // Arredonda a múltiplos de 20min e corrige o resto para fechar exatamente targetHours
   horas = horas.map(h => Math.round(h * 3) / 3); // múltiplos de 20min
   let diff = targetHours - horas.reduce((s, h) => s + h, 0);
-  // Ajusta o resto nos dias de maior peso (até o teto) ou menor peso (até o piso)
+  // Ajusta o resto nos dias de maior peso (até o teto) ou menor peso (até o piso).
+  // Repete quantas passadas forem necessárias para fechar exatamente a carga semanal.
   const ordem = diasTrabalho.map((d, i) => i).sort((a, b) => pd[b] - pd[a]);
-  for (const i of (diff > 0 ? ordem : [...ordem].reverse())) {
-    if (Math.abs(diff) < 0.01) break;
-    const passo = diff > 0 ? Math.min(1 / 3, teto - horas[i], diff) : Math.max(-1 / 3, piso - horas[i], diff);
-    horas[i] += passo; diff -= passo;
+  for (let iter = 0; iter < 24 && Math.abs(diff) >= 0.01; iter++) {
+    let mexeu = false;
+    const fila = diff > 0 ? ordem : [...ordem].reverse();
+    for (const i of fila) {
+      if (Math.abs(diff) < 0.01) break;
+      const passo = diff > 0
+        ? Math.min(1 / 3, teto - horas[i], diff)
+        : Math.max(-1 / 3, piso - horas[i], diff);
+      if (Math.abs(passo) < 0.01) continue;
+      horas[i] += passo;
+      diff -= passo;
+      mexeu = true;
+    }
+    if (!mexeu) break;
   }
   const mapa = {};
   diasTrabalho.forEach((d, i) => { mapa[d] = Math.round(horas[i] * 3) / 3; });
@@ -1536,31 +1603,109 @@ function isCargoComercial(emp) {
 
 // Turno comercial centralizado: jornada + 1h almoço, cobrindo o miolo do dia (ex: 08-17).
 function generateComercialShift(open, close, jornada = 8) {
-  const ocupacao = jornada + 1; // inclui 1h de almoço
+  const ocupacao = jornada + (getLegalIntervalMinutes(jornada) / 60);
   const dur = close - open;
   const start = open + Math.max(0, Math.round((dur - ocupacao) / 2));
   const end = Math.min(close, start + ocupacao);
   return `${formatHM(start)}-${formatHM(end)} · ${formatDur(jornada)}`;
 }
 
-// Jornada PARTIDA para reposição: manhã + tarde. Intervalo por sexo (homem até 3h, mulher 2h).
-function generateRepositorShift(open, close, idx, N, sexo, jornada = 8) {
-  const bloco = jornada / 2; // metade manhã, metade tarde
-  const intervalo = (sexo === 'masculino') ? 3 : 2;
-  const jornadaTotal = bloco * 2 + intervalo;
+// Jornada de reposição:
+// - manhã forte
+// - cobertura de manutenção no miolo
+// - fechamento inteligente
+// Regras CLT validadas no art. 71:
+// - >4h e <=6h: intervalo de 15min
+// - >6h: intervalo mínimo de 1h
+// Regra operacional do motor:
+// - o intervalo não abre a jornada e não cai colado no encerramento;
+// - jornadas curtas ficam contínuas, com pausa curta próxima do meio;
+// - jornadas longas continuam partidas para manter cobertura.
+function generateRepositorShift(open, close, idx, N, sexo, jornada = 8, role = 'intermediario') {
+  const legalInterval = getLegalIntervalMinutes(jornada) / 60;
+  if (legalInterval === 0) {
+    const faixaCurta = Math.max(0, (close - open) - jornada);
+    const inicioCurto = role === 'abertura'
+      ? open
+      : role === 'fechamento'
+        ? open + faixaCurta
+        : open + Math.round((N > 1 ? idx / (N - 1) : 0.5) * faixaCurta);
+    return `${formatHM(inicioCurto)}-${formatHM(inicioCurto + jornada)} · ${formatDur(jornada)}`;
+  }
+
+  if (jornada <= 6) {
+    const ocupacao = jornada + legalInterval;
+    const faixaCurta = Math.max(0, (close - open) - ocupacao);
+    const inicioCurto = role === 'abertura'
+      ? open
+      : role === 'fechamento'
+        ? open + faixaCurta
+        : open + Math.round((N > 1 ? idx / (N - 1) : 0.5) * faixaCurta);
+    const metade = jornada / 2;
+    const blocoManha = Math.round(metade * 3) / 3;
+    const blocoTarde = Math.round((jornada - blocoManha) * 3) / 3;
+    const manhaFim = inicioCurto + blocoManha;
+    const tardeStart = manhaFim + legalInterval;
+    const tardeFim = tardeStart + blocoTarde;
+    return `${formatHM(inicioCurto)}-${formatHM(manhaFim)}/${formatHM(tardeStart)}-${formatHM(tardeFim)} · ${formatDur(jornada)}`;
+  }
+
+  const intervaloBase = role === 'central' || role === 'intermediario' ? 2 : 1;
+  const intervalo = Math.max(legalInterval, intervaloBase);
+
+  const snap20 = (h) => Math.round(h * 3) / 3;
+  const splitByRole = () => {
+    if (role === 'abertura') return { manha: 0.62, tarde: 0.38 };
+    if (role === 'fechamento') return { manha: 0.38, tarde: 0.62 };
+    return { manha: 0.5, tarde: 0.5 };
+  };
+  const ratio = splitByRole();
+  let blocoManha = snap20(jornada * ratio.manha);
+  let blocoTarde = snap20(jornada - blocoManha);
+
+  // Mantém blocos minimamente úteis em cada ponta.
+  if (blocoManha < 2) { blocoManha = 2; blocoTarde = snap20(jornada - blocoManha); }
+  if (blocoTarde < 2) { blocoTarde = 2; blocoManha = snap20(jornada - blocoTarde); }
+
+  const jornadaTotal = blocoManha + blocoTarde + intervalo;
   const faixa = Math.max(0, (close - open) - jornadaTotal);
-  let manhaStart = open + Math.round((N > 1 ? idx / (N - 1) : 0) * faixa);
-  let manhaFim = manhaStart + bloco;
+
+  let manhaStart;
+  if (role === 'abertura') {
+    manhaStart = open;
+  } else if (role === 'fechamento') {
+    manhaStart = open + faixa;
+  } else {
+    manhaStart = open + Math.round((N > 1 ? idx / (N - 1) : 0.5) * faixa);
+  }
+
+  let manhaFim = manhaStart + blocoManha;
   let tardeStart = manhaFim + intervalo;
-  let tardeFim = tardeStart + bloco;
+  let tardeFim = tardeStart + blocoTarde;
+
   if (tardeFim > close) {
     tardeFim = close;
-    tardeStart = tardeFim - bloco;
+    tardeStart = tardeFim - blocoTarde;
     manhaFim = tardeStart - intervalo;
-    manhaStart = manhaFim - bloco;
-    if (manhaStart < open) manhaStart = open;
+    manhaStart = manhaFim - blocoManha;
   }
-  return `${formatHM(manhaStart)}-${formatHM(manhaFim)}/${formatHM(tardeStart)}-${formatHM(tardeFim)} · ${formatDur(bloco * 2)}`;
+  if (manhaStart < open) {
+    manhaStart = open;
+    manhaFim = manhaStart + blocoManha;
+    tardeStart = manhaFim + intervalo;
+    tardeFim = tardeStart + blocoTarde;
+  }
+
+  // Se ainda sobrar fora da janela, centraliza sem perder a lógica do papel.
+  if (tardeFim > close) {
+    const excesso = tardeFim - close;
+    manhaStart = Math.max(open, manhaStart - excesso);
+    manhaFim = manhaStart + blocoManha;
+    tardeStart = manhaFim + intervalo;
+    tardeFim = Math.min(close, tardeStart + blocoTarde);
+  }
+
+  return `${formatHM(manhaStart)}-${formatHM(manhaFim)}/${formatHM(tardeStart)}-${formatHM(tardeFim)} · ${formatDur(blocoManha + blocoTarde)}`;
 }
 
 function buildOptimizationSavings(salesRows, profile, employees, summary) {
@@ -1812,16 +1957,16 @@ function regenerateCoverageHours(summary, profile) {
 }
 
 function countWorkersAtHour(hourStart, hourEnd, dayIndex, people) {
+  const faixaStart = hourStart * 60;
+  const faixaEnd = hourEnd * 60;
   let count = 0;
   Object.values(people).forEach(shifts => {
     const shift = shifts[dayIndex];
     if (!shift || shift === 'Folga') return;
-    const match = shift.match(/^(\d{1,2}):?(\d{0,2})\s*-\s*(\d{1,2}):?(\d{0,2})/);
-    if (!match) return;
-    const start = Number(match[1]);
-    const end = Number(match[3]);
-    // Operadora cobre essa hora se trabalha durante ela
-    if (start <= hourStart && end > hourStart) count++;
+    const blocks = parseWorkedBlocks(shift);
+    if (blocks.some((block) => block.start < faixaEnd && block.end > faixaStart)) {
+      count++;
+    }
   });
   return count;
 }
@@ -1949,8 +2094,9 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
       const loja = lojaDoDia(day);
       const jd = jornadaPorDia[day] || shiftHours;
       if (reposicao) {
-        if (ehFechador) return generateOperatorShift(Math.max(loja.open, loja.close - jd), loja.close);
-        return generateRepositorShift(loja.open, loja.close, idx, N, sexo, jd);
+        if (ehFechador) return generateRepositorShift(loja.open, loja.close, idx, N, sexo, jd, 'fechamento');
+        if (ehAbridor) return generateRepositorShift(loja.open, loja.close, idx, N, sexo, jd, 'abertura');
+        return generateRepositorShift(loja.open, loja.close, idx, N, sexo, jd, turno);
       }
       if (comercial) return generateComercialShift(loja.open, loja.close, jd);
       // Corrido (caixa, açougue): respeita papel
@@ -3044,6 +3190,7 @@ const server = http.createServer(async (req, res) => {
         // Gera a escala atual e captura o snapshot do cenário escolhido
         const summary = await summaryFromDatabase(user);
         const full = summary.fullSchedule && summary.fullSchedule[cenario];
+        const caixa = summary.weeklyScenarioSchedule && summary.weeklyScenarioSchedule[cenario];
         if (!full || !Object.keys(full.people || {}).length) throw new Error('Não há escala para fechar. Cadastre a equipe primeiro.');
 
         const snapshot = {
@@ -3054,6 +3201,7 @@ const server = http.createServer(async (req, res) => {
           fechadoEm: new Date().toISOString(),
           fechadoPor: user.email,
           people: full.people,
+          caixaPeople: caixa?.people || {},
           setorMap: summary.employeeSetorMap || {},
           cargoMap: summary.employeeCargoMap || {},
           compliance: (summary.complianceCLT && summary.complianceCLT[cenario]) || []

@@ -84,6 +84,27 @@ Criado `CODEMAP.md` para que qualquer dev/IA ache as funções no `server.js` (3
   - setor com `N` colaboradores distribui `floor(N/2)` na abertura e `floor(N/2)` no fechamento;
   - sobra (setor ímpar) vai para intermediário.
 - Preferências explícitas de turno continuam sendo respeitadas antes da distribuição automática.
+- Reposição deixou de ser tratada como presença concentrada só no começo do dia:
+  - abertura de reposição puxa manhã forte com retorno curto;
+  - intermediário cobre manutenção do miolo;
+  - fechamento preserva presença no fim do dia;
+  - regra legal de intervalo foi revisada pela CLT art. 71: `>4h e <=6h = 15min`, `>6h = mínimo 1h`;
+  - não ficou sustentada no texto legal a distinção "homem sem teto / mulher até 2h" usada antes como premissa operacional.
+
+## Atualização 2026-06-12 — intrajornada
+
+- Fonte oficial validada: CLT, art. 71 (`https://www.planalto.gov.br/ccivil_03/decreto-lei/del5452compilado.htm`).
+- Ajustes aplicados:
+  - `server.js`: `getLegalIntervalMinutes(...)` passou a reger jornada curta e comercial;
+  - `server.js`: `distribuirJornada(...)` passou a repetir a redistribuição final até fechar a carga semanal exata do cenário (ex.: 44h trabalhadas), evitando sobras de 43hxx;
+  - `server.js`: a cobertura horária agora conta blocos realmente trabalhados (`parseWorkedBlocks`) e respeita intervalos inferidos ou explícitos;
+  - reposição com jornada até 6h deixa de criar partida longa e vira faixa contínua com pausa legal;
+  - `public/app.js`: a visualização semanal e os cards do dia agora mostram intervalo de 15min quando a jornada ultrapassa 4h sem passar de 6h, e 1h quando ultrapassa 6h;
+  - `public/app.js`: o cabeçalho do colaborador na grade semanal passou a exibir horas trabalhadas com precisão (`44h`, `43h20`) em vez de arredondamento inteiro;
+  - `public/app.js`: a grade semanal da aba Escala passou a usar a mesma base da cobertura de caixa (não a escala completa de todos os setores);
+  - a regra operacional de posicionamento evita intervalo na abertura ou colado no encerramento, puxando a pausa para o miolo da jornada.
+- Pendência futura importante:
+  - unificar o modelo de persistência/representação dos turnos corridos de caixa, porque hoje a tela reconstrói o intervalo a partir da jornada enquanto alguns setores já salvam a pausa no próprio horário.
 
 ## Referências
 
