@@ -1790,6 +1790,13 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
     }
   }
 
+  // COBERTURA: respeita preferências explícitas; só usa flexíveis para completar abridor/fechador.
+  const temAbridorExplicito = employees.some(e => (e.turno || 'flexivel') === 'abertura');
+  const temFechadorExplicito = employees.some(e => (e.turno || 'flexivel') === 'fechamento');
+  const idxFlexiveis = employees.map((e, i) => ((e.turno || 'flexivel') === 'flexivel' ? i : -1)).filter(i => i >= 0);
+  const idxFechadorAuto = (!temFechadorExplicito && idxFlexiveis.length) ? idxFlexiveis[idxFlexiveis.length - 1] : -1;
+  const idxAbridorAuto = (!temAbridorExplicito && idxFlexiveis.length) ? idxFlexiveis.find(i => i !== idxFechadorAuto) ?? -1 : -1;
+
   const result = {};
   employees.forEach((emp, idx) => {
     const turno = emp.turno || 'flexivel';
@@ -1800,10 +1807,16 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
     const comercial = !reposicao && (isCargoComercial(emp) || N === 1);
     const sexo = String(emp.sexo || 'feminino').toLowerCase();
 
-    // COBERTURA GARANTIDA: no grupo, o último fecha e o primeiro abre.
-    // (respeita preferências explícitas; só força quando flexível)
-    const ehFechador = N > 1 && (idx === N - 1 || turno === 'fechamento');
-    const ehAbridor = N > 1 && idx === 0 && turno !== 'fechamento';
+    // COBERTURA: a PREFERÊNCIA do colaborador tem prioridade. A designação
+    // automática (abridor/fechador) só vale para quem está como 'flexível'.
+    let ehFechador, ehAbridor;
+    if (turno === 'fechamento') { ehFechador = true; ehAbridor = false; }
+    else if (turno === 'abertura') { ehAbridor = true; ehFechador = false; }
+    else if (turno === 'intermediario') { ehAbridor = false; ehFechador = false; }
+    else { // flexível — completa a cobertura que falta
+      ehFechador = N > 1 && idx === idxFechadorAuto;
+      ehAbridor = N > 1 && idx === idxAbridorAuto && idx !== idxFechadorAuto;
+    }
 
     const startHour = startForTurno(turno, segSex.open, segSex.close, idx);
     const endHour = Math.min(segSex.close, startHour + shiftHours);
