@@ -76,6 +76,15 @@ Criado `CODEMAP.md` para que qualquer dev/IA ache as funções no `server.js` (3
 2. **Fase 1 do roadmap — publicar/versionar escala**: salvar a escala aprovada no `clientState` (campo `escalaPublicada`), com data/autor, separando "rascunho" (recalculado) de "oficial" (persistido). É o que falta para o gerente usar toda semana.
 3. Configurar `www.` no Vercel/Cloudflare.
 
+## Atualização 2026-06-12
+
+- Regra nova implementada no motor de escala:
+  - cobertura agora é distribuída por **setor operacional**;
+  - setor com `1` colaborador fica centralizado no miolo do dia;
+  - setor com `N` colaboradores distribui `floor(N/2)` na abertura e `floor(N/2)` no fechamento;
+  - sobra (setor ímpar) vai para intermediário.
+- Preferências explícitas de turno continuam sendo respeitadas antes da distribuição automática.
+
 ## Referências
 
 - Roadmap completo e análise vs Blue Yonder: `ANALISE-E-ROADMAP.md`.

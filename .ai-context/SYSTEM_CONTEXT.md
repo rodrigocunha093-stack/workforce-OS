@@ -63,7 +63,11 @@ Importação **mercadológico** (m1/m2) → **ICOS por mercadológico** (Açougu
   - *Corrida* (caixa, açougue): 8h direto, turnos escalonados no grupo.
   - *Partida* (reposição): manhã+tarde; intervalo por sexo (homem >2h até 3h, mulher ≤2h).
   - *Comercial* (apoio/admin OU cargo único no grupo: conferente, motorista, financeiro...): turno centralizado tipo 08-17.
-- **Revezamento por CARGO** (pessoas do mesmo cargo são intercambiáveis e escalonam juntas), não por setor mercadológico granular.
+- **Cobertura por SETOR operacional**: o motor divide a equipe do setor em abertura e fechamento. Regra padrão:
+  - setor com 1 colaborador: jornada centralizada no miolo do dia;
+  - setor com N colaboradores: `floor(N/2)` fixos na abertura, `floor(N/2)` fixos no fechamento;
+  - sobra (quando N é ímpar): vai para intermediário.
+- Preferências explícitas de turno ainda valem; a distribuição automática completa o restante.
 - **Cobertura garantida:** todo grupo tem abridor (🔓) e fechador (🔒). Reposição tem noturno que fecha (organiza a loja). Indicadores 🔓/🔒 na escala.
 - **Semana do mês** (1–5) filtra os dados reais do cliente por período; semana forte costuma cair entre dias 25–05.
 - **Sexta e sábado** têm tratamento próprio de cobertura.

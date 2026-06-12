@@ -1014,6 +1014,65 @@ function generateOperatorShift(startHour, endHour) {
   return `${formatHM(startHour)}-${formatHM(endHour)} · ${formatDur(duration)}`;
 }
 
+function scheduleGroupKey(emp) {
+  if (isOperadorCaixa(emp)) return 'frente de caixa';
+  const setorOperacional = normalizeSetor(empSetorOperacional(emp));
+  if (setorOperacional) return setorOperacional;
+  const setor = normalizeSetor(emp.setor);
+  if (setor) return setor;
+  const cargo = normalizeSetor(emp.cargo);
+  return cargo || 'sem setor';
+}
+
+// Regra de cobertura por setor:
+// - 1 colaborador: centraliza no miolo do dia
+// - N colaboradores: floor(N/2) fixos na abertura, floor(N/2) fixos no fechamento
+// - sobra (quando N é ímpar) fica no intermediário/miolo
+// Preferências explícitas continuam valendo; a distribuição automática completa o restante.
+function assignCoverageRolesBySector(employees) {
+  const prepared = (employees || []).map((emp, index) => ({ ...emp, _sortIndex: index }));
+  if (prepared.length <= 1) {
+    return prepared.map((emp) => ({ ...emp, _coverageRole: 'central' }));
+  }
+
+  const half = Math.floor(prepared.length / 2);
+  const explicitOpen = [];
+  const explicitClose = [];
+  const explicitMiddle = [];
+  const flex = [];
+
+  prepared.forEach((emp) => {
+    const turno = String(emp.turno || 'flexivel').toLowerCase();
+    if (turno === 'abertura') explicitOpen.push(emp);
+    else if (turno === 'fechamento') explicitClose.push(emp);
+    else if (turno === 'intermediario') explicitMiddle.push(emp);
+    else flex.push(emp);
+  });
+
+  const result = [];
+  explicitOpen.forEach((emp) => result.push({ ...emp, _coverageRole: 'abertura' }));
+  explicitClose.forEach((emp) => result.push({ ...emp, _coverageRole: 'fechamento' }));
+  explicitMiddle.forEach((emp) => result.push({ ...emp, _coverageRole: 'intermediario' }));
+
+  let openingSlots = Math.max(0, half - explicitOpen.length);
+  let closingSlots = Math.max(0, half - explicitClose.length);
+  const flexPool = [...flex];
+
+  while (openingSlots > 0 && flexPool.length) {
+    const emp = flexPool.shift();
+    result.push({ ...emp, _coverageRole: 'abertura' });
+    openingSlots -= 1;
+  }
+  while (closingSlots > 0 && flexPool.length) {
+    const emp = flexPool.pop();
+    result.push({ ...emp, _coverageRole: 'fechamento' });
+    closingSlots -= 1;
+  }
+  flexPool.forEach((emp) => result.push({ ...emp, _coverageRole: 'intermediario' }));
+
+  return result.sort((a, b) => a._sortIndex - b._sortIndex);
+}
+
 // Distribui a carga semanal pelos dias trabalhados conforme o PESO de demanda de cada dia.
 // Dias de pico (sex/sáb) recebem mais horas; dias fracos menos. Respeita piso/teto e soma exata.
 // diasTrabalho: array de índices (0=seg..6=dom). pesos: array[7] com peso de cada dia.
@@ -1824,6 +1883,7 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
     switch (turno) {
       case 'abertura': return open;
       case 'fechamento': return lateStart;
+      case 'central':
       case 'intermediario': return open + Math.round(span / 2);
       default:
         // flexível — espalha o grupo uniformemente da abertura ao fechamento
@@ -1840,7 +1900,7 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
 
   const result = {};
   employees.forEach((emp, idx) => {
-    const turno = emp.turno || 'flexivel';
+    const turno = emp._coverageRole || emp.turno || 'flexivel';
     const podeDomingo = emp.podeDomingo !== false;
     const folgaPref = emp.folgaPreferencial || '';
     const reposicao = isReposicao(emp);
@@ -1853,7 +1913,7 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
     let ehFechador, ehAbridor;
     if (turno === 'fechamento') { ehFechador = true; ehAbridor = false; }
     else if (turno === 'abertura') { ehAbridor = true; ehFechador = false; }
-    else if (turno === 'intermediario') { ehAbridor = false; ehFechador = false; }
+    else if (turno === 'intermediario' || turno === 'central') { ehAbridor = false; ehFechador = false; }
     else { // flexível — completa a cobertura que falta
       ehFechador = N > 1 && idx === idxFechadorAuto;
       ehAbridor = N > 1 && idx === idxAbridorAuto && idx !== idxFechadorAuto;
@@ -1909,21 +1969,25 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
   return result;
 }
 
-// Gera escala agrupando por CARGO (a função define quem reveza entre si).
-// Ex.: todos os "Repositor" revezam juntos e escalonam turnos, mesmo que tenham
-// sub-setores mercadológicos diferentes (Bebidas, Limpeza, Cereais...).
+// Gera escala agrupando por SETOR operacional.
+// Regra nova:
+// - metade do setor fixa na abertura
+// - metade fixa no fechamento
+// - sobra (ímpar) no intermediário
+// - setor com 1 pessoa fica centralizado para cobrir o miolo do dia
 function generateGroupedSchedule(profile, employees, targetHours = 44, targetDaysOff = 1, pesosDia = null) {
   const groups = {};
   (employees || []).forEach((emp) => {
-    const cargo = (emp.cargo || 'Sem cargo').trim().toLowerCase() || 'sem cargo';
-    groups[cargo] = groups[cargo] || [];
-    groups[cargo].push(emp);
+    const key = scheduleGroupKey(emp);
+    groups[key] = groups[key] || [];
+    groups[key].push(emp);
   });
 
-  // Gerar escala para cada grupo isoladamente (revezamento interno) e mesclar
+  // Gerar escala para cada setor isoladamente e mesclar
   const merged = {};
   Object.values(groups).forEach((grupo) => {
-    const escalaGrupo = generateScheduleByProfile(profile, grupo, targetHours, targetDaysOff, pesosDia);
+    const grupoComCobertura = assignCoverageRolesBySector(grupo);
+    const escalaGrupo = generateScheduleByProfile(profile, grupoComCobertura, targetHours, targetDaysOff, pesosDia);
     Object.assign(merged, escalaGrupo);
   });
   return merged;
