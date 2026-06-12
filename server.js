@@ -2700,6 +2700,7 @@ async function applyClientState(summary, user, weekFilter = null) {
           if (opt) {
             row[scenario] = opt.atual;
             row.ajusteAutomatico = opt.ajusteAutomatico;
+            row[`${scenario}AjusteAutomatico`] = opt.ajusteAutomatico;
           }
         });
       });

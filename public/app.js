@@ -706,7 +706,7 @@ function renderCoverage(data) {
   const adjustedHours = known.filter((item) => item.row.ajusteAutomatico).length;
   const pdvBottlenecks = known.filter((item) => queueFromLoad(item.row.cargaCaixa, item.row[currentCoverageScenario]).bottleneck).length;
 
-  document.getElementById('coverageNote').textContent = `${cfg.source} · confianca ${cfg.confidence}.${coverageAdjustmentMode ? ' Recalculo ativo: cobre criticos ate o limite de PDVs e equipe.' : ''}`;
+  document.getElementById('coverageNote').textContent = `${cfg.source} · confianca ${cfg.confidence}.${selectedScenario.optimized ? ' Escala individual sincronizada com a otimizacao de cobertura.' : ''}${coverageAdjustmentMode ? ' Recalculo ativo: cobre criticos ate o limite de PDVs e equipe.' : ''}`;
   document.getElementById('coverageSummary').innerHTML = known.length ? `
     <div><small>Equipe trabalhando</small><strong>${availableWorkers}</strong></div>
     <div><small>Horas avaliadas</small><strong>${known.length}</strong></div>
@@ -759,8 +759,8 @@ function renderStaffSchedule(data) {
   const working = staff.filter((person) => person.status === 'Trabalhando');
   const off = staff.filter((person) => person.status === 'Folga');
   document.getElementById('staffScheduleNote').textContent = currentCoverageScenario === 'atual'
-    ? `${data.dailyCoverage[currentCoverageDay].label} - formacao-base atual 6x1 44h.`
-    : `${data.dailyCoverage[currentCoverageDay].label} · formacao individual ${scenario.label}; intervalos aplicados pela regra CLT e ajuste operacional.`;
+    ? `${data.dailyCoverage[currentCoverageDay].label} - formacao-base atual 6x1 44h${scenario.optimized ? ' · com intervalos realocados pela otimizacao' : ''}.`
+    : `${data.dailyCoverage[currentCoverageDay].label} · formacao individual ${scenario.label}${scenario.optimized ? ' · sincronizada com a otimizacao' : ''}; intervalos aplicados pela regra CLT e ajuste operacional.`;
   document.getElementById('staffDaySummary').innerHTML = `
     <span class="working-summary">${working.length} trabalhando</span>
     <span class="off-summary">${off.length} de folga</span>
@@ -863,25 +863,36 @@ function getShiftIntervalPlan(shift) {
 function getSelectedCashierScenario(data) {
   const fechada = data.escalaFechada;
   const usarFechada = Boolean(fechada) && window._verRascunho !== true;
-  if (usarFechada) {
+  const scenarioBase = usarFechada
+    ? {
+        usarFechada: true,
+        people: fechada.caixaPeople || fechada.people || {},
+        label: fechada.cenarioLabel,
+        fullLabel: `${fechada.cenarioLabel} · ${fechada.label}`,
+        targetHours: (data.weeklyScenarioSchedule?.[currentCoverageScenario]?.targetHours) || 44,
+        targetDaysOff: (data.weeklyScenarioSchedule?.[currentCoverageScenario]?.targetDaysOff) || 1
+      }
+    : (() => {
+        const scenario = data.weeklyScenarioSchedule[currentCoverageScenario];
+        return {
+          usarFechada: false,
+          people: scenario?.people || {},
+          label: scenario?.label || '',
+          fullLabel: scenario?.label || '',
+          targetHours: scenario?.targetHours || 44,
+          targetDaysOff: scenario?.targetDaysOff || 1
+        };
+      })();
+
+  if (scenarioHasOptimization(data, currentCoverageScenario)) {
+    const targets = buildCoverageTargets(data, currentCoverageScenario, scenarioBase.people);
     return {
-      usarFechada: true,
-      people: fechada.caixaPeople || fechada.people || {},
-      label: fechada.cenarioLabel,
-      fullLabel: `${fechada.cenarioLabel} · ${fechada.label}`,
-      targetHours: (data.weeklyScenarioSchedule?.[currentCoverageScenario]?.targetHours) || 44,
-      targetDaysOff: (data.weeklyScenarioSchedule?.[currentCoverageScenario]?.targetDaysOff) || 1
+      ...scenarioBase,
+      people: optimizePeopleAgainstCoverage(scenarioBase.people, targets),
+      optimized: true
     };
   }
-  const scenario = data.weeklyScenarioSchedule[currentCoverageScenario];
-  return {
-    usarFechada: false,
-    people: scenario?.people || {},
-    label: scenario?.label || '',
-    fullLabel: scenario?.label || '',
-    targetHours: scenario?.targetHours || 44,
-    targetDaysOff: scenario?.targetDaysOff || 1
-  };
+  return scenarioBase;
 }
 
 function shiftBlocksFromDisplay(shift) {
@@ -912,6 +923,141 @@ function countWorkersAtHourLabel(people, dayIndex, hourLabel) {
     }
   });
   return count;
+}
+
+function rowAdjustmentFlag(row, scenario) {
+  return Boolean(row?.[`${scenario}AjusteAutomatico`] ?? row?.ajusteAutomatico);
+}
+
+function scenarioHasOptimization(data, scenario) {
+  if (coverageAdjustmentMode) return true;
+  return Object.values(data.dailyCoverage || {}).some((day) =>
+    (day.rows || []).some((row) => rowAdjustmentFlag(row, scenario))
+  );
+}
+
+function shiftHourLabelToMinutes(label) {
+  const [ini, fim] = String(label || '').split('-');
+  const start = hmToMinutes(ini);
+  const end = hmToMinutes(fim);
+  return start === null || end === null ? null : { start, end };
+}
+
+function buildCoverageTargets(data, scenario, people) {
+  const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  const targets = {};
+  dayKeys.forEach((dayKey, dayIndex) => {
+    const cfg = data.dailyCoverage?.[dayKey];
+    if (!cfg || cfg.closed) return;
+    const availableWorkers = Object.values(people || {}).filter((shifts) => shifts[dayIndex] !== 'Folga').length;
+    const baseRows = (cfg.rows || []).map((row) => ({
+      ...row,
+      [scenario]: Math.min(countWorkersAtHourLabel(people, dayIndex, row.hora), availableWorkers)
+    }));
+    const effectiveRows = coverageAdjustmentMode ? applyCoverageAdjustment(baseRows, scenario, availableWorkers) : baseRows;
+    targets[dayKey] = Object.fromEntries(effectiveRows.map((row) => [row.hora, Number(row[scenario] || 0)]));
+  });
+  return targets;
+}
+
+function shiftBreakMetadata(shift) {
+  if (!shift || shift === 'Folga') return null;
+  const workedHours = parseHours(shift);
+  const intervalMin = getLegalIntervalMinutes(workedHours);
+  if (intervalMin !== 60) return null;
+  const plan = getShiftIntervalPlan(shift);
+  if (!plan || !plan.hasInterval) return null;
+  const intervalRange = shiftHourLabelToMinutes(plan.intervalLabel);
+  const start = hmToMinutes(plan.start);
+  const end = hmToMinutes(plan.end);
+  if (!intervalRange || start === null || end === null) return null;
+  if ((intervalRange.end - intervalRange.start) !== 60) return null;
+  const earliest = Math.max(start + 180, Math.ceil(start / 60) * 60);
+  const latest = Math.min(end - 180, Math.floor((end - 60) / 60) * 60);
+  return {
+    start,
+    end,
+    workedHours,
+    breakStart: intervalRange.start,
+    breakEnd: intervalRange.end,
+    earliestBreakStart: earliest,
+    latestBreakStart: latest
+  };
+}
+
+function buildShiftWithBreak(meta, breakStart) {
+  return `${minutesToHM(meta.start)}-${minutesToHM(breakStart)}/${minutesToHM(breakStart + 60)}-${minutesToHM(meta.end)} · ${formatWorkedHours(meta.workedHours)}`;
+}
+
+function optimizePeopleAgainstCoverage(people, targetsByDay) {
+  const preview = JSON.parse(JSON.stringify(people || {}));
+  const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+  dayKeys.forEach((dayKey, dayIndex) => {
+    const targets = targetsByDay[dayKey];
+    if (!targets) return;
+
+    const workers = Object.entries(preview)
+      .map(([nome, shifts]) => {
+        const shift = shifts[dayIndex];
+        const meta = shiftBreakMetadata(shift);
+        return meta ? { nome, shifts, meta } : null;
+      })
+      .filter(Boolean);
+    if (!workers.length) return;
+
+    const currentCounts = {};
+    Object.keys(targets).forEach((hora) => {
+      currentCounts[hora] = countWorkersAtHourLabel(preview, dayIndex, hora);
+    });
+
+    const breakHourOf = (worker) => `${String(Math.floor(worker.meta.breakStart / 60)).padStart(2, '0')}-${String(Math.floor(worker.meta.breakStart / 60) + 1).padStart(2, '0')}`;
+    const feasibleHours = (worker) => {
+      const hours = [];
+      for (let start = worker.meta.earliestBreakStart; start <= worker.meta.latestBreakStart; start += 60) {
+        hours.push(`${String(Math.floor(start / 60)).padStart(2, '0')}-${String(Math.floor(start / 60) + 1).padStart(2, '0')}`);
+      }
+      return hours;
+    };
+
+    Object.keys(targets).forEach((hourLabel) => {
+      while ((currentCounts[hourLabel] || 0) < (targets[hourLabel] || 0)) {
+        const candidates = workers.filter((worker) => breakHourOf(worker) === hourLabel);
+        if (!candidates.length) break;
+
+        let moved = false;
+        for (const worker of candidates) {
+          const options = feasibleHours(worker)
+            .filter((candidateHour) => candidateHour !== hourLabel)
+            .map((candidateHour) => {
+              const candidateTarget = targets[candidateHour] ?? 0;
+              const candidateCurrent = currentCounts[candidateHour] ?? 0;
+              return {
+                candidateHour,
+                surplus: candidateCurrent - candidateTarget
+              };
+            })
+            .filter((candidate) => candidate.surplus > 0)
+            .sort((a, b) => b.surplus - a.surplus);
+
+          if (!options.length) continue;
+          const chosen = options[0].candidateHour;
+          const chosenStart = Number(chosen.split('-')[0]) * 60;
+          currentCounts[hourLabel] = (currentCounts[hourLabel] || 0) + 1;
+          currentCounts[chosen] = (currentCounts[chosen] || 0) - 1;
+          worker.meta.breakStart = chosenStart;
+          worker.meta.breakEnd = chosenStart + 60;
+          worker.shifts[dayIndex] = buildShiftWithBreak(worker.meta, chosenStart);
+          moved = true;
+          break;
+        }
+
+        if (!moved) break;
+      }
+    });
+  });
+
+  return preview;
 }
 function shiftBounds(shift) {
   if (!shift || shift === 'Folga') return null;
@@ -975,7 +1121,7 @@ function renderWeeklySchedule(data) {
   const jvTxt = (jv && jv.ativa)
     ? ` &nbsp;<span style="color:#5eead4">📊 jornada otimizada por demanda (${jv.pesos.filter(p => p.peso >= 1.15).map(p => p.dia).join('/') || 'sex/sáb'} reforçados)</span>`
     : '';
-  document.getElementById('weeklyScheduleNote').innerHTML = `${source.label}: meta de ${source.targetHours}h e ${source.targetDaysOff} folga${source.targetDaysOff > 1 ? 's' : ''} a cada 7 dias. &nbsp;<span style="opacity:.8">🔓 abre · 🔒 fecha</span>${jvTxt}`;
+  document.getElementById('weeklyScheduleNote').innerHTML = `${source.label}: meta de ${source.targetHours}h e ${source.targetDaysOff} folga${source.targetDaysOff > 1 ? 's' : ''} a cada 7 dias.${source.optimized ? ' &nbsp;<span style="color:#f59e0b">⚡ semana individual ajustada pela rotina Tá Ótimo</span>' : ''} &nbsp;<span style="opacity:.8">🔓 abre · 🔒 fecha</span>${jvTxt}`;
   document.getElementById('weeklyAuditSummary').innerHTML = `
     <span class="${valid === audits.length ? 'weekly-ok' : 'weekly-bad'}">${valid}/${audits.length} conformes</span>
   `;
@@ -2805,6 +2951,7 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
         optimizeButton.textContent = coverageAdjustmentMode ? 'Voltar à escala original' : 'Otimização IA · TáÓtimo!';
         if (saveOptimizationButton) saveOptimizationButton.hidden = !coverageAdjustmentMode;
         renderCoverage(data);
+        renderWeeklySchedule(data);
         showToast(coverageAdjustmentMode
           ? 'Otimização IA aplicada: déficits cobertos respeitando PDVs e equipe disponível.'
           : 'Escala original restaurada.');

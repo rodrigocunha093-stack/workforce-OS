@@ -104,6 +104,8 @@ Criado `CODEMAP.md` para que qualquer dev/IA ache as funções no `server.js` (3
   - `public/app.js`: o cabeçalho do colaborador na grade semanal passou a exibir horas trabalhadas com precisão (`44h`, `43h20`) em vez de arredondamento inteiro;
   - `public/app.js`: a grade semanal da aba Escala passou a usar a mesma base da cobertura de caixa (não a escala completa de todos os setores);
   - `public/app.js`: a cobertura da aba Escala passou a recalcular `Caixas ativos` a partir da mesma escala selecionada na tela (rascunho ou período fechado), evitando divergência visual entre cards e heatmap;
+  - `public/app.js`: quando a rotina de otimização Tá Ótimo entra em ação, a semana individual das operadoras passa a gerar um preview sincronizado, realocando intervalos de 1h para sustentar a cobertura otimizada;
+  - `public/app.js`: ao salvar otimização, a semana individual volta consistente no próximo acesso porque o preview é reconstruído a partir das horas otimizadas salvas.
   - a regra operacional de posicionamento evita intervalo na abertura ou colado no encerramento, puxando a pausa para o miolo da jornada.
 - Pendência futura importante:
   - unificar o modelo de persistência/representação dos turnos corridos de caixa, porque hoje a tela reconstrói o intervalo a partir da jornada enquanto alguns setores já salvam a pausa no próprio horário.
