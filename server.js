@@ -2224,18 +2224,34 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
     const jornadaPorDia = distribuirJornada(targetHours, diasTrabalho, pesosDia);
     const lojaDoDia = (day) => (day === 5 ? sabado : day === 6 ? domingo : segSex);
 
+    // Sexta (4) e sábado (5) = dias de pico: time completo sem lacuna.
+    // Flexíveis comprimem-se na abertura (sobreposição máxima) em vez de se
+    // espalharem uniformemente. Abridor e fechador fixos continuam garantidos.
+    const isPeakDay = (day) => day === 4 || day === 5;
+
     function gerarTurnoDia(day) {
       const loja = lojaDoDia(day);
       const jd = jornadaPorDia[day] || shiftHours;
       if (reposicao) {
         if (ehFechador) return generateRepositorShift(loja.open, loja.close, idx, N, sexo, jd, 'fechamento');
         if (ehAbridor) return generateRepositorShift(loja.open, loja.close, idx, N, sexo, jd, 'abertura');
+        if (isPeakDay(day)) return generateRepositorShift(loja.open, loja.close, idx, N, sexo, jd, 'abertura');
         return generateRepositorShift(loja.open, loja.close, idx, N, sexo, jd, turno);
       }
       if (comercial) return generateComercialShift(loja.open, loja.close, jd);
-      // Corrido (caixa, açougue): respeita papel
       if (ehFechador) return generateOperatorShift(Math.max(loja.open, loja.close - jd), loja.close);
       if (ehAbridor) return generateOperatorShift(loja.open, Math.min(loja.close, loja.open + jd));
+      if (isPeakDay(day)) {
+        // Pico: flexíveis concentrados na abertura (deslocamento mínimo de 0-1h
+        // entre eles para escalonar intervalos, mas todos começam cedo)
+        const flexIdx = idxFlexiveis.indexOf(idx);
+        const maxOffset = Math.min(1, Math.max(0, loja.close - jd - loja.open));
+        const offset = (flexIdx >= 0 && idxFlexiveis.length > 1)
+          ? Math.round(maxOffset * flexIdx / (idxFlexiveis.length - 1) * 2) / 2
+          : 0;
+        const start = loja.open + offset;
+        return generateOperatorShift(start, Math.min(loja.close, start + jd));
+      }
       const start = startForTurno(turno, loja.open, loja.close, idx, jd);
       return generateOperatorShift(start, Math.min(loja.close, start + jd));
     }
