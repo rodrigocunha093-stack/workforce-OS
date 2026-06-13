@@ -2111,11 +2111,12 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
           if (intervalMin !== 60) return null;
 
           const [periodoRaw] = String(shift).split('·').map(p => p.trim());
-          let shiftStart, shiftEnd;
+          let shiftStart, shiftEnd, explicitBreak = null;
           if (periodoRaw.includes('/')) {
             const blocks = periodoRaw.split('/');
             shiftStart = hmTextToMinutes(blocks[0].split('-')[0]);
             shiftEnd = hmTextToMinutes(blocks[blocks.length - 1].split('-')[1]);
+            explicitBreak = hmTextToMinutes(blocks[0].split('-')[1]); // pausa real do turno
           } else {
             const [ini, fim] = periodoRaw.split('-').map(p => p.trim());
             shiftStart = hmTextToMinutes(ini);
@@ -2124,81 +2125,106 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
           if (shiftStart === null || shiftEnd === null) return null;
 
           const workedMin = Math.round(workedHours * 60);
-          const beforeBase = Math.round((workedMin / 2) / 5) * 5;
-          const minAntes = workedHours > 6 ? 180 : 120;
-          const maxAntes = workedHours > 6 ? 340 : workedMin; // 5h40 (6h art.71 - 20min)
-          const minDepois = 120;
-          const beforeMin = Math.min(maxAntes, Math.max(minAntes, Math.min(beforeBase, workedMin - minDepois)));
-          const currentBreakStart = shiftStart + beforeMin;
+          let breakStart = explicitBreak;
+          if (breakStart === null) {
+            // Mesma inferência do parseWorkedBlocks (turnos corridos sem pausa explícita)
+            const beforeBase = Math.round((workedMin / 2) / 5) * 5;
+            const minAntes = workedHours > 6 ? 180 : 120;
+            const maxAntes = workedHours > 6 ? 340 : workedMin;
+            const minDepois = 120;
+            breakStart = shiftStart + Math.min(maxAntes, Math.max(minAntes, Math.min(beforeBase, workedMin - minDepois)));
+          }
+          const spanMin = workedMin + 60; // jornada + 1h de intervalo
 
-          // Janela legal p/ mover o intervalo: nenhum bloco contínuo > 5h40 (art. 71 c/ margem)
-          const earliest = Math.max(shiftStart + 120, shiftEnd - 60 - 340, Math.ceil(shiftStart / 60) * 60);
-          const latest = Math.min(shiftStart + 340, shiftEnd - 60 - 120, Math.floor((shiftEnd - 60) / 60) * 60);
-          if (earliest > latest) return null;
-
-          return { nome, shifts, dayIndex, shiftStart, shiftEnd, workedHours, breakStart: currentBreakStart, earliest, latest };
+          return { nome, shifts, dayIndex, shiftStart, breakStart, workedMin, spanMin, workedHours, origStart: shiftStart, origBreak: breakStart };
         })
         .filter(Boolean);
 
       if (!workers.length) return;
 
-      const currentCounts = {};
-      Object.keys(targets).forEach(hora => {
-        currentCounts[hora] = countWorkersAtHour(Number(hora.split('-')[0]), Number(hora.split('-')[1]), dayIndex, people);
+      // ===== SOLVER (busca local / coordinate descent) =====
+      // Variáveis por operadora: (entrada, início do intervalo).
+      // Custo: déficit de cobertura (alto) + deslocamento da escala original (baixo).
+      // Restrições embutidas nos candidatos: blocos contínuos ≤ 5h40 (art. 71 c/ margem),
+      // ≥2h trabalhadas antes e depois da pausa, turno dentro do expediente.
+      const pdvs = Number(summary.storeConfig && summary.storeConfig.pdvs) || 99;
+      const hourStarts = Object.keys(targets).map(h => Number(h.split('-')[0])).sort((a, b) => a - b);
+      if (!hourStarts.length) return;
+      const openMin = hourStarts[0] * 60;
+      const closeMin = (hourStarts[hourStarts.length - 1] + 1) * 60;
+      const labelOf = (h) => `${String(h).padStart(2, '0')}-${String(h + 1).padStart(2, '0')}`;
+
+      // Presença na hora h (mesma regra do countWorkersAtHour: qualquer sobreposição)
+      const presence = (start, breakStart, spanMin, h) => {
+        const fs = h * 60, fe = fs + 60;
+        const b1e = breakStart, b2s = breakStart + 60, end = start + spanMin;
+        return (start < fe && b1e > fs) || (b2s < fe && end > fs);
+      };
+
+      // Contagem fixa = total atual − contribuição dos workers móveis na posição original
+      const staticCount = {};
+      hourStarts.forEach(h => {
+        const total = countWorkersAtHour(h, h + 1, dayIndex, people);
+        const dyn = workers.reduce((s, w) => s + (presence(w.shiftStart, w.breakStart, w.spanMin, h) ? 1 : 0), 0);
+        staticCount[h] = total - dyn;
       });
 
-      const breakHourOf = (w) => {
-        const h = Math.floor(w.breakStart / 60);
-        return `${String(h).padStart(2, '0')}-${String(h + 1).padStart(2, '0')}`;
-      };
-      const feasibleHours = (w) => {
-        const hours = [];
-        for (let s = w.earliest; s <= w.latest; s += 60) {
-          const h = Math.floor(s / 60);
-          hours.push({ label: `${String(h).padStart(2, '0')}-${String(h + 1).padStart(2, '0')}`, start: s });
-        }
-        return hours;
-      };
-
-      const rebuildShift = (w) => {
-        const s = formatHM(w.shiftStart / 60);
-        const bkS = formatHM(w.breakStart / 60);
-        const bkE = formatHM((w.breakStart + 60) / 60);
-        const e = formatHM(w.shiftEnd / 60);
-        return `${s}-${bkS}/${bkE}-${e} · ${formatDur(w.workedHours)}`;
+      const solutionCost = () => {
+        let cost = 0;
+        hourStarts.forEach(h => {
+          let count = staticCount[h];
+          workers.forEach(w => { if (presence(w.shiftStart, w.breakStart, w.spanMin, h)) count++; });
+          const deficit = Math.max(0, (targets[labelOf(h)] || 0) - Math.min(count, pdvs));
+          cost += deficit * 100;
+        });
+        workers.forEach(w => {
+          cost += Math.abs(w.shiftStart - w.origStart) / 60       // mexer na entrada custa
+                + Math.abs(w.breakStart - w.origBreak) / 600;     // mexer na pausa custa menos
+        });
+        return cost;
       };
 
-      // Processa primeiro as horas com maior déficit (a janela de pausas é
-      // limitada — resolver o pior buraco antes evita gastar pausas à toa)
-      const horasPorDeficit = Object.keys(targets).sort((a, b) =>
-        ((targets[b] || 0) - (currentCounts[b] || 0)) - ((targets[a] || 0) - (currentCounts[a] || 0)));
-      horasPorDeficit.forEach(hourLabel => {
-        while ((currentCounts[hourLabel] || 0) < (targets[hourLabel] || 0)) {
-          const candidates = workers.filter(w => breakHourOf(w) === hourLabel);
-          if (!candidates.length) break;
-
-          let moved = false;
-          for (const worker of candidates) {
-            const options = feasibleHours(worker)
-              .filter(o => o.label !== hourLabel)
-              .map(o => ({
-                ...o,
-                surplus: (currentCounts[o.label] || 0) - (targets[o.label] || 0)
-              }))
-              .filter(o => o.surplus > 0)
-              .sort((a, b) => b.surplus - a.surplus);
-
-            if (!options.length) continue;
-            const chosen = options[0];
-            currentCounts[hourLabel] = (currentCounts[hourLabel] || 0) + 1;
-            currentCounts[chosen.label] = (currentCounts[chosen.label] || 0) - 1;
-            worker.breakStart = chosen.start;
-            worker.shifts[worker.dayIndex] = rebuildShift(worker);
-            moved = true;
-            break;
+      const candidatesFor = (w) => {
+        const list = [];
+        for (let ds = -240; ds <= 240; ds += 30) {
+          const start = w.origStart + ds;
+          if (start < openMin || start + w.spanMin > closeMin) continue;
+          // Janela legal da pausa p/ esta entrada (blocos ≤340min, ≥120min em cada ponta)
+          const lo = start + Math.max(120, w.workedMin - 340);
+          const hi = start + Math.min(340, w.workedMin - 120);
+          if (lo > hi) continue;
+          for (let bs = Math.ceil(lo / 60) * 60; bs <= hi; bs += 60) {
+            list.push({ start, bs });
           }
-          if (!moved) break;
+          // fallback: pausa não alinhada à hora, se nenhuma alinhada coube
+          if (Math.ceil(lo / 60) * 60 > hi) list.push({ start, bs: Math.round(((lo + hi) / 2) / 5) * 5 });
         }
+        return list;
+      };
+
+      for (let pass = 0; pass < 8; pass++) {
+        let improved = false;
+        for (const w of workers) {
+          const savedStart = w.shiftStart, savedBreak = w.breakStart;
+          let bestCost = solutionCost();
+          let best = { start: savedStart, bs: savedBreak };
+          for (const cand of candidatesFor(w)) {
+            w.shiftStart = cand.start;
+            w.breakStart = cand.bs;
+            const c = solutionCost();
+            if (c < bestCost - 1e-9) { bestCost = c; best = cand; }
+          }
+          w.shiftStart = best.start;
+          w.breakStart = best.bs;
+          if (best.start !== savedStart || best.bs !== savedBreak) improved = true;
+        }
+        if (!improved) break;
+      }
+
+      // Grava os turnos otimizados de volta na escala
+      workers.forEach(w => {
+        const end = w.shiftStart + w.spanMin;
+        w.shifts[w.dayIndex] = `${formatHM(w.shiftStart / 60)}-${formatHM(w.breakStart / 60)}/${formatHM((w.breakStart + 60) / 60)}-${formatHM(end / 60)} · ${formatDur(w.workedHours)}`;
       });
     });
   });
@@ -3051,10 +3077,73 @@ function summaryForWeek(baseSummary, weekNumber) {
   return summary;
 }
 
+// ===== Calendário datado (Fase 2) =====
+// Domingo de Páscoa pelo algoritmo de Meeus/Jones/Butcher
+function easterDate(year) {
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day);
+}
+
+function isoLocalDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Feriados nacionais (fixos + móveis derivados da Páscoa)
+function brazilianHolidays(year) {
+  const easter = easterDate(year);
+  const offset = (days) => { const d = new Date(easter); d.setDate(d.getDate() + days); return isoLocalDate(d); };
+  return [
+    { data: `${year}-01-01`, nome: 'Confraternização Universal' },
+    { data: offset(-48), nome: 'Carnaval (segunda)' },
+    { data: offset(-47), nome: 'Carnaval' },
+    { data: offset(-2), nome: 'Sexta-feira Santa' },
+    { data: `${year}-04-21`, nome: 'Tiradentes' },
+    { data: `${year}-05-01`, nome: 'Dia do Trabalho' },
+    { data: offset(60), nome: 'Corpus Christi' },
+    { data: `${year}-09-07`, nome: 'Independência' },
+    { data: `${year}-10-12`, nome: 'N. Sra. Aparecida' },
+    { data: `${year}-11-02`, nome: 'Finados' },
+    { data: `${year}-11-15`, nome: 'Proclamação da República' },
+    { data: `${year}-11-20`, nome: 'Consciência Negra' },
+    { data: `${year}-12-25`, nome: 'Natal' }
+  ];
+}
+
+// Semana-calendário corrente (seg→dom) com datas reais e feriados marcados.
+// dayIndex segue a convenção da escala: 0=seg ... 5=sáb, 6=dom.
+function buildCalendarWeek(baseDate = new Date()) {
+  const base = new Date(baseDate);
+  const diasDesdeSegunda = (base.getDay() + 6) % 7;
+  const segunda = new Date(base);
+  segunda.setDate(base.getDate() - diasDesdeSegunda);
+  const feriados = [...brazilianHolidays(segunda.getFullYear()), ...brazilianHolidays(segunda.getFullYear() + 1)];
+  const dias = [];
+  for (let i = 0; i < 7; i++) {
+    const dt = new Date(segunda);
+    dt.setDate(segunda.getDate() + i);
+    const iso = isoLocalDate(dt);
+    const feriado = feriados.find(f => f.data === iso);
+    dias.push({
+      dayIndex: i,
+      data: iso,
+      label: `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}`,
+      feriado: feriado ? feriado.nome : null
+    });
+  }
+  return { inicio: dias[0].data, fim: dias[6].data, dias, temFeriado: dias.some(d => d.feriado) };
+}
+
 async function summaryFromDatabase(user = null, weekFilter = null) {
   const connection = await db.status();
   if (!connection.connected) {
     const summary = JSON.parse(JSON.stringify({ ...data, dataSource: { mode: 'demo', ...connection } }));
+    summary.calendarioSemana = buildCalendarWeek();
     if (user) return applyClientState(summary, user, weekFilter);
     applySalesRowsToSummary(summary, loadModelSalesRows(), 'Empresa modelo VRSoft');
     refreshCoverageLoads(summary, summary.storeConfig.pdvs);
@@ -3065,6 +3154,7 @@ async function summaryFromDatabase(user = null, weekFilter = null) {
     const [demandRows, scenarios] = await Promise.all([db.loadDemandRows(), db.loadScenarios()]);
     const summary = JSON.parse(JSON.stringify(data));
     summary.dataSource = { mode: 'postgresql', ...connection };
+    summary.calendarioSemana = buildCalendarWeek();
 
     if (demandRows.length) {
       const dates = [...new Set(demandRows.map((row) => row.data_referencia))].sort();

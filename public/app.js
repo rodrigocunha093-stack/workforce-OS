@@ -1192,7 +1192,17 @@ function renderWeeklySchedule(data) {
     ${complianceBox}
     ${setorChips}
     ${cargoChips}
-    <div class="weekly-row weekly-head"><span>Colaborador(a)</span>${days.map((day) => `<span>${day}</span>`).join('')}<span>Auditoria</span></div>
+    ${(() => {
+      const cal = data.calendarioSemana;
+      if (!cal || !cal.temFeriado) return '';
+      const fer = cal.dias.filter(d => d.feriado);
+      return `<div class="clt-box clt-bad" style="margin-bottom:8px"><strong>📅 Feriado nesta semana:</strong> ${fer.map(f => `${f.feriado} (${f.label})`).join(' · ')} — revise demanda e escala do dia.</div>`;
+    })()}
+    <div class="weekly-row weekly-head"><span>Colaborador(a)</span>${days.map((day, di) => {
+      const diaCal = data.calendarioSemana?.dias?.[di];
+      const dataLabel = diaCal ? `<small style="display:block;opacity:.6;font-weight:400">${diaCal.label}${diaCal.feriado ? ' 🎉' : ''}</small>` : '';
+      return `<span title="${diaCal?.feriado || ''}">${day}${dataLabel}</span>`;
+    }).join('')}<span>Auditoria</span></div>
     ${people.map(([nome, shifts]) => {
       const audit = audits.find((item) => item.nome === nome);
       const ok = Math.abs(audit.hours - source.targetHours) < 0.01 && audit.daysOff === source.targetDaysOff;

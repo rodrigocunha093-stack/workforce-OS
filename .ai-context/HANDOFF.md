@@ -138,6 +138,13 @@ Criado `CODEMAP.md` para que qualquer dev/IA ache as funções no `server.js` (3
   - **Disclaimer CCT** no box de compliance (app.js): auditoria cobre CLT federal; CCTs locais podem ter regras extras.
   - Lacuna restante (roadmap): escala semanal padrão vs calendário datado (feriados, semanas específicas); solver global (MIP) vs heurística.
 
+## Atualização 2026-06-12 — FASE 2 (solver + calendário datado)
+
+- **Solver de escala (busca local / coordinate descent)**: `applyOptimizationToSchedule` deixou de ser greedy de mover pausas. Agora otimiza **(entrada, intervalo)** de cada operadora em conjunto: custo = déficit de cobertura ×100 + deslocamento da escala original (entrada 1/h, pausa 0,1/h). Candidatos já nascem legais (blocos ≤5h40, ≥2h em cada ponta da pausa, turno dentro do expediente). Converge em ≤8 passadas. No cenário real do sábado reduziu os déficits de 2 → 1 (somente 06-07h, estrutural com 5 pessoas) e descobriu sozinho segurar uma operadora até 17:30 p/ cobrir o fim do dia.
+- **Bug corrigido**: turnos com pausa explícita (`08:00-12:00/13:00-17:00`) tinham a pausa recalculada por fórmula; agora a pausa real do turno é lida da string.
+- **Calendário datado**: `buildCalendarWeek()` (server.js) expõe `summary.calendarioSemana` = semana corrente seg→dom com datas reais e **feriados nacionais** (fixos + móveis via Páscoa/Meeus: Carnaval, Sexta Santa, Corpus Christi). Frontend: datas sob cada dia no cabeçalho da escala + aviso quando a semana tem feriado.
+- Próximo da Fase 2 (não feito): demanda diferenciada em feriado (hoje só sinaliza); escala persistida por data específica (hoje a semana-calendário é informativa); solver multi-dia/multi-setor.
+
 ## Referências
 
 - Roadmap completo e análise vs Blue Yonder: `ANALISE-E-ROADMAP.md`.
