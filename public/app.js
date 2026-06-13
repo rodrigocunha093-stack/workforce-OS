@@ -1094,6 +1094,261 @@ function parseLojaHora(str) {
   return m ? { open: Number(m[1]), close: Number(m[2]) } : { open: 7, close: 19 };
 }
 
+// ===== PLANTA ISOMÉTRICA DA LOJA =====
+let _floorDay = null, _floorHour = 8, _floorPlaying = false, _floorTimer = null;
+function renderStoreFloorMap(data) {
+  const el = document.getElementById('storeFloorMap');
+  if (!el) return;
+  const profile = (data.client && data.client.profile) || {};
+  const source = getSelectedCashierScenario(data);
+  const setorMap = data.employeeSetorMap || {};
+  const cargoMap = data.employeeCargoMap || {};
+  const people = Object.entries(source.people).map(([n, s]) => ({ nome: n, shifts: s }));
+  if (!people.length) { el.innerHTML = ''; return; }
+
+  const pdvs = Number(profile.quantidadePdvs || data.storeConfig?.pdvs || 4);
+  const lojaSegSex = parseLojaHora(profile.horarioSegSex);
+  const lojaSab = parseLojaHora(profile.horarioSabado);
+  const lojaDom = parseLojaHora(profile.horarioDomingo);
+  const lojaPorDia = [lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSab, lojaDom];
+
+  const now = new Date();
+  if (_floorDay === null) _floorDay = now.getDay() === 0 ? 6 : now.getDay() - 1;
+  const loja = lojaPorDia[_floorDay];
+  if (_floorHour < loja.open || _floorHour >= loja.close) _floorHour = loja.open;
+
+  const DAYS = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  const ZC = {checkout:'#2563eb',gondola:'#16a34a',acougue:'#dc2626',padaria:'#ea580c',hortifruti:'#65a30d',frios:'#0891b2',comercial:'#9333ea',outro:'#6b7280'};
+  const ZL = {checkout:'Frente de loja',gondola:'Mercearia',acougue:'Acougue',padaria:'Padaria',hortifruti:'Hortifruti',frios:'Frios',comercial:'Comercial',outro:'Outros'};
+
+  function zoneOf(nome) {
+    const s = ((setorMap[nome]||'')+(cargoMap[nome]||'')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    if (s.includes('acougue')||s.includes('carnes')) return 'acougue';
+    if (s.includes('padaria')||s.includes('confeitaria')) return 'padaria';
+    if (s.includes('hortifruti')||s.includes('frutas')) return 'hortifruti';
+    if (s.includes('frios')||s.includes('laticinio')) return 'frios';
+    if (s.includes('mercearia')||s.includes('gondola')||s.includes('repositor')||s.includes('repos')) return 'gondola';
+    if (s.includes('comercial')||s.includes('gerente')||s.includes('fiscal')) return 'comercial';
+    if (s.includes('caixa')||s.includes('frente')||s.includes('operador')) return 'checkout';
+    if (!s) return 'checkout';
+    return 'outro';
+  }
+  function parseRanges(sh) {
+    if (!sh || sh === 'Folga') return null;
+    const c = sh.split('·')[0].trim().split('/');
+    const r = [];
+    c.forEach(b => { const p = b.split('-'); const s = parseInt(p[0]), e = parseInt(p[1]); if (!isNaN(s) && !isNaN(e)) r.push({s,e}); });
+    return r.length ? r : null;
+  }
+  function isWorking(p, h) { const r = parseRanges(p.shifts[_floorDay]); return r ? r.some(x => h >= x.s && h < x.e) : false; }
+  function isOnBreak(p, h) { const r = parseRanges(p.shifts[_floorDay]); if (!r || r.length < 2) return false; return h >= r[0].e && h < r[1].s; }
+
+  const TW = 56, TH = 28;
+  function isoX(gx,gy) { return 340 + (gx - gy) * TW / 2; }
+  function isoY(gx,gy) { return 60 + (gx + gy) * TH / 2; }
+  function isoRect(gx,gy,gw,gh,fill,stroke,op) {
+    const pts = [[gx,gy],[gx+gw,gy],[gx+gw,gy+gh],[gx,gy+gh]].map(([x,y]) => isoX(x,y)+','+isoY(x,y)).join(' ');
+    return `<polygon points="${pts}" fill="${fill}" stroke="${stroke||'none'}" stroke-width="0.5" opacity="${op||1}"/>`;
+  }
+  function isoBox(gx,gy,gw,gh,h,f,d,e) {
+    const top = [[gx,gy],[gx+gw,gy],[gx+gw,gy+gh],[gx,gy+gh]].map(([x,y]) => isoX(x,y)+','+(isoY(x,y)-h)).join(' ');
+    const front = [[gx,gy+gh],[gx+gw,gy+gh]].map(([x,y]) => isoX(x,y)+','+(isoY(x,y)-h)).join(' ')+' '+[[gx+gw,gy+gh],[gx,gy+gh]].map(([x,y]) => isoX(x,y)+','+isoY(x,y)).join(' ');
+    const side = [isoX(gx+gw,gy)+','+(isoY(gx+gw,gy)-h), isoX(gx+gw,gy+gh)+','+(isoY(gx+gw,gy+gh)-h), isoX(gx+gw,gy+gh)+','+isoY(gx+gw,gy+gh), isoX(gx+gw,gy)+','+isoY(gx+gw,gy)].join(' ');
+    return `<polygon points="${top}" fill="${f}" stroke="${d}" stroke-width="0.5"/><polygon points="${front}" fill="${d}" stroke="${e}" stroke-width="0.3"/><polygon points="${side}" fill="${e}" stroke="${e}" stroke-width="0.3"/>`;
+  }
+  function isoLabel(gx,gy,txt,col,sz) { return `<text x="${isoX(gx,gy)}" y="${isoY(gx,gy)}" text-anchor="middle" fill="${col}" font-size="${sz||10}" font-weight="500" style="font-family:inherit">${txt}</text>`; }
+  function isoWorker(gx,gy,color,name,id,zl,sh,brk) {
+    const x = isoX(gx,gy), y = isoY(gx,gy);
+    const ini = name.split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase();
+    const c = brk ? '#9e9e9e' : color;
+    let s = `<g class="floor-worker" data-n="${name}" data-z="${zl}" data-s="${sh}" data-brk="${brk?1:0}" style="cursor:pointer">`;
+    s += `<ellipse cx="${x}" cy="${y+2}" rx="8" ry="4" fill="rgba(0,0,0,.15)"/>`;
+    s += `<rect x="${x-6}" y="${y-16}" width="12" height="12" rx="2" fill="${c}" stroke="rgba(255,255,255,.5)" stroke-width="0.5"/>`;
+    s += `<circle cx="${x}" cy="${y-22}" r="5" fill="${c}" stroke="rgba(255,255,255,.5)" stroke-width="0.5"/>`;
+    s += `<text x="${x}" y="${y-14}" text-anchor="middle" fill="#fff" font-size="6" font-weight="500" style="font-family:inherit">${ini}</text>`;
+    s += `<text x="${x}" y="${y+12}" text-anchor="middle" fill="var(--color-text-secondary)" font-size="7" style="font-family:inherit">${name.split(' ')[0]}</text>`;
+    if (brk) s += `<text x="${x}" y="${y-28}" text-anchor="middle" font-size="10">&#9749;</text>`;
+    s += '</g>';
+    return s;
+  }
+
+  function buildSvg() {
+    const dk = matchMedia('(prefers-color-scheme:dark)').matches;
+    const flA = dk?'#2a2520':'#f5e6c8', flB = dk?'#252018':'#eedbb5';
+    const wC = dk?'#1a2530':'#d5e8f5', wD = dk?'#15202a':'#c0d8ea';
+    const shC = dk?'#3a3530':'#c4a882', shD = dk?'#2d2820':'#a88c66', shE = dk?'#221e18':'#8c7050';
+    const ctC = dk?'#1a4a2a':'#4caf50', ctD = dk?'#144020':'#388e3c', ctE = dk?'#0e3018':'#2e7d32';
+    const frC = dk?'#1a3545':'#80d8ff', frD = dk?'#15303e':'#40c4ff', frE = dk?'#102530':'#00b0ff';
+    const mtC = dk?'#451a1a':'#ef9a9a', mtD = dk?'#3a1515':'#e57373', mtE = dk?'#2e1010':'#c62828';
+    const bkC = dk?'#453520':'#ffe0b2', bkD = dk?'#3a2a18':'#ffcc80', bkE = dk?'#2e2010':'#ffa726';
+
+    let h = '';
+    for (let gx=0;gx<12;gx++) for (let gy=0;gy<12;gy++) h += isoRect(gx,gy,1,1,(gx+gy)%2===0?flA:flB,dk?'rgba(255,255,255,.03)':'rgba(0,0,0,.05)');
+    const wTL=isoX(0,0)+','+isoY(0,0), wTR=isoX(12,0)+','+isoY(12,0);
+    h += `<polygon points="${isoX(0,0)},${isoY(0,0)-40} ${isoX(12,0)},${isoY(12,0)-40} ${wTR} ${wTL}" fill="${wC}" stroke="${wD}" stroke-width="0.5"/>`;
+    h += `<polygon points="${isoX(0,0)},${isoY(0,0)-40} ${wTL} ${isoX(0,12)},${isoY(0,12)} ${isoX(0,12)},${isoY(0,12)-40}" fill="${wD}" stroke="${wD}" stroke-width="0.5"/>`;
+
+    h += isoBox(0.5,0.5,3,1.5,12,mtC,mtD,mtE) + isoLabel(2,1.5,'ACOUGUE','#fff',8);
+    h += isoBox(4,0.5,3,1.5,12,bkC,bkD,bkE) + isoLabel(5.5,1.5,'PADARIA',dk?'#2e2010':'#5d4037',8);
+    h += isoBox(7.5,0.5,4,1.2,14,frC,frD,frE) + isoLabel(9.5,1.3,'FRIOS',dk?'#102530':'#01579b',8);
+    h += isoBox(0.3,2.5,1.5,3,10,'#558b2f','#33691e','#1b5e20') + isoLabel(1,4.2,'HORTI',dk?'#aed581':'#fff',7);
+    for (let row=0;row<3;row++) {
+      const gy = 3+row*2.2;
+      h += isoBox(2.5,gy,7,0.8,10,shC,shD,shE);
+      for (let p=0;p<6;p++) h += isoRect(3+p*0.9,gy+0.15,0.7,0.5,['#e57373','#64b5f6','#fff176','#81c784','#ce93d8','#ffb74d'][p],null,0.6);
+    }
+    h += isoLabel(6,5,'MERCEARIA',dk?'rgba(255,255,255,.4)':'rgba(0,0,0,.3)',9);
+    h += isoBox(10,3,1.5,4,16,frC,frD,frE) + isoLabel(10.8,5.5,'BEBIDAS',dk?'#b3e5fc':'#01579b',7);
+
+    const active = people.filter(p => isWorking(p, _floorHour));
+    const checkoutW = active.filter(p => zoneOf(p.nome) === 'checkout').length;
+    const activePdvs = Math.min(checkoutW, pdvs);
+    const pdvSp = Math.min(2.5, 10 / pdvs), pdvSt = (12 - pdvs * pdvSp) / 2;
+    for (let i = 0; i < pdvs; i++) {
+      const gx = pdvSt + i * pdvSp; const act = i < activePdvs;
+      h += isoBox(gx, 9.5, pdvSp*0.8, 1.5, 8, act?ctC:'#555', act?ctD:'#444', act?ctE:'#333');
+      h += isoBox(gx+0.2, 9.8, 0.5, 0.4, 12, act?'#222':'#444', act?'#111':'#333', '#000');
+      if (act) h += isoLabel(gx+pdvSp*0.4, 10.8, 'PDV '+(i+1), dk?'#a5d6a7':'#fff', 6);
+    }
+    h += isoLabel(6,11.8,'FRENTE DE LOJA',dk?'rgba(255,255,255,.35)':'rgba(0,0,0,.25)',9);
+    h += `<text x="${isoX(6,12)}" y="${isoY(6,12)+17}" text-anchor="middle" fill="var(--color-text-tertiary)" font-size="9" style="font-family:inherit"><tspan style="font-size:14px">&#8593;</tspan> ENTRADA</text>`;
+
+    const byZone = {};
+    active.forEach(p => { const z = zoneOf(p.nome); (byZone[z] = byZone[z] || []).push(p); });
+    const zonePos = {checkout:{gx:[2,10],gy:[9,10]},gondola:{gx:[3,9],gy:[3,8]},acougue:{gx:[0.5,3],gy:[0.5,2]},padaria:{gx:[4,7],gy:[0.5,2]},frios:{gx:[8,11],gy:[0.5,2]},hortifruti:{gx:[0.3,2],gy:[3,5.5]},comercial:{gx:[0.5,3],gy:[6,8]},outro:{gx:[4,7],gy:[6,8]}};
+    Object.entries(byZone).forEach(([z, workers]) => {
+      const pos = zonePos[z] || zonePos.outro;
+      workers.forEach((w, i) => {
+        const t = workers.length > 1 ? i / (workers.length - 1) : 0.5;
+        const gx = pos.gx[0] + t * (pos.gx[1] - pos.gx[0]);
+        const gy = pos.gy[0] + 0.3 + (workers.length > 3 ? (i%2)*0.8 : 0);
+        h += isoWorker(gx, gy, ZC[z]||ZC.outro, w.nome, 'fw'+i, ZL[z]||z, w.shifts[_floorDay], isOnBreak(w, _floorHour));
+      });
+    });
+
+    const folga = people.filter(p => !p.shifts[_floorDay] || p.shifts[_floorDay]==='Folga').length;
+    const breaks = people.filter(p => isOnBreak(p, _floorHour)).length;
+    return { svg: h, active: active.length, total: people.length, activePdvs, folga, breaks, formation: Object.entries(byZone).map(([,w])=>w.length).join(' - ') || '0' };
+  }
+
+  function render() {
+    const lojaH = lojaPorDia[_floorDay];
+    const r = buildSvg();
+    const hh = Math.floor(_floorHour), mm = Math.round((_floorHour-hh)*60);
+    const timeStr = String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+    const pct = ((_floorHour - lojaH.open) / (lojaH.close - lojaH.open)) * 100;
+
+    let pipHtml = '';
+    people.forEach((p,pi) => {
+      const rr = parseRanges(p.shifts[_floorDay]); if (!rr) return;
+      const c = ZC[zoneOf(p.nome)] || '#888';
+      rr.forEach(x => {
+        const l = ((x.s-lojaH.open)/(lojaH.close-lojaH.open))*100;
+        const w = ((x.e-x.s)/(lojaH.close-lojaH.open))*100;
+        pipHtml += `<div style="position:absolute;left:${l}%;width:${w}%;background:${c};top:${(pi/people.length)*100}%;height:${Math.max(3,100/people.length)}%;opacity:.2;border-radius:2px"></div>`;
+      });
+    });
+
+    const zones = [...new Set(people.map(p => zoneOf(p.nome)))];
+    const legendHtml = zones.map(z => `<span style="margin-right:10px"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${ZC[z]};vertical-align:middle;margin-right:3px"></span>${ZL[z]||z}</span>`).join('') + `<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#9e9e9e;vertical-align:middle;margin-right:3px"></span>Intervalo</span>`;
+
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+        <span style="font-size:16px;font-weight:500;color:var(--color-text-primary)"><i class="ti ti-building-store" style="font-size:18px;margin-right:4px"></i>Planta da loja</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button id="floorPlayBtn" type="button" style="background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:8px;padding:3px 10px;font-size:12px;cursor:pointer;color:var(--color-text-secondary)"><i class="ti ti-player-play"></i> Simular</button>
+          <div id="floorDayBtns" style="display:flex;gap:3px">${DAYS.map((d,i) => `<button class="floor-day-btn" data-d="${i}" style="background:${i===_floorDay?'var(--color-background-info)':'transparent'};color:${i===_floorDay?'var(--color-text-info)':'var(--color-text-secondary)'};border:0.5px solid ${i===_floorDay?'var(--color-border-info)':'var(--color-border-secondary)'};border-radius:8px;padding:3px 8px;font-size:11px;cursor:pointer">${d}</button>`).join('')}</div>
+        </div>
+      </div>
+      <div style="position:relative;width:100%;background:var(--color-background-secondary);border-radius:12px;overflow:hidden">
+        <svg viewBox="0 0 680 480" style="display:block;width:100%">${r.svg}</svg>
+      </div>
+      <div style="margin-top:10px">
+        <div style="font-size:14px;font-weight:500;text-align:center;color:var(--color-text-primary);margin-bottom:4px">${timeStr}</div>
+        <div id="floorTimeline" style="position:relative;height:24px;background:var(--color-background-secondary);border-radius:8px;cursor:pointer;overflow:hidden">
+          ${pipHtml}
+          <div id="floorTlHandle" style="position:absolute;top:-2px;width:3px;height:28px;background:var(--color-text-primary);border-radius:2px;left:${pct}%;transform:translateX(-1px);cursor:grab;z-index:5"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--color-text-tertiary);margin-top:2px">
+          <span>${String(lojaH.open).padStart(2,'0')}:00</span><span>${String(lojaH.close).padStart(2,'0')}:00</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;margin-top:8px">
+        <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-users" style="margin-right:3px"></i>No salao</p><p style="font-size:17px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.active} / ${r.total}</p></div>
+        <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-device-desktop" style="margin-right:3px"></i>PDVs</p><p style="font-size:17px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.activePdvs} / ${pdvs}</p></div>
+        <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-coffee" style="margin-right:3px"></i>Intervalo</p><p style="font-size:17px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.breaks}</p></div>
+        <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-calendar-off" style="margin-right:3px"></i>Folga</p><p style="font-size:17px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.folga}</p></div>
+        <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-layout-grid" style="margin-right:3px"></i>Formacao</p><p style="font-size:13px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.formation}</p></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;font-size:11px;color:var(--color-text-secondary)">${legendHtml}</div>
+    `;
+
+    // Event: day buttons
+    el.querySelectorAll('.floor-day-btn').forEach(b => b.addEventListener('click', () => {
+      _floorDay = parseInt(b.dataset.d);
+      const newLoja = lojaPorDia[_floorDay];
+      if (_floorHour < newLoja.open || _floorHour >= newLoja.close) _floorHour = newLoja.open;
+      render();
+    }));
+
+    // Event: timeline drag
+    const tl = document.getElementById('floorTimeline');
+    const hdl = document.getElementById('floorTlHandle');
+    if (tl && hdl) {
+      let drag = false;
+      function updTl(cx) {
+        const rect = tl.getBoundingClientRect();
+        const p = Math.max(0, Math.min(1, (cx - rect.left) / rect.width));
+        const lojaH2 = lojaPorDia[_floorDay];
+        _floorHour = Math.round((lojaH2.open + p * (lojaH2.close - lojaH2.open)) * 2) / 2;
+        _floorHour = Math.max(lojaH2.open, Math.min(lojaH2.close - 0.5, _floorHour));
+        render();
+      }
+      hdl.addEventListener('mousedown', e => { drag = true; e.preventDefault(); });
+      tl.addEventListener('click', e => updTl(e.clientX));
+      document.addEventListener('mousemove', e => { if (drag) updTl(e.clientX); });
+      document.addEventListener('mouseup', () => { drag = false; });
+      hdl.addEventListener('touchstart', e => { drag = true; e.preventDefault(); });
+      document.addEventListener('touchmove', e => { if (drag) updTl(e.touches[0].clientX); });
+      document.addEventListener('touchend', () => { drag = false; });
+    }
+
+    // Event: play button
+    const playBtn = document.getElementById('floorPlayBtn');
+    if (playBtn) playBtn.addEventListener('click', () => {
+      if (_floorPlaying) { _floorPlaying = false; clearInterval(_floorTimer); render(); return; }
+      _floorPlaying = true;
+      const lojaH2 = lojaPorDia[_floorDay];
+      _floorHour = lojaH2.open;
+      _floorTimer = setInterval(() => {
+        _floorHour += 0.5;
+        if (_floorHour >= lojaH2.close) { _floorPlaying = false; clearInterval(_floorTimer); }
+        render();
+      }, 400);
+      render();
+    });
+
+    // Event: worker tooltips
+    el.querySelectorAll('.floor-worker').forEach(w => {
+      w.addEventListener('mouseenter', () => {
+        const n = w.dataset.n, z = w.dataset.z, s = w.dataset.s, brk = w.dataset.brk === '1';
+        const tip = document.createElement('div');
+        tip.className = 'floor-tooltip-pop';
+        tip.style.cssText = 'position:fixed;background:var(--color-background-primary);border:0.5px solid var(--color-border-secondary);border-radius:8px;padding:6px 10px;font-size:11px;color:var(--color-text-primary);pointer-events:none;z-index:999;white-space:nowrap;line-height:1.4';
+        tip.innerHTML = `<strong>${n}</strong><br><span style="color:var(--color-text-secondary)">${z}</span><br>${brk?'<span style="color:var(--color-text-warning)">Em intervalo</span>':s}`;
+        document.body.appendChild(tip);
+        const rect = w.getBoundingClientRect();
+        tip.style.left = (rect.left + rect.width/2 - tip.offsetWidth/2) + 'px';
+        tip.style.top = (rect.top - tip.offsetHeight - 4) + 'px';
+        w._tip = tip;
+      });
+      w.addEventListener('mouseleave', () => { if (w._tip) { w._tip.remove(); w._tip = null; } });
+    });
+  }
+
+  render();
+}
+
 function renderWeeklySchedule(data) {
   const profile = (data.client && data.client.profile) || {};
   const lojaSegSex = parseLojaHora(profile.horarioSegSex);
@@ -2866,6 +3121,7 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     safeRender('setores', () => renderSectorEngine(data));
     safeRender('cenarios', () => renderScenarios(data.scenarios, data.metadata));
     safeRender('cobertura', () => renderCoverage(data));
+    safeRender('planta loja', () => renderStoreFloorMap(data));
     safeRender('semana colaboradora', () => renderWeeklySchedule(data));
     safeRender('domingos', () => renderSunday(data.sundayRotation));
     safeRender('auditoria', () => renderAudit(data.audit));
