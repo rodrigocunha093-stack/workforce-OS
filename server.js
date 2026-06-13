@@ -2874,45 +2874,8 @@ async function applyClientState(summary, user, weekFilter = null) {
     Object.entries(summary.weeklyScenarioSchedule).forEach(([scenarioKey, scenario]) => {
       const targetHours = scenario.targetHours || 44;
       const targetDaysOff = scenario.targetDaysOff || 1;
-      // Revezamento por grupo + jornada variável por demanda
       scenario.people = generateGroupedSchedule(profile, caixaEmployees, targetHours, targetDaysOff, pesosDia);
     });
-
-    // ESCALA COMPLETA — todos os colaboradores, revezamento por grupo (setor + cargo)
-    summary.employeeSetorMap = {};
-    summary.employeeCargoMap = {};
-    state.employees.forEach(e => {
-      summary.employeeSetorMap[e.nome] = (e.setor || 'Sem setor').trim() || 'Sem setor';
-      summary.employeeCargoMap[e.nome] = (e.cargo || 'Sem cargo').trim() || 'Sem cargo';
-    });
-    summary.fullSchedule = {};
-    Object.entries(summary.weeklyScenarioSchedule).forEach(([key, sc]) => {
-      summary.fullSchedule[key] = {
-        label: sc.label,
-        targetHours: sc.targetHours,
-        targetDaysOff: sc.targetDaysOff,
-        people: generateGroupedSchedule(profile, state.employees, sc.targetHours || 44, sc.targetDaysOff || 1, pesosDia)
-      };
-    });
-    // FASE 1: Compliance CLT — violações por cenário
-    summary.complianceCLT = {};
-    Object.entries(summary.fullSchedule).forEach(([key, sc]) => {
-      summary.complianceCLT[key] = checkComplianceCLT(sc.people);
-    });
-    // FASE 2: Banco de horas
-    summary.bancoHoras = buildBancoHoras(summary.fullSchedule, state.employees);
-    // FASE 1: Período de escala fechado (vigente) + histórico
-    summary.escalaFechada = state.escalaFechada || null;
-    if (summary.escalaFechada && (!summary.escalaFechada.caixaPeople || !Object.keys(summary.escalaFechada.caixaPeople).length)) {
-      const people = summary.escalaFechada.people || {};
-      summary.escalaFechada.caixaPeople = Object.fromEntries(
-        Object.entries(people).filter(([nome]) => isOperadorCaixaSnapshot(nome, summary.escalaFechada))
-      );
-    }
-    summary.escalaHistorico = (state.escalaHistorico || []).map(h => ({
-      label: h.label, dataInicio: h.dataInicio, dataFim: h.dataFim,
-      cenarioLabel: h.cenarioLabel, fechadoEm: h.fechadoEm, fechadoPor: h.fechadoPor
-    }));
 
     summary.sundayRotation.forEach((item) => {
       item.folga = item.folga.map((name) => names[name] || name);
@@ -2923,6 +2886,42 @@ async function applyClientState(summary, user, weekFilter = null) {
     const salaries = state.employees.map((employee) => Number(employee.salario || 0)).filter(Boolean);
     if (salaries.length) summary.financial.assumptions.salarioBaseMensal = salaries.reduce((sum, value) => sum + value, 0) / salaries.length;
   }
+
+  // ESCALA COMPLETA — todos os colaboradores (todos os setores), fora do bloco caixa-only
+  summary.employeeSetorMap = {};
+  summary.employeeCargoMap = {};
+  (state.employees || []).forEach(e => {
+    summary.employeeSetorMap[e.nome] = (e.setor || 'Sem setor').trim() || 'Sem setor';
+    summary.employeeCargoMap[e.nome] = (e.cargo || 'Sem cargo').trim() || 'Sem cargo';
+  });
+  if (state.employees && state.employees.length >= 1) {
+    const pesosFull = pesosDiaSemanaDeVendas(state.salesRows, mercRows);
+    summary.fullSchedule = {};
+    Object.entries(summary.weeklyScenarioSchedule).forEach(([key, sc]) => {
+      summary.fullSchedule[key] = {
+        label: sc.label,
+        targetHours: sc.targetHours,
+        targetDaysOff: sc.targetDaysOff,
+        people: generateGroupedSchedule(profile, state.employees, sc.targetHours || 44, sc.targetDaysOff || 1, pesosFull)
+      };
+    });
+    summary.complianceCLT = {};
+    Object.entries(summary.fullSchedule).forEach(([key, sc]) => {
+      summary.complianceCLT[key] = checkComplianceCLT(sc.people);
+    });
+    summary.bancoHoras = buildBancoHoras(summary.fullSchedule, state.employees);
+  }
+  summary.escalaFechada = state.escalaFechada || null;
+  if (summary.escalaFechada && (!summary.escalaFechada.caixaPeople || !Object.keys(summary.escalaFechada.caixaPeople).length)) {
+    const people = summary.escalaFechada.people || {};
+    summary.escalaFechada.caixaPeople = Object.fromEntries(
+      Object.entries(people).filter(([nome]) => isOperadorCaixaSnapshot(nome, summary.escalaFechada))
+    );
+  }
+  summary.escalaHistorico = (state.escalaHistorico || []).map(h => ({
+    label: h.label, dataInicio: h.dataInicio, dataFim: h.dataFim,
+    cenarioLabel: h.cenarioLabel, fechadoEm: h.fechadoEm, fechadoPor: h.fechadoPor
+  }));
 
   if (!state.salesRows.length) {
     summary.metadata.periodoAmostra = `${summary.metadata.periodoAmostra} (demonstração)`;

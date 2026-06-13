@@ -883,7 +883,8 @@ function getSelectedCashierScenario(data) {
         targetDaysOff: (data.weeklyScenarioSchedule?.[currentCoverageScenario]?.targetDaysOff) || 1
       }
     : (() => {
-        const scenario = data.weeklyScenarioSchedule[currentCoverageScenario];
+        const full = data.fullSchedule && data.fullSchedule[currentCoverageScenario];
+        const scenario = full || data.weeklyScenarioSchedule[currentCoverageScenario];
         return {
           usarFechada: false,
           people: scenario?.people || {},
