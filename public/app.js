@@ -1235,13 +1235,28 @@ function renderStoreFloorMap(data) {
 
     const byZone = {};
     active.forEach(p => { const z = zoneOf(p.nome); (byZone[z] = byZone[z] || []).push(p); });
-    const zonePos = {checkout:{gx:[2,10],gy:[9,10]},gondola:{gx:[3,9],gy:[3,8]},acougue:{gx:[0.5,3],gy:[0.5,2]},padaria:{gx:[4,7],gy:[0.5,2]},frios:{gx:[8,11],gy:[0.5,2]},hortifruti:{gx:[0.3,2],gy:[3,5.5]},comercial:{gx:[0.5,3],gy:[6,8]},recebimento:{gx:[10.3,11.8],gy:[0.3,2]},escritorio:{gx:[13.8,15.5],gy:[1.3,2.5]},outro:{gx:[4,7],gy:[6,8]}};
+    const zonePos = {
+      checkout:{gx:[1,10],gy:[10.5,11.5]},
+      gondola:{gx:[3,9],gy:[5,8.5]},
+      acougue:{gx:[1,3.5],gy:[2.2,2.8]},
+      padaria:{gx:[4.5,7],gy:[2.2,2.8]},
+      frios:{gx:[8,11],gy:[2,2.8]},
+      hortifruti:{gx:[0.3,1.8],gy:[5.8,7]},
+      comercial:{gx:[0.5,3],gy:[7.5,8.5]},
+      recebimento:{gx:[10.3,11.8],gy:[2.8,3.5]},
+      escritorio:{gx:[13.8,15.5],gy:[3.2,3.8]},
+      outro:{gx:[4,7],gy:[7.5,8.5]}
+    };
     Object.entries(byZone).forEach(([z, workers]) => {
       const pos = zonePos[z] || zonePos.outro;
       workers.forEach((w, i) => {
-        const t = workers.length > 1 ? i / (workers.length - 1) : 0.5;
-        const gx = pos.gx[0] + t * (pos.gx[1] - pos.gx[0]);
-        const gy = pos.gy[0] + 0.3 + (workers.length > 3 ? (i%2)*0.8 : 0);
+        const cols = Math.ceil(Math.sqrt(workers.length));
+        const row = Math.floor(i / cols), col = i % cols;
+        const tx = cols > 1 ? col / (cols - 1) : 0.5;
+        const rowCount = Math.ceil(workers.length / cols);
+        const ty = rowCount > 1 ? row / (rowCount - 1) : 0.5;
+        const gx = pos.gx[0] + tx * (pos.gx[1] - pos.gx[0]);
+        const gy = pos.gy[0] + ty * (pos.gy[1] - pos.gy[0]);
         h += isoWorker(gx, gy, ZC[z]||ZC.outro, w.nome, 'fw'+i, ZL[z]||z, w.shifts[_floorDay], isOnBreak(w, _floorHour));
       });
     });
@@ -1280,7 +1295,7 @@ function renderStoreFloorMap(data) {
         <span style="font-size:16px;font-weight:500;color:var(--color-text-primary)"><i class="ti ti-building-store" style="font-size:18px;margin-right:4px"></i>Planta da loja</span>
         <div style="display:flex;gap:6px;align-items:center">
           <button id="floorPlayBtn" type="button" style="background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:8px;padding:3px 10px;font-size:12px;cursor:pointer;color:var(--color-text-secondary)"><i class="ti ti-player-play"></i> Simular</button>
-          <div id="floorDayBtns" style="display:flex;gap:3px">${DAYS.map((d,i) => `<button class="floor-day-btn" data-d="${i}" style="background:${i===_floorDay?'var(--color-background-info)':'transparent'};color:${i===_floorDay?'var(--color-text-info)':'var(--color-text-secondary)'};border:0.5px solid ${i===_floorDay?'var(--color-border-info)':'var(--color-border-secondary)'};border-radius:8px;padding:3px 8px;font-size:11px;cursor:pointer">${d}</button>`).join('')}</div>
+          <div id="floorDayBtns" style="display:flex;gap:3px">${DAYS.map((d,i) => `<button class="floor-day-btn" data-d="${i}" style="background:${i===_floorDay?'#2563eb':'var(--color-background-secondary)'};color:${i===_floorDay?'#fff':'var(--color-text-secondary)'};border:${i===_floorDay?'2px solid #3b82f6':'1px solid var(--color-border-secondary)'};border-radius:8px;padding:4px 10px;font-size:12px;font-weight:${i===_floorDay?'700':'400'};cursor:pointer;transition:all .15s">${d}</button>`).join('')}</div>
         </div>
       </div>
       <div style="position:relative;width:100%;background:var(--color-background-secondary);border-radius:12px;overflow:hidden">
