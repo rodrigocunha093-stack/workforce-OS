@@ -1083,9 +1083,14 @@ function parseWorkedBlocks(shift) {
   ].filter((block) => block.end > block.start);
 }
 
-function generateOperatorShift(startHour, endHour) {
-  const duration = endHour - startHour;
-  return `${formatHM(startHour)}-${formatHM(endHour)} · ${formatDur(duration)}`;
+function generateOperatorShift(startHour, endHour, breakAtHour) {
+  const workedHours = endHour - startHour;
+  if (breakAtHour !== undefined && workedHours > 6) {
+    const breakEnd = breakAtHour + 1;
+    const shiftEnd = endHour + 1;
+    return `${formatHM(startHour)}-${formatHM(breakAtHour)}/${formatHM(breakEnd)}-${formatHM(shiftEnd)} · ${formatDur(workedHours)}`;
+  }
+  return `${formatHM(startHour)}-${formatHM(endHour)} · ${formatDur(workedHours)}`;
 }
 
 function scheduleGroupKey(emp) {
@@ -2191,6 +2196,9 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
     .filter(i => i >= 0);
   const idxFechadorPrimario = idxFechadores.length > 0 ? idxFechadores[idxFechadores.length - 1] : -1;
 
+  // Workers matutinos em dias de pico (todos exceto o fechador primário)
+  const peakMorningWorkers = employees.map((_, i) => i).filter(i => i !== idxFechadorPrimario);
+
   const result = {};
   employees.forEach((emp, idx) => {
     const turno = emp._coverageRole || emp.turno || 'flexivel';
@@ -2253,27 +2261,43 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
         return generateRepositorShift(loja.open, loja.close, idx, N, sexo, jd, turno);
       }
       if (comercial) return generateComercialShift(loja.open, loja.close, jd);
+      // Em dias de pico, calcular intervalo escalonado: 1 pessoa por vez em pausa,
+      // começando só depois que a fechadora chega (para manter cobertura completa).
+      function peakBreakAt(start) {
+        const mi = peakMorningWorkers.indexOf(idx);
+        if (mi < 0) return undefined;
+        const closerStart = Math.max(loja.open, loja.close - jd);
+        const earliest = Math.max(start + 3, closerStart);
+        const latest = start + jd - 2;
+        if (latest <= earliest) return undefined;
+        const total = peakMorningWorkers.length;
+        const step = total > 1 ? (latest - earliest) / (total - 1) : 0;
+        return Math.round((earliest + step * mi) * 2) / 2;
+      }
+
       if (ehFechador) {
         if (isPeakDay(day) && idxFechadores.length > 1 && idx !== idxFechadorPrimario) {
-          // Pico: fechador(a) extra cobre a manhã em vez do fechamento
           const extraIdx = idxFechadores.filter(i => i !== idxFechadorPrimario).indexOf(idx);
           const offset = extraIdx * 0.5;
           const start = loja.open + offset;
-          return generateOperatorShift(start, Math.min(loja.close, start + jd));
+          return generateOperatorShift(start, Math.min(loja.close, start + jd), peakBreakAt(start));
         }
         return generateOperatorShift(Math.max(loja.open, loja.close - jd), loja.close);
       }
-      if (ehAbridor) return generateOperatorShift(loja.open, Math.min(loja.close, loja.open + jd));
+      if (ehAbridor) {
+        if (isPeakDay(day)) {
+          return generateOperatorShift(loja.open, Math.min(loja.close, loja.open + jd), peakBreakAt(loja.open));
+        }
+        return generateOperatorShift(loja.open, Math.min(loja.close, loja.open + jd));
+      }
       if (isPeakDay(day)) {
-        // Pico: flexíveis concentrados na abertura (deslocamento mínimo de 0-1h
-        // entre eles para escalonar intervalos, mas todos começam cedo)
         const flexIdx = idxFlexiveis.indexOf(idx);
         const maxOffset = Math.min(1, Math.max(0, loja.close - jd - loja.open));
         const offset = (flexIdx >= 0 && idxFlexiveis.length > 1)
           ? Math.round(maxOffset * flexIdx / (idxFlexiveis.length - 1) * 2) / 2
           : 0;
         const start = loja.open + offset;
-        return generateOperatorShift(start, Math.min(loja.close, start + jd));
+        return generateOperatorShift(start, Math.min(loja.close, start + jd), peakBreakAt(start));
       }
       const start = startForTurno(turno, loja.open, loja.close, idx, jd);
       return generateOperatorShift(start, Math.min(loja.close, start + jd));
