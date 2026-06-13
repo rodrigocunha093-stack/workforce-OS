@@ -2183,6 +2183,13 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
   const idxFechadorAuto = (!temFechadorExplicito && idxFlexiveis.length) ? idxFlexiveis[idxFlexiveis.length - 1] : -1;
   const idxAbridorAuto = (!temAbridorExplicito && idxFlexiveis.length) ? idxFlexiveis.find(i => i !== idxFechadorAuto) ?? -1 : -1;
 
+  // Em dias de pico (sex/sáb), manter apenas 1 fechador(a) no turno de fechamento.
+  // Fechadores extras são redirecionados para cobrir a manhã (início escalonado).
+  const idxFechadores = employees
+    .map((e, i) => ((e._coverageRole || e.turno || 'flexivel') === 'fechamento' ? i : -1))
+    .filter(i => i >= 0);
+  const idxFechadorPrimario = idxFechadores.length > 0 ? idxFechadores[idxFechadores.length - 1] : -1;
+
   const result = {};
   employees.forEach((emp, idx) => {
     const turno = emp._coverageRole || emp.turno || 'flexivel';
@@ -2245,7 +2252,16 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
         return generateRepositorShift(loja.open, loja.close, idx, N, sexo, jd, turno);
       }
       if (comercial) return generateComercialShift(loja.open, loja.close, jd);
-      if (ehFechador) return generateOperatorShift(Math.max(loja.open, loja.close - jd), loja.close);
+      if (ehFechador) {
+        if (isPeakDay(day) && idxFechadores.length > 1 && idx !== idxFechadorPrimario) {
+          // Pico: fechador(a) extra cobre a manhã em vez do fechamento
+          const extraIdx = idxFechadores.filter(i => i !== idxFechadorPrimario).indexOf(idx);
+          const offset = extraIdx * 0.5;
+          const start = loja.open + offset;
+          return generateOperatorShift(start, Math.min(loja.close, start + jd));
+        }
+        return generateOperatorShift(Math.max(loja.open, loja.close - jd), loja.close);
+      }
       if (ehAbridor) return generateOperatorShift(loja.open, Math.min(loja.close, loja.open + jd));
       if (isPeakDay(day)) {
         // Pico: flexíveis concentrados na abertura (deslocamento mínimo de 0-1h
