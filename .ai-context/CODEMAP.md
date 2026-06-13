@@ -2,7 +2,7 @@
 
 > `server.js` tem ~3150 linhas num único arquivo (HTTP puro, sem framework).
 > Os números de linha são aproximados (mudam a cada edição) — use o nome da função no grep.
-> Atualizado em 2026-06-11.
+> Atualizado em 2026-06-13.
 
 ## Arquitetura em 1 parágrafo
 
@@ -30,7 +30,11 @@ Browser → `public/index.html` + `app.js` (SPA vanilla) chamam `GET /api/summar
 ### Geração de ESCALA (linhas ~1421–1885) — núcleo do produto
 - `generateOperatorShift` — turno corrido "06-14 · 8h".
 - `generateComercialShift` — turno centralizado 08-17 (apoio/admin/cargo único).
-- `generateRepositorShift` — jornada partida manhã+tarde, intervalo por sexo.
+- `generateRepositorShift` — LEGADO, substituído por `generateReplenishmentShift`.
+- `REPLENISHMENT_DEMAND_CURVE` — array {start, end, weight} para demanda de reposição por hora.
+- `replenishmentWeight(hour)` — retorna peso da curva para hora dada.
+- `bestReplenishmentSlots(open, close, N, jornada)` — greedy: seleciona N horários de início maximizando cobertura ponderada + spread (`minGap = max(1.5, span/N)`).
+- `generateReplenishmentShift(open, close, idx, N, sexo, jornada)` — turno repositor com pausa no midpoint, CLT art.71 (maxCont=5h40).
 - **`generateScheduleByProfile(profile, employees, targetHours, targetDaysOff)`** — gera os 7 turnos de cada pessoa. Aqui estão: turno preferencial, folga, domingo, **abridor/fechador garantidos** (idx 0 abre, idx N-1 fecha), distribuição uniforme de flexíveis.
 - **`generateGroupedSchedule(...)`** — agrupa por **CARGO** e chama a anterior por grupo (revezamento entre intercambiáveis).
 
@@ -70,7 +74,9 @@ Browser → `public/index.html` + `app.js` (SPA vanilla) chamam `GET /api/summar
 ## public/app.js — renderização
 
 - Topo: toggle de tema (IIFE) + tabs.
-- `renderOpsDashboard` (painel home), `renderKpis`, `renderEnterpriseReadiness`, `renderSetorDashboard` (ICOS), `renderScenarios`, `renderCoverage`, **`renderWeeklySchedule`** (escala + compliance + 🔓/🔒 + export), `renderEmployeesManager` (equipe + multi-seleção mercadológico), `renderGestorPanel`, `renderCompanyInfo`.
+- `renderOpsDashboard` (painel home), `renderKpis`, `renderEnterpriseReadiness`, `renderSetorDashboard` (ICOS), `renderScenarios`, `renderCoverage`, **`renderStoreFloorMap`** (planta isométrica 3D — 9 zonas, workers por PDV/corredor, timeline com bolinha, stats cockpit), **`renderWeeklySchedule`** (escala + compliance + 🔓/🔒 + export), `renderEmployeesManager` (equipe + multi-seleção mercadológico), `renderGestorPanel`, `renderCompanyInfo`.
+- `renderStoreFloorMap` internals: `buildSvg()` (gera SVG isométrico), `isoX/isoY/isoRect/isoBox/isoLabel/isoWorker` (projeção isométrica), `zoneOf(nome)` (detecta zona por setor/cargo), `parseRanges/isWorking/isOnBreak` (status do turno na hora). State: `_floorDay`, `_floorHour`, `_floorPlaying`, `_floorTimer`.
+- `getSelectedCashierScenario` — prefere `fullSchedule` (todos setores) sobre `weeklyScenarioSchedule` (só caixa).
 - Bloco final (`Promise.all([/api/summary, /api/auth/status])`) chama todos os `safeRender(...)`. `safeRender` isola erros por aba.
 - `applyEnabledModules` esconde abas não liberadas pelo gestor.
 

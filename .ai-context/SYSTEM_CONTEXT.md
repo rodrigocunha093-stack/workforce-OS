@@ -1,6 +1,6 @@
 # SYSTEM CONTEXT
 
-> Atualizado em 2026-06-11. Este arquivo descreve o estado REAL do produto.
+> Atualizado em 2026-06-13. Este arquivo descreve o estado REAL do produto.
 > Se o código divergir daqui, o código manda — corrija este arquivo.
 
 ## Produto
@@ -65,7 +65,7 @@ Importação **mercadológico** (m1/m2) → **ICOS por mercadológico** (Açougu
 - **Folga nunca em sexta/sábado** (dias de maior movimento). Permitidas seg–qui (e domingo se aberto).
 - **3 tipos de jornada por cargo:**
   - *Corrida* (caixa, açougue): turnos escalonados no grupo; na leitura operacional, a pausa segue o art. 71 da CLT (`>4h e <=6h = 15min`, `>6h = mínimo 1h`).
-  - *Partida* (reposição): manhã+tarde com presença distribuída entre abertura, manutenção e fechamento; em jornada curta vira turno contínuo com pausa legal curta. Para jornadas acima de 6h, o motor posiciona a pausa fora da primeira e da última faixa do expediente.
+  - *Reposição* (modelo exclusivo): curva de demanda invertida do caixa (`REPLENISHMENT_DEMAND_CURVE`: manhã forte 1.5, meio-dia 0.7, pré-pico 1.3). Algoritmo greedy `bestReplenishmentSlots` seleciona N horários de início maximizando cobertura ponderada + espalhamento. Pausa no ponto médio da jornada individual. CLT art. 71 (maxCont = 5h40).
   - *Comercial* (apoio/admin OU cargo único no grupo: conferente, motorista, financeiro...): turno centralizado no miolo do dia, com intervalo calculado pela mesma régua legal.
 - **Cobertura por SETOR operacional**: o motor divide a equipe do setor em abertura e fechamento. Regra padrão:
   - setor com 1 colaborador: jornada centralizada no miolo do dia;
@@ -79,6 +79,7 @@ Importação **mercadológico** (m1/m2) → **ICOS por mercadológico** (Açougu
 ## Inteligência já entregue
 
 - **Painel Operacional** (aba Diagnóstico): faturamento dia/semana/mês, dimensionamento (1 colab/R$36,5k), pico de fluxo, perdas (ruptura/validade/abandono), multifuncionalidade, tendência, forecast 7 dias (sazonalidade), banco de horas, **What-if**.
+- **Planta isométrica inteligente**: mapa 3D isométrico da loja com 9 zonas (checkouts, gôndolas, açougue, padaria, frios, hortifruti, bebidas, recebimento/doca, escritório). Operadores posicionados 1:1 em cada PDV, repositores nos corredores entre gôndolas. Timeline com bolinha arrastável, marcadores de hora, botões ◀▶, animação, seletor de dia. Stats: no salão, PDVs ativos, escritório, recebimento, intervalo, folga, total ativos. Detecção automática de zona por setor/cargo.
 - **ICOS** (aba Setores): venda × equipe por mercadológico, produtividade, status de carga, curva por dia da semana, matriz de benchmarks.
 - **Compliance CLT** (aba Escala): interjornada 11h, DSR, máx 44h, 6 dias consecutivos.
 - **Export** imprimível da escala + **self-service** do colaborador (`/colaborador.html`).

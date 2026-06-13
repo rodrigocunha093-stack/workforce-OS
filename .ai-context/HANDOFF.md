@@ -117,6 +117,41 @@ Criado `CODEMAP.md` para que qualquer dev/IA ache as funções no `server.js` (3
 - **Bug corrigido: `shiftWorkedHours` ignorava minutos.** Turno `7h20` retornava 7 em vez de 7.33. Agora captura `NNhMM` com a regex `/·\s*(\d+)h(\d{2})?/`.
 - Pipeline pós-otimização: (1) redistribui intervalos na escala, (2) recalcula cobertura a partir dos turnos modificados, (3) aplica targets finais.
 
+## Atualização 2026-06-13 — planta isométrica completa + todos os setores
+
+### Planta isométrica da loja (`renderStoreFloorMap` em app.js)
+- **Zonas desenhadas em 3D isométrico**: Checkouts/PDVs (frente), Gôndolas com prateleiras e produtos coloridos (centro), Açougue (fundo esq, vermelho), Padaria (fundo centro, laranja), Frios (fundo dir, azul), Hortifruti (lateral esq, verde), Bebidas (lateral dir, azul claro), **Recebimento/Doca** (fundo dir, marrom, com plataforma de descarga), **Escritório** (prédio separado à direita, roxo, com 4 mesas).
+- **Operadores de caixa posicionados 1:1 em cada PDV** — PDV ativo (verde) vs inativo (cinza). Extras além do nº de PDVs ficam como auxiliares.
+- **Repositores nos corredores** entre gôndolas (3 faixas de circulação), nunca sobre as prateleiras.
+- **Detecção automática de zona** via `zoneOf(nome)`: analisa `setorMap + cargoMap` com keywords (açougue/carnes, padaria/confeitaria, repositor/mercearia, recebimento/estoque/doca, administrativo/RH/financeiro/DP, etc).
+- **Ícones com alto contraste**: corpo com borda branca, iniciais com sombra, nome com fundo (pill bg) adaptado light/dark, truncado em 8 chars.
+
+### Timeline interativa
+- **Horário grande** (22px bold) com botões ◀ ▶ (±30min).
+- **Marcadores de hora** a cada 2h com ticks menores nas ímpares.
+- **Bolinha azul arrastável** (#2563eb) com borda branca e sombra — suporta drag mouse e touch.
+- **Barras de turno** coloridas por zona sobrepostas no trilho.
+- **Botão Simular**: animação automática (400ms steps de 30min).
+- **Seletor de dia**: botões Seg-Dom com destaque forte azul/branco/negrito no selecionado.
+
+### Stats do cockpit (7 cards)
+No salão · PDVs (ativos/total) · Escritório · Recebimento · Intervalo · Folga · Total ativos. Formação detalhada por zona.
+
+### Modelo de reposição exclusivo (server.js)
+- **`REPLENISHMENT_DEMAND_CURVE`**: curva de demanda invertida do caixa — manhã forte (recebimento, peso 1.5), meio-dia baixo (0.7), pré-pico tarde (1.3).
+- **`bestReplenishmentSlots(open, close, N, jornada)`**: algoritmo greedy que seleciona N horários de início maximizando cobertura ponderada + espalhamento (`minGap = max(1.5, span/N)`).
+- **`generateReplenishmentShift(...)`**: turno repositor com pausa no ponto médio da jornada individual, respeitando CLT art. 71 (maxCont = 5h40).
+
+### Correção: todos os setores na escala
+- `fullSchedule`, `employeeSetorMap`, `employeeCargoMap` movidos para FORA do `if (caixaEmployees.length >= 1)` — agora geram para TODOS os empregados.
+- Frontend (`getSelectedCashierScenario`) agora prefere `fullSchedule` sobre `weeklyScenarioSchedule`.
+
+### UX da aba Escala
+- Colunas sticky (nome + cargo fixos ao rolar).
+- Destaque do dia de hoje na grade.
+- Datas no cabeçalho.
+- Formato HH:MM nos turnos.
+
 ## Atualização 2026-06-12 — deficit sábado fechadores
 
 - **Bug corrigido: déficit 06-12h no sábado.** Com 2 de 5 operadoras configuradas como "fechamento" (Girlene e Thais), ambas começavam às 10h+, deixando apenas 3 caixas nas 6h de pico (06-12h) quando o target era 4.
