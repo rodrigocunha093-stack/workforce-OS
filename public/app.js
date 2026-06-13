@@ -1164,12 +1164,12 @@ function renderStoreFloorMap(data) {
     const ini = name.split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase();
     const c = brk ? '#9e9e9e' : color;
     let s = `<g class="floor-worker" data-n="${name}" data-z="${zl}" data-s="${sh}" data-brk="${brk?1:0}" style="cursor:pointer">`;
-    s += `<ellipse cx="${x}" cy="${y+2}" rx="8" ry="4" fill="rgba(0,0,0,.15)"/>`;
-    s += `<rect x="${x-6}" y="${y-16}" width="12" height="12" rx="2" fill="${c}" stroke="rgba(255,255,255,.5)" stroke-width="0.5"/>`;
-    s += `<circle cx="${x}" cy="${y-22}" r="5" fill="${c}" stroke="rgba(255,255,255,.5)" stroke-width="0.5"/>`;
-    s += `<text x="${x}" y="${y-14}" text-anchor="middle" fill="#fff" font-size="6" font-weight="500" style="font-family:inherit">${ini}</text>`;
-    s += `<text x="${x}" y="${y+12}" text-anchor="middle" fill="var(--color-text-secondary)" font-size="7" style="font-family:inherit">${name.split(' ')[0]}</text>`;
-    if (brk) s += `<text x="${x}" y="${y-28}" text-anchor="middle" font-size="10">&#9749;</text>`;
+    s += `<ellipse cx="${x}" cy="${y+2}" rx="7" ry="3" fill="rgba(0,0,0,.12)"/>`;
+    s += `<rect x="${x-5}" y="${y-14}" width="10" height="10" rx="2" fill="${c}" stroke="rgba(255,255,255,.5)" stroke-width="0.4"/>`;
+    s += `<circle cx="${x}" cy="${y-19}" r="4.5" fill="${c}" stroke="rgba(255,255,255,.5)" stroke-width="0.4"/>`;
+    s += `<text x="${x}" y="${y-12}" text-anchor="middle" fill="#fff" font-size="5.5" font-weight="600" style="font-family:inherit">${ini}</text>`;
+    s += `<text x="${x}" y="${y+10}" text-anchor="middle" fill="var(--color-text-secondary)" font-size="6" style="font-family:inherit">${name.split(' ')[0].slice(0,8)}</text>`;
+    if (brk) s += `<text x="${x}" y="${y-25}" text-anchor="middle" font-size="8">&#9749;</text>`;
     s += '</g>';
     return s;
   }
@@ -1210,15 +1210,16 @@ function renderStoreFloorMap(data) {
     h += isoRect(11.2,0,0.8,0.4,dk?'#555':'#9e9e9e','rgba(0,0,0,.2)',0.7);
     h += `<text x="${isoX(11.6,0.2)}" y="${isoY(11.6,0.2)-6}" text-anchor="middle" fill="var(--color-text-tertiary)" font-size="7" style="font-family:inherit">&#128666;</text>`;
 
-    // Escritório (administrativo) — separado do salão, canto superior direito
+    // Escritório (administrativo) — separado do salão
     const ofC = dk?'#1e1b4b':'#c7d2fe', ofD = dk?'#1a1740':'#a5b4fc', ofE = dk?'#151030':'#818cf8';
-    h += isoBox(13.5,1,2.5,2,14,ofC,ofD,ofE);
-    h += isoLabel(14.8,2.3,'ESCRITORIO',dk?'#c7d2fe':'#3730a3',7);
-    // Porta conectando ao salão
-    h += `<line x1="${isoX(13.5,2)}" y1="${isoY(13.5,2)-7}" x2="${isoX(12.5,2.5)}" y2="${isoY(12.5,2.5)}" stroke="${dk?'rgba(255,255,255,.15)':'rgba(0,0,0,.1)'}" stroke-width="1" stroke-dasharray="4,3"/>`;
-    // Ícones de mesa no escritório
-    h += isoRect(14,1.5,0.6,0.4,dk?'#2d2760':'#9fa8da',null,0.5);
-    h += isoRect(15,1.5,0.6,0.4,dk?'#2d2760':'#9fa8da',null,0.5);
+    h += isoBox(13,0.5,4,3.5,14,ofC,ofD,ofE);
+    h += isoLabel(15,1,'ESCRITORIO',dk?'#c7d2fe':'#3730a3',8);
+    h += `<line x1="${isoX(13,3)}" y1="${isoY(13,3)-7}" x2="${isoX(12.3,3.2)}" y2="${isoY(12.3,3.2)}" stroke="${dk?'rgba(255,255,255,.15)':'rgba(0,0,0,.1)'}" stroke-width="1" stroke-dasharray="4,3"/>`;
+    // Mesas
+    h += isoRect(13.8,1.5,0.8,0.5,dk?'#2d2760':'#9fa8da',null,0.4);
+    h += isoRect(15,1.5,0.8,0.5,dk?'#2d2760':'#9fa8da',null,0.4);
+    h += isoRect(13.8,2.5,0.8,0.5,dk?'#2d2760':'#9fa8da',null,0.4);
+    h += isoRect(15,2.5,0.8,0.5,dk?'#2d2760':'#9fa8da',null,0.4);
 
     const active = people.filter(p => isWorking(p, _floorHour));
     const byZone = {};
@@ -1250,29 +1251,43 @@ function renderStoreFloorMap(data) {
     h += isoLabel(6,11.5,'FRENTE DE LOJA',dk?'rgba(255,255,255,.35)':'rgba(0,0,0,.25)',9);
     h += `<text x="${isoX(6,12)}" y="${isoY(6,12)+14}" text-anchor="middle" fill="var(--color-text-tertiary)" font-size="9" style="font-family:inherit"><tspan style="font-size:14px">&#8593;</tspan> ENTRADA</text>`;
 
-    // Place non-checkout workers by zone
+    // Place non-checkout workers by zone — in CORRIDORS not on top of sections
+    // Gondola shelves are at gy=3, 5.2, 7.4 — corridors are between them
+    // Açougue box ends at gy=2, Padaria same, Frios same — workers go gy≈2.3
     const zonePos = {
-      gondola:{gx:[3,9],gy:[5,8.5]},
-      acougue:{gx:[1,3.5],gy:[2.2,2.8]},
-      padaria:{gx:[4.5,7],gy:[2.2,2.8]},
-      frios:{gx:[8,11],gy:[2,2.8]},
-      hortifruti:{gx:[0.3,1.8],gy:[5.8,7]},
-      comercial:{gx:[0.5,3],gy:[7.5,8.5]},
-      recebimento:{gx:[10.3,11.8],gy:[2.8,3.5]},
-      escritorio:{gx:[13.8,15.5],gy:[3.2,3.8]},
-      outro:{gx:[4,7],gy:[7.5,8.5]}
+      gondola:{gx:[3,9],gy:[4.2,8.8]},
+      acougue:{gx:[0.8,3],gy:[2.3,2.6]},
+      padaria:{gx:[4.3,6.5],gy:[2.3,2.6]},
+      frios:{gx:[7.8,9.5],gy:[2,2.5]},
+      hortifruti:{gx:[0.3,1.5],gy:[6,7.5]},
+      comercial:{gx:[0.5,2.5],gy:[8,9]},
+      recebimento:{gx:[10.3,11.5],gy:[2.8,3.5]},
+      escritorio:{gx:[13.5,16.5],gy:[1.5,3.5]},
+      outro:{gx:[4,7],gy:[8,9]}
     };
+    // Gondola corridors: between shelf rows at gy=3,5.2,7.4 (each 0.8 tall)
+    const gondolaCorridors = [4.0, 6.0, 8.4];
+
     Object.entries(byZone).forEach(([z, workers]) => {
       if (z === 'checkout') return;
       const pos = zonePos[z] || zonePos.outro;
       workers.forEach((w, i) => {
-        const cols = Math.ceil(Math.sqrt(workers.length));
-        const row = Math.floor(i / cols), col = i % cols;
-        const tx = cols > 1 ? col / (cols - 1) : 0.5;
-        const rowCount = Math.ceil(workers.length / cols);
-        const ty = rowCount > 1 ? row / (rowCount - 1) : 0.5;
-        const gx = pos.gx[0] + tx * (pos.gx[1] - pos.gx[0]);
-        const gy = pos.gy[0] + ty * (pos.gy[1] - pos.gy[0]);
+        let gx, gy;
+        if (z === 'gondola') {
+          const corridor = gondolaCorridors[i % gondolaCorridors.length];
+          const colInCorridor = Math.floor(i / gondolaCorridors.length);
+          gx = 3.5 + colInCorridor * 1.8;
+          if (gx > 9) gx = 3.5 + (colInCorridor % 4) * 1.8;
+          gy = corridor;
+        } else {
+          const cols = Math.min(Math.ceil(Math.sqrt(workers.length)), 4);
+          const row = Math.floor(i / cols), col = i % cols;
+          const tx = cols > 1 ? col / (cols - 1) : 0.5;
+          const rowCount = Math.ceil(workers.length / cols);
+          const ty = rowCount > 1 ? row / (rowCount - 1) : 0.5;
+          gx = pos.gx[0] + tx * (pos.gx[1] - pos.gx[0]);
+          gy = pos.gy[0] + ty * (pos.gy[1] - pos.gy[0]);
+        }
         h += isoWorker(gx, gy, ZC[z]||ZC.outro, w.nome, 'fw'+z+i, ZL[z]||z, w.shifts[_floorDay], isOnBreak(w, _floorHour));
       });
     });
@@ -1316,7 +1331,7 @@ function renderStoreFloorMap(data) {
         </div>
       </div>
       <div style="position:relative;width:100%;background:var(--color-background-secondary);border-radius:12px;overflow:hidden">
-        <svg viewBox="0 0 820 480" style="display:block;width:100%">${r.svg}</svg>
+        <svg viewBox="-10 0 860 480" style="display:block;width:100%">${r.svg}</svg>
       </div>
       <div style="margin-top:14px;padding:0 4px">
         <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px">
