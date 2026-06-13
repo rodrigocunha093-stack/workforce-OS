@@ -1310,6 +1310,70 @@ function buildForecast(mercRows, caixaRows) {
   return { sazonalidade, proximos, eventos, picoDiaSemana: sazonalidade.reduce((a, b) => b.valor > a.valor ? b : a) };
 }
 
+// Decomposição multiplicativa: índice dia-da-semana × fator semana-do-mês
+// Com 30 dias: ~4 amostras/dow (robusto), ~1-2 amostras/wom (direcional)
+function buildDemandIndices(rows) {
+  if (!rows || !rows.length) return null;
+
+  // Índice por dia da semana (dow 0=dom..6=sab)
+  const dowSum = [0,0,0,0,0,0,0];
+  const dowDays = [new Set(),new Set(),new Set(),new Set(),new Set(),new Set(),new Set()];
+  // Fator por semana do mês (wom 1..5)
+  const womSum = [0,0,0,0,0,0]; // idx 0 unused, 1-5
+  const womDays = [null, new Set(), new Set(), new Set(), new Set(), new Set()];
+
+  rows.forEach(r => {
+    const venda = Number(r.vendaLiquida || 0);
+    const d = new Date(`${r.data}T12:00:00`).getDay();
+    dowSum[d] += venda;
+    dowDays[d].add(r.data);
+    const wom = weekOfMonth(r.data);
+    womSum[wom] += venda;
+    womDays[wom].add(r.data);
+  });
+
+  // Média por dow
+  const dowAvg = dowSum.map((v, i) => dowDays[i].size ? v / dowDays[i].size : 0);
+  const dowActive = dowAvg.filter(v => v > 0);
+  const dowMean = dowActive.length ? dowActive.reduce((a, b) => a + b, 0) / dowActive.length : 1;
+  const dowIndex = dowAvg.map(v => dowMean > 0 ? Number((v / dowMean).toFixed(3)) : 1);
+
+  // Média por wom
+  const womAvg = womSum.map((v, i) => i > 0 && womDays[i].size ? v / womDays[i].size : 0);
+  const womActive = womAvg.filter((v, i) => i > 0 && v > 0);
+  const womMean = womActive.length ? womActive.reduce((a, b) => a + b, 0) / womActive.length : 1;
+  const womFactor = womAvg.map((v, i) => i > 0 && womMean > 0 ? Number((v / womMean).toFixed(3)) : 1);
+
+  // Dias com dados por célula (para nível de confiança)
+  const totalDays = new Set(rows.map(r => r.data)).size;
+  const dowSamples = dowDays.map(s => s.size);
+  const womSamples = womDays.map((s, i) => i > 0 ? s.size : 0);
+  const minDowSamples = Math.min(...dowSamples.filter(n => n > 0));
+
+  let confianca = 'inicial';
+  if (totalDays >= 90) confianca = 'boa';
+  else if (totalDays >= 28 && minDowSamples >= 3) confianca = 'media';
+
+  return {
+    dowIndex,     // [7] — 0=dom..6=sab, 1.0 = média
+    womFactor,    // [6] — idx 0 unused, 1-5, 1.0 = média
+    baseMedia: dowMean,
+    confianca,
+    totalDays,
+    dowSamples,
+    womSamples
+  };
+}
+
+// Aplica decomposição multiplicativa a uma venda média para obter previsão ajustada
+// targetDow: 0-6 (dia da semana), targetWom: 1-5 (semana do mês)
+function adjustedDemand(baseDia, indices, targetDow, targetWom) {
+  if (!indices) return baseDia;
+  const dowF = indices.dowIndex[targetDow] || 1;
+  const womF = (targetWom >= 1 && targetWom <= 5) ? (indices.womFactor[targetWom] || 1) : 1;
+  return baseDia * dowF * womF;
+}
+
 // FASE 2: Banco de horas (saldo por colaborador conforme escala vs jornada contratual)
 function buildBancoHoras(fullSchedule, employees) {
   const sc = fullSchedule && (fullSchedule.atual || Object.values(fullSchedule)[0]);
@@ -1560,7 +1624,8 @@ function deriveOperationalNeed(setor, vendaDia, qtdItensDia, qtdeVendidaDia, col
 }
 
 // Dashboard inteligente: cruza vendas POR MERCADOLÓGICO (m2) com a equipe
-function buildSetorDashboard(mercRows, employees, profile) {
+// targetWom: semana-do-mês alvo (1-5) para ajustar demanda. null = média chapada (legado)
+function buildSetorDashboard(mercRows, employees, profile, targetWom) {
   if (!mercRows || !mercRows.length) return [];
   const dias = new Set(mercRows.map(r => r.data)).size || 1;
   const vendaTotalGeral = mercRows.reduce((s, r) => s + r.vendaLiquida, 0);
@@ -1582,6 +1647,31 @@ function buildSetorDashboard(mercRows, employees, profile) {
     setorDiaSemana[k].venda[dow] += r.vendaLiquida;
     setorDiaSemana[k].datas[dow].add(r.data);
   });
+
+  // Fator semana-do-mês POR SETOR (cada mercadológico tem sua própria sazonalidade)
+  const setorWomSum = {};  // k → [0, sum1..sum5]
+  const setorWomDays = {}; // k → [null, Set1..Set5]
+  if (targetWom) {
+    mercRows.forEach(r => {
+      const k = norm(r.mercadologico);
+      if (!setorWomSum[k]) {
+        setorWomSum[k] = [0,0,0,0,0,0];
+        setorWomDays[k] = [null, new Set(), new Set(), new Set(), new Set(), new Set()];
+      }
+      const wom = weekOfMonth(r.data);
+      setorWomSum[k][wom] += Number(r.vendaLiquida || 0);
+      setorWomDays[k][wom].add(r.data);
+    });
+  }
+  function womFactorForSetor(k) {
+    if (!targetWom || !setorWomSum[k]) return 1;
+    const ws = setorWomSum[k];
+    const wd = setorWomDays[k];
+    const avgs = ws.map((v, i) => i > 0 && wd[i].size ? v / wd[i].size : 0);
+    const active = avgs.filter((v, i) => i > 0 && v > 0);
+    const mean = active.length ? active.reduce((a, b) => a + b, 0) / active.length : 1;
+    return mean > 0 ? Number((avgs[targetWom] / mean).toFixed(3)) || 1 : 1;
+  }
 
   // Agregar colaboradores POR MERCADOLÓGICO (m2) que cada um cobre
   const setorEquipe = {};
@@ -1613,9 +1703,10 @@ function buildSetorDashboard(mercRows, employees, profile) {
     const setor = nomeOriginal[k] || k;
     const v = setorVendas[k] || { vendaLiquida: 0, qtdItens: 0, qtdeVendida: 0 };
     const e = setorEquipe[k] || { colaboradores: 0, horas: 0, nomes: [] };
-    const vendaDia = v.vendaLiquida / dias;
-    const itensDia = v.qtdItens / dias;
-    const qtdeVendidaDia = v.qtdeVendida / dias;
+    const wf = womFactorForSetor(k);
+    const vendaDia = (v.vendaLiquida / dias) * wf;
+    const itensDia = (v.qtdItens / dias) * wf;
+    const qtdeVendidaDia = (v.qtdeVendida / dias) * wf;
     const colaboradores = e.colaboradores;
     const vendaPorColab = colaboradores ? vendaDia / colaboradores : 0;
     const itensPorColab = colaboradores ? itensDia / colaboradores : 0;
@@ -1636,6 +1727,9 @@ function buildSetorDashboard(mercRows, employees, profile) {
     dashboard.push({
       setor,
       vendaDia: Math.round(vendaDia),
+      vendaDiaBase: Math.round(v.vendaLiquida / dias),
+      womFactor: Number(wf.toFixed(3)),
+      semanaAlvo: targetWom || null,
       vendaMes: Math.round(v.vendaLiquida * (30 / dias)),
       itensDia: Math.round(itensDia),
       qtdeVendidaDia: Number(qtdeVendidaDia.toFixed(1)),
@@ -2937,7 +3031,9 @@ async function applyClientState(summary, user, weekFilter = null) {
     summary.mercadologicoResumo = [];
   }
   // Dashboard inteligente por setor (cruza vendas com equipe)
-  summary.setorDashboard = buildSetorDashboard(mercRows, state.employees || [], profile);
+  // Semana-alvo para o dimensionamento: semana atual do mês (controller olha pra frente)
+  const currentWom = weekOfMonth(new Date().toISOString().slice(0, 10));
+  summary.setorDashboard = buildSetorDashboard(mercRows, state.employees || [], profile, currentWom);
   // Setores sem equipe (para alertas do dashboard operacional)
   state._setoresSemEquipe = (summary.setorDashboard || []).filter(s => s.colaboradores === 0 && s.vendaDia > 0).map(s => s.setor);
   state._totalSetoresVenda = (summary.setorDashboard || []).filter(s => s.vendaDia > 0).length;
@@ -2945,6 +3041,10 @@ async function applyClientState(summary, user, weekFilter = null) {
   summary.operationalDashboard = buildOperationalDashboard(state, state.salesRows);
   // FASE 2: Forecast com sazonalidade
   summary.forecast = buildForecast(mercRows, state.salesRows);
+  // Índices de demanda (decomposição multiplicativa) para o frontend
+  const allSalesForIndices = mercRows.length ? mercRows : (state.salesRows || []);
+  summary.demandIndices = buildDemandIndices(allSalesForIndices);
+  summary.demandIndices = summary.demandIndices ? { ...summary.demandIndices, semanaAtual: currentWom } : null;
   // Mercadológicos nível 2 disponíveis (para o campo Setor do cadastro)
   summary.mercadologicosM2 = mercRows.length
     ? [...new Set(mercRows.map(r => r.mercadologico))].sort()

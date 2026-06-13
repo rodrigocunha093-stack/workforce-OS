@@ -433,11 +433,15 @@ function renderSetorDashboard(data) {
   const statusColor = { sobrecarga: 'st-high', folga: 'st-low', equilibrado: 'st-ok', 'sem-equipe': 'st-none' };
   const totalVendaDia = dash.reduce((s, d) => s + d.vendaDia, 0);
 
+  const di = data.demandIndices;
+  const confiancaLabels = { inicial: '⚠️ Inicial', media: '📊 Média', boa: '✅ Boa' };
+  const forecastInfo = di ? `<div><small>Previsão</small><strong>Semana ${di.semanaAtual} · ${confiancaLabels[di.confianca] || di.confianca}</strong></div>` : '';
   el.innerHTML = `
     <div class="icos-summary">
       <div><small>Setores analisados</small><strong>${dash.length}</strong></div>
-      <div><small>Venda/dia (setores)</small><strong>${money(totalVendaDia)}</strong></div>
+      <div><small>Venda/dia (ajustada)</small><strong>${money(totalVendaDia)}</strong></div>
       <div><small>Colaboradores</small><strong>${dash.reduce((s, d) => s + d.colaboradores, 0)}</strong></div>
+      ${forecastInfo}
     </div>
     <div class="icos-grid">
       ${dash.map(d => `
@@ -468,6 +472,7 @@ function renderSetorDashboard(data) {
             </div>
           </div>` : ''}
           ${d.matriz ? `<div class="icos-matriz"><span title="Produtividade física de reposição">📦 ${d.matriz.caixasHora} cx/h</span><span title="Margem bruta de referência">💰 ${d.matriz.margem}</span></div><div class="icos-foco">${d.matriz.foco}</div>` : ''}
+          ${d.operationalNeed && d.operationalNeed.volumeDia > 0 ? `<div class="icos-need"><small>Necessidade: ${d.operationalNeed.pessoasNecessarias} pessoa(s) · saldo ${d.operationalNeed.saldo >= 0 ? '+' : ''}${d.operationalNeed.saldo}</small>${d.womFactor !== 1 ? `<small style="opacity:.6"> · fator semana: ×${d.womFactor}</small>` : ''}</div>` : ''}
           ${d.nomes && d.nomes.length ? `<div class="icos-team">${d.nomes.slice(0, 6).map(n => `<span>${n}</span>`).join('')}${d.nomes.length > 6 ? `<span>+${d.nomes.length - 6}</span>` : ''}</div>` : '<div class="icos-team empty">Sem equipe cadastrada neste setor</div>'}
         </article>
       `).join('')}
@@ -1603,7 +1608,13 @@ function renderStoreFloorMap(data) {
         <p style="margin:3px 0 0;font-size:10px;color:var(--color-text-tertiary)">${escalados} ativo(s) neste horário</p>
       </div>`;
     }).filter(Boolean).join('');
-    const recommendations = recCards ? `<div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:6px"><div style="grid-column:1/-1;font-size:12px;font-weight:600;color:var(--color-text-secondary);margin-bottom:2px"><i class="ti ti-alert-triangle" style="margin-right:3px"></i>Motor de necessidade operacional</div>${recCards}</div>` : '';
+    // Indicador de semana-alvo e confiança dos índices
+    const di = data.demandIndices;
+    const confiancaLabels = { inicial: '⚠️ Inicial', media: '📊 Média', boa: '✅ Boa' };
+    const semanaLabel = di ? `Semana ${di.semanaAtual} do mês` : '';
+    const confiancaLabel = di ? (confiancaLabels[di.confianca] || di.confianca) : '';
+    const forecastBadge = di ? ` <span style="font-size:10px;font-weight:400;opacity:.7">· ${semanaLabel} · Confiança: ${confiancaLabel} (${di.totalDays} dias)</span>` : '';
+    const recommendations = recCards ? `<div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:6px"><div style="grid-column:1/-1;font-size:12px;font-weight:600;color:var(--color-text-secondary);margin-bottom:2px"><i class="ti ti-alert-triangle" style="margin-right:3px"></i>Motor de necessidade operacional${forecastBadge}</div>${recCards}</div>` : '';
 
     // Motor de Realocação: cruzar déficit x excedente
     const deficitZones = [];
