@@ -1118,8 +1118,8 @@ function renderStoreFloorMap(data) {
   if (_floorHour < loja.open || _floorHour >= loja.close) _floorHour = loja.open;
 
   const DAYS = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
-  const ZC = {checkout:'#2563eb',gondola:'#16a34a',acougue:'#dc2626',padaria:'#ea580c',hortifruti:'#65a30d',frios:'#0891b2',comercial:'#9333ea',outro:'#6b7280'};
-  const ZL = {checkout:'Frente de loja',gondola:'Mercearia',acougue:'Acougue',padaria:'Padaria',hortifruti:'Hortifruti',frios:'Frios',comercial:'Comercial',outro:'Outros'};
+  const ZC = {checkout:'#2563eb',gondola:'#16a34a',acougue:'#dc2626',padaria:'#ea580c',hortifruti:'#65a30d',frios:'#0891b2',comercial:'#9333ea',recebimento:'#78350f',escritorio:'#6366f1',outro:'#6b7280'};
+  const ZL = {checkout:'Frente de loja',gondola:'Mercearia',acougue:'Acougue',padaria:'Padaria',hortifruti:'Hortifruti',frios:'Frios',comercial:'Comercial',recebimento:'Recebimento',escritorio:'Administrativo',outro:'Outros'};
 
   function zoneOf(nome) {
     const s = ((setorMap[nome]||'')+(cargoMap[nome]||'')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
@@ -1127,6 +1127,8 @@ function renderStoreFloorMap(data) {
     if (s.includes('padaria')||s.includes('confeitaria')) return 'padaria';
     if (s.includes('hortifruti')||s.includes('frutas')) return 'hortifruti';
     if (s.includes('frios')||s.includes('laticinio')) return 'frios';
+    if (s.includes('recebimento')||s.includes('estoque')||s.includes('deposito')||s.includes('doca')||s.includes('descarga')) return 'recebimento';
+    if (s.includes('administrativo')||s.includes('admin')||s.includes('escritorio')||s.includes('rh')||s.includes('financeiro')||s.includes('contabil')||s.includes('dp')||s.includes('departamento pessoal')) return 'escritorio';
     if (s.includes('mercearia')||s.includes('gondola')||s.includes('repositor')||s.includes('repos')) return 'gondola';
     if (s.includes('comercial')||s.includes('gerente')||s.includes('fiscal')) return 'comercial';
     if (s.includes('caixa')||s.includes('frente')||s.includes('operador')) return 'checkout';
@@ -1200,6 +1202,24 @@ function renderStoreFloorMap(data) {
     h += isoLabel(6,5,'MERCEARIA',dk?'rgba(255,255,255,.4)':'rgba(0,0,0,.3)',9);
     h += isoBox(10,3,1.5,4,16,frC,frD,frE) + isoLabel(10.8,5.5,'BEBIDAS',dk?'#b3e5fc':'#01579b',7);
 
+    // Recebimento (doca) — fundo direito, atrás do salão
+    const rcC = dk?'#3d2a1a':'#d7ccc8', rcD = dk?'#2e1f12':'#bcaaa4', rcE = dk?'#1e150c':'#8d6e63';
+    h += isoBox(10,0,2,2.5,10,rcC,rcD,rcE);
+    h += isoLabel(11,1.5,'RECEBIM.',dk?'#d7ccc8':'#4e342e',7);
+    // Plataforma de descarga
+    h += isoRect(11.2,0,0.8,0.4,dk?'#555':'#9e9e9e','rgba(0,0,0,.2)',0.7);
+    h += `<text x="${isoX(11.6,0.2)}" y="${isoY(11.6,0.2)-6}" text-anchor="middle" fill="var(--color-text-tertiary)" font-size="7" style="font-family:inherit">&#128666;</text>`;
+
+    // Escritório (administrativo) — separado do salão, canto superior direito
+    const ofC = dk?'#1e1b4b':'#c7d2fe', ofD = dk?'#1a1740':'#a5b4fc', ofE = dk?'#151030':'#818cf8';
+    h += isoBox(13.5,1,2.5,2,14,ofC,ofD,ofE);
+    h += isoLabel(14.8,2.3,'ESCRITORIO',dk?'#c7d2fe':'#3730a3',7);
+    // Porta conectando ao salão
+    h += `<line x1="${isoX(13.5,2)}" y1="${isoY(13.5,2)-7}" x2="${isoX(12.5,2.5)}" y2="${isoY(12.5,2.5)}" stroke="${dk?'rgba(255,255,255,.15)':'rgba(0,0,0,.1)'}" stroke-width="1" stroke-dasharray="4,3"/>`;
+    // Ícones de mesa no escritório
+    h += isoRect(14,1.5,0.6,0.4,dk?'#2d2760':'#9fa8da',null,0.5);
+    h += isoRect(15,1.5,0.6,0.4,dk?'#2d2760':'#9fa8da',null,0.5);
+
     const active = people.filter(p => isWorking(p, _floorHour));
     const checkoutW = active.filter(p => zoneOf(p.nome) === 'checkout').length;
     const activePdvs = Math.min(checkoutW, pdvs);
@@ -1215,7 +1235,7 @@ function renderStoreFloorMap(data) {
 
     const byZone = {};
     active.forEach(p => { const z = zoneOf(p.nome); (byZone[z] = byZone[z] || []).push(p); });
-    const zonePos = {checkout:{gx:[2,10],gy:[9,10]},gondola:{gx:[3,9],gy:[3,8]},acougue:{gx:[0.5,3],gy:[0.5,2]},padaria:{gx:[4,7],gy:[0.5,2]},frios:{gx:[8,11],gy:[0.5,2]},hortifruti:{gx:[0.3,2],gy:[3,5.5]},comercial:{gx:[0.5,3],gy:[6,8]},outro:{gx:[4,7],gy:[6,8]}};
+    const zonePos = {checkout:{gx:[2,10],gy:[9,10]},gondola:{gx:[3,9],gy:[3,8]},acougue:{gx:[0.5,3],gy:[0.5,2]},padaria:{gx:[4,7],gy:[0.5,2]},frios:{gx:[8,11],gy:[0.5,2]},hortifruti:{gx:[0.3,2],gy:[3,5.5]},comercial:{gx:[0.5,3],gy:[6,8]},recebimento:{gx:[10.3,11.8],gy:[0.3,2]},escritorio:{gx:[13.8,15.5],gy:[1.3,2.5]},outro:{gx:[4,7],gy:[6,8]}};
     Object.entries(byZone).forEach(([z, workers]) => {
       const pos = zonePos[z] || zonePos.outro;
       workers.forEach((w, i) => {
@@ -1228,7 +1248,10 @@ function renderStoreFloorMap(data) {
 
     const folga = people.filter(p => !p.shifts[_floorDay] || p.shifts[_floorDay]==='Folga').length;
     const breaks = people.filter(p => isOnBreak(p, _floorHour)).length;
-    return { svg: h, active: active.length, total: people.length, activePdvs, folga, breaks, formation: Object.entries(byZone).map(([,w])=>w.length).join(' - ') || '0' };
+    const noEscritorio = (byZone.escritorio||[]).length;
+    const noRecebimento = (byZone.recebimento||[]).length;
+    const noSalao = active.length - noEscritorio - noRecebimento;
+    return { svg: h, active: active.length, total: people.length, activePdvs, folga, breaks, noSalao, noEscritorio, noRecebimento, formation: Object.entries(byZone).filter(([z])=>z!=='escritorio').map(([z,w])=>`${w.length}`).join('-') || '0' };
   }
 
   function render() {
@@ -1261,7 +1284,7 @@ function renderStoreFloorMap(data) {
         </div>
       </div>
       <div style="position:relative;width:100%;background:var(--color-background-secondary);border-radius:12px;overflow:hidden">
-        <svg viewBox="0 0 680 480" style="display:block;width:100%">${r.svg}</svg>
+        <svg viewBox="0 0 820 480" style="display:block;width:100%">${r.svg}</svg>
       </div>
       <div style="margin-top:10px">
         <div style="font-size:14px;font-weight:500;text-align:center;color:var(--color-text-primary);margin-bottom:4px">${timeStr}</div>
@@ -1274,11 +1297,13 @@ function renderStoreFloorMap(data) {
         </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;margin-top:8px">
-        <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-users" style="margin-right:3px"></i>No salao</p><p style="font-size:17px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.active} / ${r.total}</p></div>
+        <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-building-store" style="margin-right:3px"></i>No salao</p><p style="font-size:17px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.noSalao}</p></div>
         <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-device-desktop" style="margin-right:3px"></i>PDVs</p><p style="font-size:17px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.activePdvs} / ${pdvs}</p></div>
+        <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-building" style="margin-right:3px"></i>Escritorio</p><p style="font-size:17px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.noEscritorio}</p></div>
+        <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-truck-delivery" style="margin-right:3px"></i>Recebimento</p><p style="font-size:17px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.noRecebimento}</p></div>
         <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-coffee" style="margin-right:3px"></i>Intervalo</p><p style="font-size:17px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.breaks}</p></div>
         <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-calendar-off" style="margin-right:3px"></i>Folga</p><p style="font-size:17px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.folga}</p></div>
-        <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-layout-grid" style="margin-right:3px"></i>Formacao</p><p style="font-size:13px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.formation}</p></div>
+        <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-users" style="margin-right:3px"></i>Total ativos</p><p style="font-size:17px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.active} / ${r.total}</p></div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;font-size:11px;color:var(--color-text-secondary)">${legendHtml}</div>
     `;
