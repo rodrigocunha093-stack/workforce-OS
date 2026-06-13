@@ -372,6 +372,34 @@ function queueStatus(waitMinutes) {
   return { label: 'Critica', className: 'queue-critical' };
 }
 
+// Erlang-C (M/M/N): probabilidade de um cliente esperar na fila.
+// A = intensidade de tráfego em erlangs (chegadas/h × tempo de atendimento em horas).
+function erlangCWaitProbability(A, N) {
+  if (N <= A) return 1;
+  let term = 1; // A^0/0!
+  let sum = 1;
+  for (let k = 1; k < N; k++) {
+    term *= A / k;
+    sum += term;
+  }
+  const termN = term * (A / N); // A^N/N!
+  const c = termN * (N / (N - A));
+  return c / (sum + c);
+}
+
+// Nº mínimo de operadores para manter a espera média dentro do alvo.
+// Dimensiona pela variância das chegadas (fila), não só pela carga média.
+function erlangAgentsNeeded(arrivalsPerHour, serviceMinutes, targetWaitMin = 3, maxAgents = 30) {
+  const A = (arrivalsPerHour * serviceMinutes) / 60;
+  for (let N = Math.max(1, Math.ceil(A)); N <= maxAgents; N++) {
+    if (N <= A) continue;
+    const pw = erlangCWaitProbability(A, N);
+    const avgWait = (pw * serviceMinutes) / (N - A);
+    if (avgWait <= targetWaitMin) return N;
+  }
+  return maxAgents;
+}
+
 function cashierLoadForHour(hora, simpleDemand, scheduledCashiers, dayType = 'weekday', pdvLimit = 3, actualCustomers = null, actualAvgItems = null, actualServiceMinutes = null) {
   if (simpleDemand === null || simpleDemand === undefined) return null;
   const hourStart = Number(String(hora).split('-')[0]);
@@ -398,15 +426,21 @@ function cashierLoadForHour(hora, simpleDemand, scheduledCashiers, dayType = 'we
     ? Math.round(observedServiceMinutes)
     : Math.round(inferredCustomers * averageServiceMinutes);
   const neededHours = Number((neededMinutes / 60).toFixed(2));
-  const recommended = Math.max(1, Math.ceil((neededMinutes / 60) * 1.05));
+  // Dimensionamento híbrido: carga média (workload) é o piso;
+  // Erlang-C adiciona o buffer de fila quando a variância das chegadas exige.
+  const workloadAgents = Math.max(1, Math.ceil((neededMinutes / 60) * 1.05));
+  const erlangAgents = erlangAgentsNeeded(inferredCustomers, averageServiceMinutes, 3);
+  const recommended = Math.max(workloadAgents, erlangAgents);
   const cappedRecommendation = Math.min(Math.max(1, pdvLimit), recommended);
-  const capacityMinutes = Math.max(1, scheduledCashiers || simpleDemand) * 60;
+  const scheduled = Math.max(1, scheduledCashiers || simpleDemand);
+  const capacityMinutes = scheduled * 60;
   const utilization = Math.round(Math.min(160, (neededMinutes / capacityMinutes) * 100));
   const idlePercent = Math.max(0, Math.round(((capacityMinutes - neededMinutes) / capacityMinutes) * 100));
-  const overflow = Math.max(0, neededMinutes - capacityMinutes);
-  const waitMinutes = overflow
-    ? Number(Math.min(15, overflow / Math.max(1, inferredCustomers) * 4).toFixed(1))
-    : Number(Math.max(0.5, utilization / 100 * 1.8).toFixed(1));
+  // Espera estimada pelo modelo de filas com os caixas realmente escalados
+  const trafficErlangs = (inferredCustomers * averageServiceMinutes) / 60;
+  const waitMinutes = scheduled > trafficErlangs
+    ? Number(Math.max(0.3, (erlangCWaitProbability(trafficErlangs, scheduled) * averageServiceMinutes) / (scheduled - trafficErlangs)).toFixed(1))
+    : 15; // sistema saturado: fila cresce sem limite
   const queue = queueStatus(waitMinutes);
   const icoc = Math.round((inferredCustomers * 0.3) + (avgItems * purchase.weight * 0.4) + (payment.weight * 20) + (factors.length * 8));
 
@@ -424,6 +458,8 @@ function cashierLoadForHour(hora, simpleDemand, scheduledCashiers, dayType = 'we
     horasNecessarias: neededHours,
     operadoresRecomendados: cappedRecommendation,
     operadoresCalculados: recommended,
+    operadoresCarga: workloadAgents,
+    operadoresErlang: erlangAgents,
     limitadoPorPdvs: recommended > pdvLimit,
     margemSeguranca: 5,
     filaMin: waitMinutes,
@@ -2132,7 +2168,11 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
         return `${s}-${bkS}/${bkE}-${e} · ${formatDur(w.workedHours)}`;
       };
 
-      Object.keys(targets).forEach(hourLabel => {
+      // Processa primeiro as horas com maior déficit (a janela de pausas é
+      // limitada — resolver o pior buraco antes evita gastar pausas à toa)
+      const horasPorDeficit = Object.keys(targets).sort((a, b) =>
+        ((targets[b] || 0) - (currentCounts[b] || 0)) - ((targets[a] || 0) - (currentCounts[a] || 0)));
+      horasPorDeficit.forEach(hourLabel => {
         while ((currentCounts[hourLabel] || 0) < (targets[hourLabel] || 0)) {
           const candidates = workers.filter(w => breakHourOf(w) === hourLabel);
           if (!candidates.length) break;
@@ -2179,9 +2219,8 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
   const shiftHours = Math.min(9, targetHours / diasTrabalhados); // max 9h/dia (operacional)
   const numShifts = Math.max(1, Math.ceil(segSexDuration / 4));
 
-  // Quando loja fecha no domingo, o domingo já conta como 1 folga
-  // Folgas adicionais necessárias = targetDaysOff - 1 (se sundayClosed)
-  const additionalDaysOff = sundayClosed ? Math.max(0, targetDaysOff - 1) : targetDaysOff;
+  // Semente semanal p/ rodízio de domingo (muda a cada semana-calendário)
+  const weekSeed = Math.floor(Date.now() / (7 * 24 * 3600 * 1000));
 
   const folgaDiaMap = { segunda: 0, terca: 1, quarta: 2, quinta: 3, domingo: 6 };
   const N = employees.length; // tamanho do grupo (setor + cargo)
@@ -2240,20 +2279,26 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
       ehAbridor = N > 1 && idx === idxAbridorAuto && idx !== idxFechadorAuto;
     }
 
-    // Folgas adicionais: prioriza a preferência da operadora (se válida: seg-qui ou domingo)
+    // Rodízio de domingo (Lei 10.101): em loja aberta no domingo, cada colaborador(a)
+    // folga no domingo pelo menos 1 vez a cada 3 semanas. O weekSeed muda a cada
+    // semana, rotacionando quem folga; esse domingo passa a ser o DSR da semana.
+    const folgaDomingoRodizio = !sundayClosed && Boolean(domingo) && podeDomingo
+      && ((idx + weekSeed) % 3 === 0);
+    const domingoTrabalha = !sundayClosed && podeDomingo && Boolean(domingo) && !folgaDomingoRodizio;
+
+    // Folgas adicionais por colaborador(a): se o domingo já é folga (loja fechada,
+    // rodízio ou indisponibilidade), ele conta como DSR e reduz as folgas de seg-qui.
+    const folgasAdicionaisEmp = domingoTrabalha ? targetDaysOff : Math.max(0, targetDaysOff - 1);
     const folgaDaysAllowed = [0, 1, 2, 3];
     const additionalFolgaDays = [];
     const prefDay = folgaDiaMap[folgaPref];
-    if (prefDay !== undefined && folgaDaysAllowed.includes(prefDay)) {
+    if (prefDay !== undefined && folgaDaysAllowed.includes(prefDay) && folgasAdicionaisEmp > 0) {
       additionalFolgaDays.push(prefDay);
     }
-    for (let i = 0; additionalFolgaDays.length < additionalDaysOff && i < folgaDaysAllowed.length; i++) {
+    for (let i = 0; additionalFolgaDays.length < folgasAdicionaisEmp && i < folgaDaysAllowed.length; i++) {
       const d = folgaDaysAllowed[(idx + i) % folgaDaysAllowed.length];
       if (!additionalFolgaDays.includes(d)) additionalFolgaDays.push(d);
     }
-
-    // Dias efetivamente trabalhados (exclui folgas e domingo fechado/indisponível)
-    const domingoTrabalha = !sundayClosed && podeDomingo && domingo;
     const diasTrabalho = [];
     for (let day = 0; day < 7; day++) {
       if (additionalFolgaDays.includes(day)) continue;

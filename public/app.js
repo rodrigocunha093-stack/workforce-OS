@@ -1183,7 +1183,8 @@ function renderWeeklySchedule(data) {
   const complianceBox = `
     <div class="clt-box ${compliance.length ? 'clt-bad' : 'clt-ok'}">
       <strong>${compliance.length ? '⚠️ ' + compliance.length + ' colaborador(es) com alerta CLT' : '✅ Escala em conformidade CLT'}</strong>
-      ${compliance.length ? `<div class="clt-list">${compliance.slice(0, 8).map(c => `<div><b>${c.nome}:</b> ${c.violacoes.join(' · ')}</div>`).join('')}${compliance.length > 8 ? `<div>+${compliance.length - 8} outros</div>` : ''}</div>` : '<span>Interjornada 11h, DSR, máx 44h e 6 dias consecutivos validados.</span>'}
+      ${compliance.length ? `<div class="clt-list">${compliance.slice(0, 8).map(c => `<div><b>${c.nome}:</b> ${c.violacoes.join(' · ')}</div>`).join('')}${compliance.length > 8 ? `<div>+${compliance.length - 8} outros</div>` : ''}</div>` : '<span>Validados: interjornada 11h · DSR · máx 44h/sem · máx 10h/dia · máx 6h contínuas (art. 71) · 6 dias consecutivos.</span>'}
+      <small style="display:block;margin-top:6px;opacity:.65">Auditoria baseada na CLT federal. Convenções coletivas locais (CCT dos comerciários) podem ter regras adicionais — valide com seu contador/sindicato.</small>
     </div>`;
 
   document.getElementById('weeklySchedule').innerHTML = `

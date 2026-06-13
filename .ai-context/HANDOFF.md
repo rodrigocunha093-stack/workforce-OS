@@ -131,7 +131,12 @@ Criado `CODEMAP.md` para que qualquer dev/IA ache as funções no `server.js` (3
 - **Limite contínuo corrigido:** era 6h→ entendido errado como 5h; confirmado no art. 71 que o teto é 6h. `maxAntes = 340min` (5h40) em `parseWorkedBlocks` (server), `app.js` e `applyOptimizationToSchedule`.
 - **Compliance ampliado:** `checkComplianceCLT` agora detecta (5) bloco contínuo >6h sem intervalo — art. 71; (6) jornada diária >10h — art. 59. Antes mostrava "Conforme" mesmo com 7h contínuas.
 - **`applyOptimizationToSchedule`:** janela de realocação do intervalo agora limitada para nunca criar bloco >5h40 (antes permitia mover a pausa até 3h do fim, criando blocos de 7h).
-- **Revisão comparativa Blue Yonder:** lacunas conhecidas (não bloqueantes): demanda heurística vs Erlang-C; otimização gulosa (greedy) vs solver; escala semanal padrão vs calendário datado; sem regras de CCT locais; sem rodízio de domingo (Lei 10.101 — 1 domingo a cada 3 para comércio). Registradas como evolução, não bug.
+- **Revisão comparativa Blue Yonder — lacunas RESOLVIDAS em 2026-06-12:**
+  - **Erlang-C implementado** (`erlangCWaitProbability`, `erlangAgentsNeeded` em server.js): `cashierLoadForHour` agora dimensiona por `max(carga média ×1.05, Erlang-C com espera-alvo 3min)` e a fila estimada (`filaMin`) sai do modelo M/M/N com os caixas realmente escalados (15min se saturado). Novos campos: `operadoresCarga`, `operadoresErlang`.
+  - **Rodízio de domingo (Lei 10.101)**: em loja aberta no domingo, cada colaborador(a) folga no domingo 1 vez a cada 3 semanas (`(idx + weekSeed) % 3 === 0`, weekSeed = semana-calendário → rotaciona sozinho a cada semana). Domingo de folga conta como DSR e reduz as folgas de seg-qui (`folgasAdicionaisEmp`).
+  - **Otimização greedy melhorada**: `applyOptimizationToSchedule` processa as horas em ordem decrescente de déficit (pior buraco primeiro), não mais em ordem arbitrária.
+  - **Disclaimer CCT** no box de compliance (app.js): auditoria cobre CLT federal; CCTs locais podem ter regras extras.
+  - Lacuna restante (roadmap): escala semanal padrão vs calendário datado (feriados, semanas específicas); solver global (MIP) vs heurística.
 
 ## Referências
 
