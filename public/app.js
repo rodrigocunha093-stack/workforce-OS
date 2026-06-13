@@ -851,7 +851,7 @@ function getShiftIntervalPlan(shift) {
   const endReal = explicitIntervalMin >= legalIntervalMin ? endMin : endMin + intervaloMin;
   const beforeBase = Math.round((workedMin / 2) / 5) * 5;
   const minAntes = worked > 6 ? 180 : 120;
-  const maxAntes = worked > 6 ? 280 : workedMin; // 4h40 (5h CLT - 20min buffer)
+  const maxAntes = worked > 6 ? 340 : workedMin; // 5h40 (6h CLT art.71 - 20min buffer)
   const minDepois = 120;
   const beforeMin = Math.min(maxAntes, Math.max(minAntes, Math.min(beforeBase, workedMin - minDepois)));
   const intervalStart = startMin + beforeMin;
