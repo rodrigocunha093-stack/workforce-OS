@@ -1150,7 +1150,7 @@ function assignCoverageRolesBySector(employees) {
 // Distribui a carga semanal pelos dias trabalhados conforme o PESO de demanda de cada dia.
 // Dias de pico (sex/sáb) recebem mais horas; dias fracos menos. Respeita piso/teto e soma exata.
 // diasTrabalho: array de índices (0=seg..6=dom). pesos: array[7] com peso de cada dia.
-function distribuirJornada(targetHours, diasTrabalho, pesos, piso = 5, teto = 10) {
+function distribuirJornada(targetHours, diasTrabalho, pesos, piso = 5, teto = 9) {
   const n = diasTrabalho.length;
   if (!n) return {};
   // Pesos normalizados dos dias trabalhados.
@@ -2151,7 +2151,7 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
   // Jornada diária = carga semanal / dias trabalhados (CLT: 44h em 6 dias = 7h20).
   // 6x1 44h → 7.33h/dia; 5x2 40h → 8h/dia; 5x2 42h → 8.4h/dia.
   const diasTrabalhados = Math.max(1, 7 - targetDaysOff);
-  const shiftHours = Math.min(10, targetHours / diasTrabalhados); // teto CLT: 10h/dia (8h + 2h extra)
+  const shiftHours = Math.min(9, targetHours / diasTrabalhados); // max 9h/dia (operacional)
   const numShifts = Math.max(1, Math.ceil(segSexDuration / 4));
 
   // Quando loja fecha no domingo, o domingo já conta como 1 folga
