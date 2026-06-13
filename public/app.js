@@ -1277,13 +1277,14 @@ function renderStoreFloorMap(data) {
     const pct = ((_floorHour - lojaH.open) / (lojaH.close - lojaH.open)) * 100;
 
     let pipHtml = '';
+    const pipH = 4;
     people.forEach((p,pi) => {
       const rr = parseRanges(p.shifts[_floorDay]); if (!rr) return;
       const c = ZC[zoneOf(p.nome)] || '#888';
       rr.forEach(x => {
         const l = ((x.s-lojaH.open)/(lojaH.close-lojaH.open))*100;
         const w = ((x.e-x.s)/(lojaH.close-lojaH.open))*100;
-        pipHtml += `<div style="position:absolute;left:${l}%;width:${w}%;background:${c};top:${(pi/people.length)*100}%;height:${Math.max(3,100/people.length)}%;opacity:.2;border-radius:2px"></div>`;
+        pipHtml += `<div style="position:absolute;left:${l}%;width:${w}%;background:${c};top:16px;height:${pipH}px;opacity:.35;border-radius:2px"></div>`;
       });
     });
 
@@ -1301,15 +1302,32 @@ function renderStoreFloorMap(data) {
       <div style="position:relative;width:100%;background:var(--color-background-secondary);border-radius:12px;overflow:hidden">
         <svg viewBox="0 0 820 480" style="display:block;width:100%">${r.svg}</svg>
       </div>
-      <div style="margin-top:10px">
-        <div style="font-size:14px;font-weight:500;text-align:center;color:var(--color-text-primary);margin-bottom:4px">${timeStr}</div>
-        <div id="floorTimeline" style="position:relative;height:24px;background:var(--color-background-secondary);border-radius:8px;cursor:pointer;overflow:hidden">
+      <div style="margin-top:14px;padding:0 4px">
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px">
+          <button id="floorPrevBtn" type="button" style="background:var(--color-background-secondary);border:1px solid var(--color-border-secondary);border-radius:50%;width:28px;height:28px;cursor:pointer;color:var(--color-text-secondary);font-size:14px;display:flex;align-items:center;justify-content:center">&#9664;</button>
+          <span style="font-size:22px;font-weight:700;color:var(--color-text-primary);min-width:70px;text-align:center;font-variant-numeric:tabular-nums">${timeStr}</span>
+          <button id="floorNextBtn" type="button" style="background:var(--color-background-secondary);border:1px solid var(--color-border-secondary);border-radius:50%;width:28px;height:28px;cursor:pointer;color:var(--color-text-secondary);font-size:14px;display:flex;align-items:center;justify-content:center">&#9654;</button>
+        </div>
+        <div id="floorTimeline" style="position:relative;height:36px;cursor:pointer;margin:0 6px">
+          <div style="position:absolute;top:16px;left:0;right:0;height:4px;background:var(--color-background-secondary);border-radius:2px"></div>
           ${pipHtml}
-          <div id="floorTlHandle" style="position:absolute;top:-2px;width:3px;height:28px;background:var(--color-text-primary);border-radius:2px;left:${pct}%;transform:translateX(-1px);cursor:grab;z-index:5"></div>
+          ${(() => {
+            let ticks = '';
+            const span = lojaH.close - lojaH.open;
+            for (let hr = Math.ceil(lojaH.open); hr <= Math.floor(lojaH.close); hr++) {
+              const tp = ((hr - lojaH.open) / span) * 100;
+              const isMain = hr % 2 === 0;
+              ticks += '<div style="position:absolute;left:' + tp + '%;top:' + (isMain ? '8' : '12') + 'px;width:1px;height:' + (isMain ? '20' : '12') + 'px;background:var(--color-border-secondary);transform:translateX(-0.5px)"></div>';
+              if (isMain) ticks += '<div style="position:absolute;left:' + tp + '%;top:32px;transform:translateX(-50%);font-size:10px;color:var(--color-text-tertiary);white-space:nowrap;font-variant-numeric:tabular-nums">' + String(hr).padStart(2,'0') + 'h</div>';
+            }
+            return ticks;
+          })()}
+          <div id="floorTlHandle" style="position:absolute;top:8px;left:${pct}%;transform:translateX(-50%);cursor:grab;z-index:5;display:flex;flex-direction:column;align-items:center">
+            <div style="width:18px;height:18px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 1px 6px rgba(37,99,235,.5)"></div>
+            <div style="width:2px;height:10px;background:#2563eb;margin-top:-1px"></div>
+          </div>
         </div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--color-text-tertiary);margin-top:2px">
-          <span>${String(lojaH.open).padStart(2,'0')}:00</span><span>${String(lojaH.close).padStart(2,'0')}:00</span>
-        </div>
+        <div style="height:16px"></div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;margin-top:8px">
         <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-building-store" style="margin-right:3px"></i>No salao</p><p style="font-size:17px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.noSalao}</p></div>
@@ -1352,6 +1370,20 @@ function renderStoreFloorMap(data) {
       document.addEventListener('touchmove', e => { if (drag) updTl(e.touches[0].clientX); });
       document.addEventListener('touchend', () => { drag = false; });
     }
+
+    // Event: prev/next hour buttons
+    const prevBtn = document.getElementById('floorPrevBtn');
+    const nextBtn = document.getElementById('floorNextBtn');
+    if (prevBtn) prevBtn.addEventListener('click', () => {
+      const lojaH2 = lojaPorDia[_floorDay];
+      _floorHour = Math.max(lojaH2.open, _floorHour - 0.5);
+      render();
+    });
+    if (nextBtn) nextBtn.addEventListener('click', () => {
+      const lojaH2 = lojaPorDia[_floorDay];
+      _floorHour = Math.min(lojaH2.close - 0.5, _floorHour + 0.5);
+      render();
+    });
 
     // Event: play button
     const playBtn = document.getElementById('floorPlayBtn');
