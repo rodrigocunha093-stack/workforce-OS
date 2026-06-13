@@ -1793,6 +1793,148 @@ function generateRepositorShift(open, close, idx, N, sexo, jornada = 8, role = '
   return `${formatHM(manhaStart)}-${formatHM(manhaFim)}/${formatHM(tardeStart)}-${formatHM(tardeFim)} · ${formatDur(blocoManha + blocoTarde)}`;
 }
 
+// ========== MODELO EXCLUSIVO DE REPOSIÇÃO ==========
+// Repositores têm demanda INVERSA ao caixa: precisam repor gôndolas
+// ANTES do pico de vendas e DEPOIS (ruptura). A cobertura deve ser
+// contínua — sempre pelo menos 1 pessoa no salão.
+//
+// Curva de demanda de reposição (peso relativo por faixa horária):
+//   06-08h: 1.5  (recebimento de mercadoria + preparação pré-abertura)
+//   08-10h: 1.3  (reposição matinal, gôndolas vazias da noite anterior)
+//   10-12h: 0.9  (manutenção de gôndola, vendas moderadas)
+//   12-14h: 0.7  (menor fluxo, repositores podem almoçar)
+//   14-16h: 1.1  (pós-almoço, reposição para pico da tarde)
+//   16-18h: 1.4  (pré-pico da tarde/noite, ruptura aumenta)
+//   18-20h: 1.0  (manutenção, reposição de perecíveis)
+//   20-22h: 0.6  (encerramento, reposição noturna mínima)
+//
+// Princípio: escalonar horários de modo que a sobreposição de turnos
+// coincida com as faixas de maior peso de reposição.
+
+const REPLENISHMENT_DEMAND_CURVE = [
+  { start: 5, end: 7, weight: 1.5 },   // pré-abertura / recebimento
+  { start: 7, end: 9, weight: 1.4 },   // reposição matinal forte
+  { start: 9, end: 11, weight: 1.0 },  // manutenção
+  { start: 11, end: 13, weight: 0.7 }, // almoço — menor demanda
+  { start: 13, end: 15, weight: 1.0 }, // retomada
+  { start: 15, end: 17, weight: 1.3 }, // pré-pico tarde
+  { start: 17, end: 19, weight: 1.1 }, // pico vendas → ruptura
+  { start: 19, end: 22, weight: 0.6 }, // encerramento
+];
+
+function replenishmentWeight(hour) {
+  for (const band of REPLENISHMENT_DEMAND_CURVE) {
+    if (hour >= band.start && hour < band.end) return band.weight;
+  }
+  return 0.5;
+}
+
+function bestReplenishmentSlots(open, close, N, jornada) {
+  const legalInterval = getLegalIntervalMinutes(jornada) / 60;
+  const totalOcupacao = jornada + legalInterval;
+  const snap = (h) => Math.round(h * 3) / 3; // arredondar para 20min
+
+  // Gerar todos os slots possíveis (a cada 20min) e pontuá-los
+  const candidates = [];
+  for (let start = open; start + totalOcupacao <= close + 0.01; start += 1 / 3) {
+    const s = snap(start);
+    if (s + totalOcupacao > close + 0.01) continue;
+    let score = 0;
+    for (let h = s; h < s + totalOcupacao; h += 0.5) {
+      if (h >= s && h < s + totalOcupacao) {
+        score += replenishmentWeight(h);
+      }
+    }
+    candidates.push({ start: s, score });
+  }
+  if (!candidates.length) return [];
+  candidates.sort((a, b) => b.score - a.score);
+
+  // Selecionar N slots que maximizem cobertura total (spread)
+  // Estratégia gulosa: escolher o melhor, depois o mais distante com boa pontuação
+  const selected = [];
+  const storeSpan = close - open - totalOcupacao;
+  const minGap = Math.max(1.5, storeSpan / N); // espalhar ao longo do dia
+
+  // Primeiro: slot com melhor pontuação (tipicamente manhã cedo)
+  selected.push(candidates[0]);
+
+  for (let i = 1; i < N && candidates.length > 0; i++) {
+    // Encontrar o candidato com melhor pontuação que respeita o gap mínimo
+    let best = null;
+    let bestScore = -1;
+    for (const c of candidates) {
+      const tooClose = selected.some(s => Math.abs(c.start - s.start) < minGap);
+      if (tooClose) continue;
+      // Bonus para spread: quanto mais longe dos já selecionados, melhor
+      const avgDist = selected.reduce((sum, s) => sum + Math.abs(c.start - s.start), 0) / selected.length;
+      const spreadScore = c.score + avgDist * 0.3;
+      if (spreadScore > bestScore) {
+        bestScore = spreadScore;
+        best = c;
+      }
+    }
+    if (best) selected.push(best);
+    else {
+      // Fallback: distribuição uniforme
+      const uniformStart = snap(open + (i / N) * (close - open - totalOcupacao));
+      selected.push({ start: uniformStart, score: 0 });
+    }
+  }
+
+  selected.sort((a, b) => a.start - b.start);
+  return selected;
+}
+
+function generateReplenishmentShift(open, close, idx, N, sexo, jornada = 8) {
+  const legalInterval = getLegalIntervalMinutes(jornada) / 60;
+  const snap20 = (h) => Math.round(h * 3) / 3;
+  const maxCont = 5 + 40 / 60; // 5h40 — CLT art.71
+
+  if (legalInterval === 0) {
+    const faixa = Math.max(0, (close - open) - jornada);
+    const start = snap20(open + (N > 1 ? idx / (N - 1) : 0.5) * faixa);
+    return `${formatHM(start)}-${formatHM(start + jornada)} · ${formatDur(jornada)}`;
+  }
+
+  const slots = bestReplenishmentSlots(open, close, N, jornada);
+  const slot = slots[Math.min(idx, slots.length - 1)] || { start: open };
+  let manhaStart = slot.start;
+  const intervalo = Math.max(legalInterval, 1);
+
+  // Intervalo escalonado: cada repositor almoça em horário diferente.
+  // Posicionar no meio da jornada individual, respeitando maxCont.
+  let blocoManha = snap20(Math.min(maxCont, jornada / 2));
+  if (blocoManha < 2) blocoManha = 2;
+  let blocoTarde = snap20(jornada - blocoManha);
+  if (blocoTarde < 2) { blocoTarde = 2; blocoManha = snap20(jornada - 2); }
+  if (blocoManha > maxCont) blocoManha = snap20(maxCont);
+  blocoTarde = snap20(jornada - blocoManha);
+
+  let manhaFim = manhaStart + blocoManha;
+  let tardeStart = manhaFim + intervalo;
+  let tardeFim = tardeStart + blocoTarde;
+
+  if (tardeFim > close) {
+    tardeFim = close;
+    tardeStart = tardeFim - blocoTarde;
+    manhaFim = tardeStart - intervalo;
+    manhaStart = manhaFim - blocoManha;
+  }
+  if (manhaStart < open) {
+    manhaStart = open;
+    manhaFim = manhaStart + blocoManha;
+    tardeStart = manhaFim + intervalo;
+    tardeFim = Math.min(close, tardeStart + blocoTarde);
+  }
+  if (blocoTarde > maxCont) {
+    blocoTarde = snap20(maxCont);
+    tardeFim = Math.min(close, tardeStart + blocoTarde);
+  }
+
+  return `${formatHM(manhaStart)}-${formatHM(manhaFim)}/${formatHM(tardeStart)}-${formatHM(tardeFim)} · ${formatDur(blocoManha + blocoTarde)}`;
+}
+
 function buildOptimizationSavings(salesRows, profile, employees, summary) {
   if (!salesRows || !salesRows.length) return null;
 
@@ -2346,10 +2488,7 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
       const loja = lojaDoDia(day);
       const jd = jornadaPorDia[day] || shiftHours;
       if (reposicao) {
-        if (ehFechador) return generateRepositorShift(loja.open, loja.close, idx, N, sexo, jd, 'fechamento');
-        if (ehAbridor) return generateRepositorShift(loja.open, loja.close, idx, N, sexo, jd, 'abertura');
-        if (isPeakDay(day)) return generateRepositorShift(loja.open, loja.close, idx, N, sexo, jd, 'abertura');
-        return generateRepositorShift(loja.open, loja.close, idx, N, sexo, jd, turno);
+        return generateReplenishmentShift(loja.open, loja.close, idx, N, sexo, jd);
       }
       if (comercial) return generateComercialShift(loja.open, loja.close, jd);
       // Pico: calcular entrada e intervalo juntos. Regras:
