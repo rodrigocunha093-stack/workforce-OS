@@ -1494,6 +1494,71 @@ function matrizProdutividade(merc) {
   return MATRIZ_PRODUTIVIDADE[k] || { caixasHora: '—', margem: '—', foco: 'Reposição geral' };
 }
 
+function coreSectorRule(setor) {
+  const key = normalizeSetor(setor);
+  if (key === 'mercearia') return { driver: 'Caixas repostas', benchmark: 40, unidade: 'cx/h', jornadaUtil: 7, proxy: 'qtdeVendida ÷ 12 un por caixa' };
+  if (key === 'acougue') return { driver: 'Kg vendidos/processados', benchmark: 31, unidade: 'kg/h', jornadaUtil: 7, proxy: 'qtdeVendida como volume proxy' };
+  if (key === 'hortifruti') return { driver: 'Kg manipulados', benchmark: 140, unidade: 'kg/h', jornadaUtil: 7, proxy: 'qtdeVendida como volume proxy' };
+  if (key === 'padaria') return { driver: 'Kg produzidos/atendidos', benchmark: 32, unidade: 'kg/h', jornadaUtil: 7, proxy: 'qtdeVendida como volume proxy' };
+  if (key.includes('frios') || key.includes('laticinio')) return { driver: 'Kg fatiados/atendidos', benchmark: 35, unidade: 'kg/h', jornadaUtil: 7, proxy: 'qtdeVendida como volume proxy' };
+  if (key === 'frente de caixa') return { driver: 'Clientes por hora', benchmark: 24, unidade: 'clientes/h', jornadaUtil: 7, proxy: 'cupons por hora' };
+  return null;
+}
+
+function deriveOperationalNeed(setor, vendaDia, qtdItensDia, qtdeVendidaDia, colaboradores) {
+  const rule = coreSectorRule(setor);
+  if (!rule) return null;
+
+  let volumeDia = 0;
+  let proxyLabel = rule.proxy;
+  const key = normalizeSetor(setor);
+
+  if (key === 'mercearia') {
+    volumeDia = qtdeVendidaDia > 0 ? (qtdeVendidaDia / 12) : (qtdItensDia / 18);
+    proxyLabel = qtdeVendidaDia > 0 ? 'unidades vendidas convertidas em caixas de reposição' : 'itens vendidos convertidos em caixas de reposição';
+  } else {
+    volumeDia = qtdeVendidaDia > 0 ? qtdeVendidaDia : qtdItensDia;
+    proxyLabel = qtdeVendidaDia > 0 ? rule.proxy : 'qtdItens como proxy temporária por falta de volume físico';
+  }
+
+  const horasNecessarias = rule.benchmark > 0 ? volumeDia / rule.benchmark : 0;
+  const pessoasNecessarias = volumeDia > 0 ? Math.max(1, Math.ceil(horasNecessarias / rule.jornadaUtil)) : 0;
+  const saldo = colaboradores - pessoasNecessarias;
+  const confianca = qtdeVendidaDia > 0 ? 'média' : 'inicial';
+  let status = 'adequate';
+  let statusLabel = 'Adequado';
+  let acao = 'Manter o setor na formação atual';
+
+  if (pessoasNecessarias > colaboradores) {
+    status = 'critical';
+    statusLabel = 'Crítico';
+    acao = `Reforçar ${setor} ou redistribuir apoio`;
+  } else if (pessoasNecessarias < colaboradores) {
+    status = 'attention';
+    statusLabel = 'Atenção';
+    acao = `Converter sobra de ${setor} em apoio operacional`;
+  }
+
+  return {
+    driver: rule.driver,
+    benchmark: rule.benchmark,
+    unidade: rule.unidade,
+    jornadaUtil: rule.jornadaUtil,
+    proxyLabel,
+    volumeDia: Number(volumeDia.toFixed(1)),
+    horasNecessarias: Number(horasNecessarias.toFixed(1)),
+    pessoasNecessarias,
+    saldo,
+    confianca,
+    status,
+    statusLabel,
+    acao,
+    explicacao: volumeDia > 0
+      ? `${Number(volumeDia.toFixed(1)).toLocaleString('pt-BR')} ${rule.unidade.split('/')[0] || 'un'} por dia ÷ benchmark ${rule.benchmark} ${rule.unidade} = ${Number(horasNecessarias.toFixed(1)).toLocaleString('pt-BR')}h; ÷ ${rule.jornadaUtil}h úteis = ${pessoasNecessarias} pessoa(s).`
+      : 'Sem volume suficiente para calcular necessidade operacional inicial.'
+  };
+}
+
 // Dashboard inteligente: cruza vendas POR MERCADOLÓGICO (m2) com a equipe
 function buildSetorDashboard(mercRows, employees, profile) {
   if (!mercRows || !mercRows.length) return [];
@@ -1550,6 +1615,7 @@ function buildSetorDashboard(mercRows, employees, profile) {
     const e = setorEquipe[k] || { colaboradores: 0, horas: 0, nomes: [] };
     const vendaDia = v.vendaLiquida / dias;
     const itensDia = v.qtdItens / dias;
+    const qtdeVendidaDia = v.qtdeVendida / dias;
     const colaboradores = e.colaboradores;
     const vendaPorColab = colaboradores ? vendaDia / colaboradores : 0;
     const itensPorColab = colaboradores ? itensDia / colaboradores : 0;
@@ -1572,6 +1638,7 @@ function buildSetorDashboard(mercRows, employees, profile) {
       vendaDia: Math.round(vendaDia),
       vendaMes: Math.round(v.vendaLiquida * (30 / dias)),
       itensDia: Math.round(itensDia),
+      qtdeVendidaDia: Number(qtdeVendidaDia.toFixed(1)),
       colaboradores: Math.round(colaboradores * 10) / 10,
       horasSemanais: Math.round(e.horas),
       curvaDiaSemana,
@@ -1590,9 +1657,13 @@ function buildSetorDashboard(mercRows, employees, profile) {
   const produtividades = dashboard.filter(d => d.colaboradores > 0).map(d => d.vendaPorColab);
   const mediaProacolab = produtividades.length ? produtividades.reduce((s, p) => s + p, 0) / produtividades.length : 0;
   dashboard.forEach(d => {
+    d.operationalNeed = deriveOperationalNeed(d.setor, d.vendaDia, d.itensDia, d.qtdeVendidaDia, d.colaboradores);
     if (!d.colaboradores) {
       d.status = 'sem-equipe';
       d.statusLabel = 'Sem equipe cadastrada';
+    } else if (d.operationalNeed && d.operationalNeed.volumeDia > 0) {
+      d.status = d.operationalNeed.status;
+      d.statusLabel = d.operationalNeed.statusLabel;
     } else if (d.vendaPorColab > mediaProacolab * 1.3) {
       d.status = 'sobrecarga';
       d.statusLabel = 'Alta carga — avaliar reforço';

@@ -1363,6 +1363,24 @@ function renderStoreFloorMap(data) {
   const ZC = {checkout:'#2563eb',gondola:'#16a34a',acougue:'#dc2626',padaria:'#ea580c',hortifruti:'#65a30d',frios:'#0891b2',comercial:'#9333ea',recebimento:'#78350f',escritorio:'#6366f1',outro:'#6b7280'};
   const ZL = {checkout:'Frente de loja',gondola:'Mercearia',acougue:'Acougue',padaria:'Padaria',hortifruti:'Hortifruti',frios:'Frios',comercial:'Comercial',recebimento:'Recebimento',escritorio:'Administrativo',outro:'Outros'};
 
+  // Motor de necessidade — mapear zona da planta → setor do dashboard
+  const setorDash = data.setorDashboard || [];
+  const ZONE_TO_SETOR = {checkout:'frente de caixa',gondola:'mercearia',acougue:'acougue',padaria:'padaria',hortifruti:'hortifruti',frios:'frios e laticineos',recebimento:'mercearia',escritorio:null,comercial:null,outro:null};
+  function getNeed(zone) {
+    const setorKey = ZONE_TO_SETOR[zone];
+    if (!setorKey) return null;
+    const norm = s => String(s||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    return setorDash.find(d => norm(d.setor) === setorKey || norm(d.setor).includes(setorKey.split(' ')[0])) || null;
+  }
+  function zoneStatus(zone, escalados) {
+    const need = getNeed(zone);
+    if (!need || !need.operationalNeed) return { status: 'unknown', color: '#6b7280', icon: '⚪', necessario: '?', explicacao: '' };
+    const n = need.operationalNeed;
+    const statusColors = { adequate: '#16a34a', attention: '#eab308', critical: '#dc2626' };
+    const statusIcons = { adequate: '🟢', attention: '🟡', critical: '🔴' };
+    return { status: n.status, color: statusColors[n.status] || '#6b7280', icon: statusIcons[n.status] || '⚪', necessario: n.pessoasNecessarias, saldo: n.saldo, acao: n.acao, explicacao: n.explicacao, driver: n.driver };
+  }
+
   function zoneOf(nome) {
     const s = ((setorMap[nome]||'')+(cargoMap[nome]||'')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
     if (s.includes('acougue')||s.includes('carnes')) return 'acougue';
@@ -1430,22 +1448,38 @@ function renderStoreFloorMap(data) {
     const mtC = dk?'#451a1a':'#ef9a9a', mtD = dk?'#3a1515':'#e57373', mtE = dk?'#2e1010':'#c62828';
     const bkC = dk?'#453520':'#ffe0b2', bkD = dk?'#3a2a18':'#ffcc80', bkE = dk?'#2e2010':'#ffa726';
 
+    // Pre-calculate active workers per zone for status indicators
+    const activePreview = people.filter(p => isWorking(p, _floorHour));
+    const byZonePreview = {};
+    activePreview.forEach(p => { const z = zoneOf(p.nome); (byZonePreview[z] = byZonePreview[z] || []).push(p); });
+
     let h = '';
     for (let gx=0;gx<12;gx++) for (let gy=0;gy<12;gy++) h += isoRect(gx,gy,1,1,(gx+gy)%2===0?flA:flB,dk?'rgba(255,255,255,.03)':'rgba(0,0,0,.05)');
     const wTL=isoX(0,0)+','+isoY(0,0), wTR=isoX(12,0)+','+isoY(12,0);
     h += `<polygon points="${isoX(0,0)},${isoY(0,0)-40} ${isoX(12,0)},${isoY(12,0)-40} ${wTR} ${wTL}" fill="${wC}" stroke="${wD}" stroke-width="0.5"/>`;
     h += `<polygon points="${isoX(0,0)},${isoY(0,0)-40} ${wTL} ${isoX(0,12)},${isoY(0,12)} ${isoX(0,12)},${isoY(0,12)-40}" fill="${wD}" stroke="${wD}" stroke-width="0.5"/>`;
 
-    h += isoBox(0.5,0.5,3,1.5,12,mtC,mtD,mtE) + isoLabel(2,1.5,'ACOUGUE','#fff',8);
-    h += isoBox(4,0.5,3,1.5,12,bkC,bkD,bkE) + isoLabel(5.5,1.5,'PADARIA',dk?'#2e2010':'#5d4037',8);
-    h += isoBox(7.5,0.5,4,1.2,14,frC,frD,frE) + isoLabel(9.5,1.3,'FRIOS',dk?'#102530':'#01579b',8);
-    h += isoBox(0.3,2.5,1.5,3,10,'#558b2f','#33691e','#1b5e20') + isoLabel(1,4.2,'HORTI',dk?'#aed581':'#fff',7);
+    // Status indicator helper
+    function isoStatus(gx, gy, zone) {
+      const st = zoneStatus(zone, (byZonePreview[zone]||[]).length);
+      if (st.status === 'unknown') return '';
+      const x = isoX(gx,gy), y = isoY(gx,gy);
+      const c = st.color;
+      let s = `<circle cx="${x}" cy="${y-18}" r="5" fill="${c}" stroke="#fff" stroke-width="1"/>`;
+      s += `<text x="${x}" y="${y-15.5}" text-anchor="middle" fill="#fff" font-size="6" font-weight="700" style="font-family:inherit">${st.necessario}</text>`;
+      return s;
+    }
+
+    h += isoBox(0.5,0.5,3,1.5,12,mtC,mtD,mtE) + isoLabel(2,1.5,'ACOUGUE','#fff',8) + isoStatus(3.3,0.5,'acougue');
+    h += isoBox(4,0.5,3,1.5,12,bkC,bkD,bkE) + isoLabel(5.5,1.5,'PADARIA',dk?'#2e2010':'#5d4037',8) + isoStatus(6.8,0.5,'padaria');
+    h += isoBox(7.5,0.5,4,1.2,14,frC,frD,frE) + isoLabel(9.5,1.3,'FRIOS',dk?'#102530':'#01579b',8) + isoStatus(11.3,0.5,'frios');
+    h += isoBox(0.3,2.5,1.5,3,10,'#558b2f','#33691e','#1b5e20') + isoLabel(1,4.2,'HORTI',dk?'#aed581':'#fff',7) + isoStatus(1.6,2.5,'hortifruti');
     for (let row=0;row<3;row++) {
       const gy = 3+row*2.2;
       h += isoBox(2.5,gy,7,0.8,10,shC,shD,shE);
       for (let p=0;p<6;p++) h += isoRect(3+p*0.9,gy+0.15,0.7,0.5,['#e57373','#64b5f6','#fff176','#81c784','#ce93d8','#ffb74d'][p],null,0.6);
     }
-    h += isoLabel(6,5,'MERCEARIA',dk?'rgba(255,255,255,.4)':'rgba(0,0,0,.3)',9);
+    h += isoLabel(6,5,'MERCEARIA',dk?'rgba(255,255,255,.4)':'rgba(0,0,0,.3)',9) + isoStatus(9.3,3,'gondola');
     h += isoBox(10,3,1.5,4,16,frC,frD,frE) + isoLabel(10.8,5.5,'BEBIDAS',dk?'#b3e5fc':'#01579b',7);
 
     // Recebimento (doca) — fundo direito, atrás do salão
@@ -1467,9 +1501,8 @@ function renderStoreFloorMap(data) {
     h += isoRect(13.8,2.5,0.8,0.5,dk?'#2d2760':'#9fa8da',null,0.4);
     h += isoRect(15,2.5,0.8,0.5,dk?'#2d2760':'#9fa8da',null,0.4);
 
-    const active = people.filter(p => isWorking(p, _floorHour));
-    const byZone = {};
-    active.forEach(p => { const z = zoneOf(p.nome); (byZone[z] = byZone[z] || []).push(p); });
+    const active = activePreview;
+    const byZone = byZonePreview;
 
     const checkoutWorkers = byZone.checkout || [];
     const activePdvs = Math.min(checkoutWorkers.length, pdvs);
@@ -1543,7 +1576,27 @@ function renderStoreFloorMap(data) {
     const noEscritorio = (byZone.escritorio||[]).length;
     const noRecebimento = (byZone.recebimento||[]).length;
     const noSalao = active.length - noEscritorio - noRecebimento;
-    return { svg: h, active: active.length, total: people.length, activePdvs, folga, breaks, noSalao, noEscritorio, noRecebimento, formation: Object.entries(byZone).map(([z,w])=>`${ZL[z]||z}: ${w.length}`).join(' · ') || '0' };
+    // Build recommendation cards
+    const recZones = ['checkout','gondola','acougue','padaria','hortifruti','frios'];
+    const recCards = recZones.map(z => {
+      const escalados = (byZone[z]||[]).length;
+      const st = zoneStatus(z, escalados);
+      if (st.status === 'unknown') return '';
+      const borderColor = st.status === 'critical' ? '#dc2626' : st.status === 'attention' ? '#eab308' : '#16a34a';
+      const bgColor = st.status === 'critical' ? 'rgba(220,38,38,.08)' : st.status === 'attention' ? 'rgba(234,179,8,.08)' : 'rgba(22,163,106,.06)';
+      const saldoTxt = st.saldo > 0 ? `+${st.saldo} excedente` : st.saldo < 0 ? `${st.saldo} deficit` : 'exato';
+      return `<div style="background:${bgColor};border-left:3px solid ${borderColor};border-radius:6px;padding:8px 10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+          <span style="font-weight:600;font-size:12px;color:var(--color-text-primary)">${st.icon} ${ZL[z]}</span>
+          <span style="font-size:11px;font-weight:600;color:${borderColor}">${escalados} / ${st.necessario} <small style="opacity:.7">${saldoTxt}</small></span>
+        </div>
+        <p style="margin:0;font-size:11px;color:var(--color-text-secondary)">${st.acao || ''}</p>
+        ${st.explicacao ? `<p style="margin:3px 0 0;font-size:10px;color:var(--color-text-tertiary)">${st.explicacao}</p>` : ''}
+      </div>`;
+    }).filter(Boolean).join('');
+    const recommendations = recCards ? `<div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:6px"><div style="grid-column:1/-1;font-size:12px;font-weight:600;color:var(--color-text-secondary);margin-bottom:2px"><i class="ti ti-alert-triangle" style="margin-right:3px"></i>Motor de necessidade operacional</div>${recCards}</div>` : '';
+
+    return { svg: h, active: active.length, total: people.length, activePdvs, folga, breaks, noSalao, noEscritorio, noRecebimento, formation: Object.entries(byZone).map(([z,w])=>`${ZL[z]||z}: ${w.length}`).join(' · ') || '0', recommendations };
   }
 
   function render() {
@@ -1617,14 +1670,7 @@ function renderStoreFloorMap(data) {
         <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-users" style="margin-right:3px"></i>Total ativos</p><p style="font-size:17px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.active} / ${r.total}</p></div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;font-size:11px;color:var(--color-text-secondary)">${legendHtml}</div>
-      <div class="plant-inline-head">
-        <div>
-          <small>Planta inteligente operacional</small>
-          <strong>Necessário x escalado x ação recomendada</strong>
-        </div>
-        <span>${plantSourceLabel} · ${scenario.label || ''}</span>
-      </div>
-      <div id="storeFloorPlant"></div>
+      ${r.recommendations}
     `;
 
     // Event: day buttons
