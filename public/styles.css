@@ -1199,6 +1199,17 @@ i.red { background: var(--red); }
 }
 
 .weekly-schedule {
+  display: block;
+}
+
+/* Avisos e filtros ficam visíveis mesmo com a grade rolada horizontalmente */
+.weekly-schedule > :not(.weekly-grid) {
+  position: sticky;
+  left: 0;
+  margin-bottom: 8px;
+}
+
+.weekly-grid {
   min-width: 1040px;
   display: grid;
   gap: 5px;
@@ -1208,6 +1219,32 @@ i.red { background: var(--red); }
   display: grid;
   grid-template-columns: 130px repeat(7, 1fr) 80px;
   gap: 5px;
+}
+
+/* Coluna do colaborador fixa durante o scroll horizontal */
+.weekly-row > span:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #0d141d;
+}
+
+.weekly-head > span.is-today,
+.weekly-head > span.is-today small { color: #3B82F6; opacity: 1; }
+.today-tag {
+  font-style: normal;
+  font-size: 8px;
+  font-weight: 800;
+  background: #3B82F6;
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 5px;
+  margin-left: 3px;
+}
+.head-date { display: block; opacity: .6; font-weight: 500; }
+.weekly-row > span.weekly-shift.is-today {
+  border-color: #3B82F6;
+  box-shadow: inset 0 0 0 1px rgba(59,130,246,.55);
 }
 
 .weekly-row > span {
@@ -1230,6 +1267,12 @@ i.red { background: var(--red); }
   color: var(--muted);
   font-weight: 800;
   text-transform: uppercase;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.weekly-head > span:first-child {
+  background: #0d141d; /* sticky precisa de fundo sólido */
 }
 
 .weekly-row .weekly-person {

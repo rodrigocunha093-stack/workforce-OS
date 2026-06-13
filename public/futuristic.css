@@ -1411,3 +1411,9 @@ html[data-theme="light"] .scrollbar, html[data-theme="light"] ::-webkit-scrollba
 html[data-theme="light"] .periodo-box.periodo-fechado { background: rgba(52,211,153,0.1); }
 html[data-theme="light"] .periodo-box.periodo-aberto { background: rgba(251,191,36,0.1); }
 html[data-theme="light"] .periodo-info span { color: #475569; }
+
+/* Sticky da coluna do colaborador — fundo sólido por tema */
+html[data-theme="light"] .weekly-row > span:first-child,
+html[data-theme="light"] .weekly-head > span:first-child {
+  background: #f4f7fa !important;
+}

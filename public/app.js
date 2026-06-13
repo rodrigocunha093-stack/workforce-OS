@@ -817,15 +817,17 @@ function getShiftIntervalPlan(shift) {
   if (!shift || shift === 'Folga') return null;
   const [periodoRaw, horasRaw = ''] = String(shift).split('·').map((part) => part.trim());
   const horas = horasRaw || '';
+  // Normaliza qualquer hora para HH:MM (turnos antigos vinham como "07-15")
+  const hm = (v) => { const m = hmToMinutes(v); return m === null ? v : minutesToHM(m); };
   if (periodoRaw.includes('/')) {
     const [bloco1, bloco2] = periodoRaw.split('/');
-    const fim1 = bloco1.split('-')[1];
-    const ini2 = bloco2.split('-')[0];
+    const [i1, f1] = bloco1.split('-').map(hm);
+    const [i2, f2] = bloco2.split('-').map(hm);
     return {
-      display: `${bloco1}/${bloco2}`,
-      start: bloco1.split('-')[0],
-      end: bloco2.split('-')[1],
-      intervalLabel: `${fim1}-${ini2}`,
+      display: `${i1}-${f1}/${i2}-${f2}`,
+      start: i1,
+      end: f2,
+      intervalLabel: `${f1}-${i2}`,
       hasInterval: true,
       horas
     };
@@ -839,9 +841,11 @@ function getShiftIntervalPlan(shift) {
     return { display: periodoRaw, start: ini, end: fimOriginal, intervalLabel: 'Sem intervalo', hasInterval: false, horas };
   }
 
+  const iniLabel = minutesToHM(startMin);
+  const fimLabel = minutesToHM(endMin);
   const legalIntervalMin = getLegalIntervalMinutes(worked);
   if (!legalIntervalMin) {
-    return { display: periodoRaw, start: ini, end: fimOriginal, intervalLabel: 'Sem intervalo', hasInterval: false, horas };
+    return { display: `${iniLabel}-${fimLabel}`, start: iniLabel, end: fimLabel, intervalLabel: 'Sem intervalo', hasInterval: false, horas };
   }
 
   const workedMin = Math.round(worked * 60);
@@ -857,8 +861,8 @@ function getShiftIntervalPlan(shift) {
   const intervalStart = startMin + beforeMin;
   const intervalEnd = intervalStart + intervaloMin;
   return {
-    display: `${ini}-${minutesToHM(intervalStart)}/${minutesToHM(intervalEnd)}-${minutesToHM(endReal)}`,
-    start: ini,
+    display: `${iniLabel}-${minutesToHM(intervalStart)}/${minutesToHM(intervalEnd)}-${minutesToHM(endReal)}`,
+    start: iniLabel,
     end: minutesToHM(endReal),
     intervalLabel: `${minutesToHM(intervalStart)}-${minutesToHM(intervalEnd)}`,
     hasInterval: true,
@@ -1187,6 +1191,15 @@ function renderWeeklySchedule(data) {
       <small style="display:block;margin-top:6px;opacity:.65">Auditoria baseada na CLT federal. Convenções coletivas locais (CCT dos comerciários) podem ter regras adicionais — valide com seu contador/sindicato.</small>
     </div>`;
 
+  // Índice do dia de HOJE na semana exibida (p/ destaque visual)
+  const todayIdx = (() => {
+    const cal = data.calendarioSemana;
+    if (!cal || !cal.dias) return -1;
+    const d = new Date();
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return cal.dias.findIndex(x => x.data === iso);
+  })();
+
   document.getElementById('weeklySchedule').innerHTML = `
     ${periodoBox}
     ${complianceBox}
@@ -1198,10 +1211,11 @@ function renderWeeklySchedule(data) {
       const fer = cal.dias.filter(d => d.feriado);
       return `<div class="clt-box clt-bad" style="margin-bottom:8px"><strong>📅 Feriado nesta semana:</strong> ${fer.map(f => `${f.feriado} (${f.label})`).join(' · ')} — revise demanda e escala do dia.</div>`;
     })()}
+    <div class="weekly-grid">
     <div class="weekly-row weekly-head"><span>Colaborador(a)</span>${days.map((day, di) => {
       const diaCal = data.calendarioSemana?.dias?.[di];
-      const dataLabel = diaCal ? `<small style="display:block;opacity:.6;font-weight:400">${diaCal.label}${diaCal.feriado ? ' 🎉' : ''}</small>` : '';
-      return `<span title="${diaCal?.feriado || ''}">${day}${dataLabel}</span>`;
+      const dataLabel = diaCal ? `<small class="head-date">${diaCal.label}${diaCal.feriado ? ' 🎉' : ''}</small>` : '';
+      return `<span class="${di === todayIdx ? 'is-today' : ''}" title="${diaCal?.feriado || (di === todayIdx ? 'Hoje' : '')}">${day}${di === todayIdx ? ' <em class="today-tag">hoje</em>' : ''}${dataLabel}</span>`;
     }).join('')}<span>Auditoria</span></div>
     ${people.map(([nome, shifts]) => {
       const audit = audits.find((item) => item.nome === nome);
@@ -1223,12 +1237,13 @@ function renderWeeklySchedule(data) {
               if (abre) badge += '<span class="shift-icon abre" title="Abre a loja">🔓</span>';
               if (fecha) badge += '<span class="shift-icon fecha" title="Fecha a loja">🔒</span>';
             }
-            return `<span class="weekly-shift ${shift === 'Folga' ? 'weekly-off' : shift.includes('08-12') ? 'weekly-sunday' : ''}">${renderShiftWithInterval(shift, badge)}</span>`;
+            return `<span class="weekly-shift ${shift === 'Folga' ? 'weekly-off' : shift.includes('08-12') ? 'weekly-sunday' : ''} ${dayIdx === todayIdx ? 'is-today' : ''}">${renderShiftWithInterval(shift, badge)}</span>`;
           }).join('')}
           <span class="weekly-status ${ok ? 'valid' : 'invalid'}">${ok ? 'Conforme' : 'Revisar'}</span>
         </div>
       `;
     }).join('')}
+    </div>
   `;
 
   // FASE 1: Handlers de fechar/reabrir/ver período
