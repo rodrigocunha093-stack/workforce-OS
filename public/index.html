@@ -541,6 +541,22 @@
             </div>
             <div id="mercResumo" class="merc-resumo"></div>
           </article>
+
+          <article class="panel import-panel fat-import-panel">
+            <div class="panel-head"><div><h3>5. Importar faturamento diário <span class="new-badge">NOVO</span></h3><p class="note">Histórico de faturamento total da loja por dia. Quanto mais meses, melhor a previsão de demanda — ideal: 12 meses.</p></div></div>
+            <div class="import-instructions">
+              <strong>Colunas aceitas (2 obrigatórias)</strong>
+              <code>data;faturamento</code>
+              <span>Ex.: 2025-06-13;45230.50 — uma linha por dia, com a data no formato AAAA-MM-DD e o faturamento bruto ou líquido total do dia. Aceita separador ; ou , (vírgula). Cabeçalho é opcional.</span>
+            </div>
+            <input id="fatCsvInput" type="file" accept=".csv,.txt,text/csv">
+            <div id="fatImportPreview" class="import-preview"><span>Nenhum arquivo selecionado.</span></div>
+            <div class="import-actions">
+              <button id="downloadFatTemplate" type="button" class="secondary-button">Baixar modelo</button>
+              <button id="confirmFatImport" type="button" disabled>Importar faturamento</button>
+            </div>
+            <div id="fatResumo" class="fat-resumo"></div>
+          </article>
         </div>
 
         <article class="panel readiness-panel">

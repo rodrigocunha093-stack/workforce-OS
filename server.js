@@ -186,6 +186,7 @@ function defaultClientState() {
     employees: [],
     salesRows: [],
     salesByMercadologico: [],
+    dailyRevenue: [],           // faturamento diário [{data, faturamento}] — histórico longo para forecast
     enabledModules: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     escalaFechada: null,      // período vigente fechado (snapshot imutável)
     escalaHistorico: [],      // períodos fechados anteriores
@@ -3042,9 +3043,33 @@ async function applyClientState(summary, user, weekFilter = null) {
   // FASE 2: Forecast com sazonalidade
   summary.forecast = buildForecast(mercRows, state.salesRows);
   // Índices de demanda (decomposição multiplicativa) para o frontend
-  const allSalesForIndices = mercRows.length ? mercRows : (state.salesRows || []);
+  // Índices de demanda: prioriza dailyRevenue (mais longo), depois mercRows, depois salesRows
+  const dailyRev = Array.isArray(state.dailyRevenue) ? state.dailyRevenue : [];
+  let allSalesForIndices;
+  let indicesSource;
+  if (dailyRev.length >= 7) {
+    allSalesForIndices = dailyRev.map(r => ({ data: r.data, vendaLiquida: r.faturamento }));
+    indicesSource = 'faturamento';
+  } else if (mercRows.length) {
+    allSalesForIndices = mercRows;
+    indicesSource = 'mercadologico';
+  } else {
+    allSalesForIndices = state.salesRows || [];
+    indicesSource = 'vrsoft';
+  }
   summary.demandIndices = buildDemandIndices(allSalesForIndices);
-  summary.demandIndices = summary.demandIndices ? { ...summary.demandIndices, semanaAtual: currentWom } : null;
+  summary.demandIndices = summary.demandIndices ? { ...summary.demandIndices, semanaAtual: currentWom, fonte: indicesSource } : null;
+  // Resumo do faturamento diário para o frontend
+  if (dailyRev.length) {
+    const totalFat = dailyRev.reduce((s, r) => s + r.faturamento, 0);
+    summary.dailyRevenueResumo = {
+      dias: dailyRev.length,
+      primeiro: dailyRev[0].data,
+      ultimo: dailyRev[dailyRev.length - 1].data,
+      mediaDia: Math.round(totalFat / dailyRev.length),
+      total: Math.round(totalFat)
+    };
+  }
   // Mercadológicos nível 2 disponíveis (para o campo Setor do cadastro)
   summary.mercadologicosM2 = mercRows.length
     ? [...new Set(mercRows.map(r => r.mercadologico))].sort()
@@ -4117,6 +4142,51 @@ const server = http.createServer(async (req, res) => {
         const dias = [...new Set(validRows.map(r => r.data))];
         await audit(user.id, 'MERCADOLOGICO_IMPORTED', { linhas: validRows.length, setores: setores.length, dias: dias.length, ip: requestIp(req) });
         return json(res, { ok: true, imported: validRows.length, rejected: rows.length - validRows.length, setores, dias: dias.length });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
+    })();
+    return;
+  }
+  // Importar faturamento diário (3ª fonte: histórico longo para forecast/sazonalidade)
+  if (req.url === '/api/import-faturamento' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login para importar faturamento.');
+        const body = await readJsonBody(req, 2_000_000);
+        const rows = Array.isArray(body.rows) ? body.rows.slice(0, 50000) : [];
+
+        const validRows = rows.filter(row => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(String(row.data || ''))) return false;
+          return Number(row.faturamento) >= 0;
+        }).map(row => ({
+          data: String(row.data),
+          faturamento: Number(row.faturamento) || 0
+        }));
+
+        if (!validRows.length) throw new Error('Nenhuma linha válida. Use as colunas: data, faturamento (ex: 2025-06-13;45230.50).');
+
+        // Agregar por dia (caso venha duplicado)
+        const porDia = {};
+        validRows.forEach(r => { porDia[r.data] = (porDia[r.data] || 0) + r.faturamento; });
+        const agregado = Object.entries(porDia).map(([data, faturamento]) => ({ data, faturamento })).sort((a, b) => a.data.localeCompare(b.data));
+
+        const state = await loadClientState(user.orgId);
+        // Merge com dados existentes (preserva dias antigos, atualiza se reimportado)
+        const existing = Array.isArray(state.dailyRevenue) ? state.dailyRevenue : [];
+        const merged = {};
+        existing.forEach(r => { merged[r.data] = r.faturamento; });
+        agregado.forEach(r => { merged[r.data] = r.faturamento; });
+        state.dailyRevenue = Object.entries(merged).map(([data, faturamento]) => ({ data, faturamento })).sort((a, b) => a.data.localeCompare(b.data));
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.orgId, state);
+
+        const dias = state.dailyRevenue.length;
+        const primeiro = state.dailyRevenue[0]?.data;
+        const ultimo = state.dailyRevenue[dias - 1]?.data;
+        const totalFat = state.dailyRevenue.reduce((s, r) => s + r.faturamento, 0);
+        await audit(user.id, 'FATURAMENTO_IMPORTED', { linhasNovas: agregado.length, totalDias: dias, ip: requestIp(req) });
+        return json(res, { ok: true, imported: agregado.length, totalDias: dias, primeiro, ultimo, faturamentoTotal: Math.round(totalFat), mediaDia: Math.round(totalFat / dias) });
       } catch (error) {
         return json(res, { ok: false, error: error.message }, 400);
       }

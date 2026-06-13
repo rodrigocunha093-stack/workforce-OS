@@ -3147,6 +3147,31 @@ function parseMercadologicoCsv(text) {
   return { rows, errors };
 }
 
+function parseFaturamentoCsv(text) {
+  const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 1) return { rows: [], errors: ['Arquivo vazio.'] };
+  const delim = (lines[0].match(/;/g) || []).length >= (lines[0].match(/,/g) || []).length ? ';' : ',';
+  const firstCols = lines[0].split(delim).map(normalizeHeader);
+  const hasHeader = firstCols.some(h => ['data', 'date', 'dia'].includes(h));
+  const startIdx = hasHeader ? 1 : 0;
+
+  let posData = firstCols.findIndex(h => ['data', 'date', 'dia'].includes(h));
+  let posFat = firstCols.findIndex(h => ['faturamento', 'valor', 'venda', 'total', 'receita', 'valor_total', 'venda_liquida', 'revenue'].includes(h));
+  if (!hasHeader) { posData = 0; posFat = 1; }
+  if (posData < 0 || posFat < 0) return { rows: [], errors: ['Faltam colunas: data e faturamento.'] };
+
+  const rows = [], errors = [];
+  lines.slice(startIdx).forEach((line, i) => {
+    const c = line.split(delim).map(x => x.trim().replace(/^"|"$/g, ''));
+    const data = normalizeDate(c[posData]);
+    const fat = parseFlexNumber(c[posFat]);
+    if (!data) { errors.push(`Linha ${i + startIdx + 1}: data inválida.`); return; }
+    if (fat < 0) { errors.push(`Linha ${i + startIdx + 1}: valor inválido.`); return; }
+    rows.push({ data, faturamento: fat });
+  });
+  return { rows, errors };
+}
+
 function renderOnboarding(data) {
   renderCompanyInfo();
   renderEmployeesManager(data);
@@ -3955,6 +3980,71 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
         link.click();
         URL.revokeObjectURL(link.href);
       };
+    }
+
+    // --- Faturamento diário import ---
+    let pendingFatRows = [];
+    const fatInput = document.getElementById('fatCsvInput');
+    if (fatInput) {
+      fatInput.onchange = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const parsed = parseFaturamentoCsv(await file.text());
+        pendingFatRows = parsed.rows;
+        const dias = [...new Set(parsed.rows.map(r => r.data))];
+        const totalFat = parsed.rows.reduce((s, r) => s + r.faturamento, 0);
+        document.getElementById('confirmFatImport').disabled = parsed.rows.length < 1;
+        document.getElementById('fatImportPreview').innerHTML = `
+          <strong>${dias.length} dias válidos</strong>
+          <span>Faturamento total: R$ ${totalFat.toLocaleString('pt-BR', {minimumFractionDigits:2})} · Média/dia: R$ ${dias.length ? (totalFat/dias.length).toLocaleString('pt-BR', {minimumFractionDigits:2}) : '0'}</span>
+          ${parsed.errors.length ? `<small>${parsed.errors.length} linhas rejeitadas</small>` : '<small>Pronto para importar.</small>'}
+        `;
+      };
+    }
+    const confirmFat = document.getElementById('confirmFatImport');
+    if (confirmFat) {
+      confirmFat.onclick = async () => {
+        confirmFat.disabled = true;
+        confirmFat.textContent = 'Importando...';
+        const res = await fetch('/api/import-faturamento', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows: pendingFatRows })
+        });
+        const result = await res.json();
+        if (!res.ok) { showToast(result.error || 'Erro ao importar faturamento.'); confirmFat.disabled = false; confirmFat.textContent = 'Importar faturamento'; return; }
+        showToast(`${result.imported} dias importados (total: ${result.totalDias} dias · ${result.primeiro} a ${result.ultimo}). Atualizando...`);
+        setTimeout(() => window.location.reload(), 1000);
+      };
+    }
+    const downloadFat = document.getElementById('downloadFatTemplate');
+    if (downloadFat) {
+      downloadFat.onclick = () => {
+        const hoje = new Date();
+        const linhas = ['data;faturamento'];
+        for (let i = 365; i >= 0; i--) {
+          const d = new Date(hoje); d.setDate(hoje.getDate() - i);
+          if (d.getDay() === 0) continue;
+          linhas.push(`${d.toISOString().slice(0,10)};0.00`);
+        }
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(new Blob(['﻿' + linhas.join('\n')], { type: 'text/csv;charset=utf-8' }));
+        link.download = 'modelo-faturamento-diario.csv';
+        link.click();
+        URL.revokeObjectURL(link.href);
+      };
+    }
+    // Resumo faturamento existente
+    const fatResumo = document.getElementById('fatResumo');
+    if (fatResumo && data.dailyRevenueResumo) {
+      const r = data.dailyRevenueResumo;
+      fatResumo.innerHTML = `
+        <div style="display:flex;gap:12px;flex-wrap:wrap;padding:8px 0">
+          <div><small>Dias importados</small><strong>${r.dias}</strong></div>
+          <div><small>Período</small><strong>${r.primeiro?.split('-').reverse().join('/')} a ${r.ultimo?.split('-').reverse().join('/')}</strong></div>
+          <div><small>Média/dia</small><strong>R$ ${r.mediaDia?.toLocaleString('pt-BR')}</strong></div>
+          <div><small>Confiança forecast</small><strong>${r.dias >= 90 ? '✅ Boa' : r.dias >= 28 ? '📊 Média' : '⚠️ Inicial'}</strong></div>
+        </div>
+      `;
     }
 
     const closeDrawer = () => {
