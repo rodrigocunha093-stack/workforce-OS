@@ -1221,22 +1221,37 @@ function renderStoreFloorMap(data) {
     h += isoRect(15,1.5,0.6,0.4,dk?'#2d2760':'#9fa8da',null,0.5);
 
     const active = people.filter(p => isWorking(p, _floorHour));
-    const checkoutW = active.filter(p => zoneOf(p.nome) === 'checkout').length;
-    const activePdvs = Math.min(checkoutW, pdvs);
-    const pdvSp = Math.min(2.5, 10 / pdvs), pdvSt = (12 - pdvs * pdvSp) / 2;
-    for (let i = 0; i < pdvs; i++) {
-      const gx = pdvSt + i * pdvSp; const act = i < activePdvs;
-      h += isoBox(gx, 9.5, pdvSp*0.8, 1.5, 8, act?ctC:'#555', act?ctD:'#444', act?ctE:'#333');
-      h += isoBox(gx+0.2, 9.8, 0.5, 0.4, 12, act?'#222':'#444', act?'#111':'#333', '#000');
-      if (act) h += isoLabel(gx+pdvSp*0.4, 10.8, 'PDV '+(i+1), dk?'#a5d6a7':'#fff', 6);
-    }
-    h += isoLabel(6,11.8,'FRENTE DE LOJA',dk?'rgba(255,255,255,.35)':'rgba(0,0,0,.25)',9);
-    h += `<text x="${isoX(6,12)}" y="${isoY(6,12)+17}" text-anchor="middle" fill="var(--color-text-tertiary)" font-size="9" style="font-family:inherit"><tspan style="font-size:14px">&#8593;</tspan> ENTRADA</text>`;
-
     const byZone = {};
     active.forEach(p => { const z = zoneOf(p.nome); (byZone[z] = byZone[z] || []).push(p); });
+
+    const checkoutWorkers = byZone.checkout || [];
+    const activePdvs = Math.min(checkoutWorkers.length, pdvs);
+    const pdvSp = Math.min(2.5, 10 / pdvs), pdvSt = (12 - pdvs * pdvSp) / 2;
+    for (let i = 0; i < pdvs; i++) {
+      const gx = pdvSt + i * pdvSp;
+      const act = i < activePdvs;
+      h += isoBox(gx, 9.8, pdvSp*0.7, 1.2, 6, act?ctC:'#555', act?ctD:'#444', act?ctE:'#333');
+      // Screen
+      const scrC = act ? (dk?'#e0f2e9':'#a5d6a7') : (dk?'#333':'#777');
+      h += isoRect(gx+0.15, 10.0, 0.4, 0.3, scrC, null, 0.9);
+      h += isoLabel(gx+pdvSp*0.35, 10.7, 'PDV '+(i+1), act?(dk?'#a5d6a7':'#fff'):(dk?'#555':'#999'), 6);
+      // Place worker at this PDV
+      if (i < checkoutWorkers.length) {
+        const w = checkoutWorkers[i];
+        h += isoWorker(gx + pdvSp*0.35, 9.2, ZC.checkout, w.nome, 'fw-ck'+i, ZL.checkout, w.shifts[_floorDay], isOnBreak(w, _floorHour));
+      }
+    }
+    // Extra cashiers beyond PDV count wait nearby
+    for (let i = pdvs; i < checkoutWorkers.length; i++) {
+      const w = checkoutWorkers[i];
+      const gx = pdvSt + (i % pdvs) * pdvSp + pdvSp * 0.7;
+      h += isoWorker(gx, 8.8, '#64748b', w.nome, 'fw-ckx'+i, 'Auxiliar', w.shifts[_floorDay], isOnBreak(w, _floorHour));
+    }
+    h += isoLabel(6,11.5,'FRENTE DE LOJA',dk?'rgba(255,255,255,.35)':'rgba(0,0,0,.25)',9);
+    h += `<text x="${isoX(6,12)}" y="${isoY(6,12)+14}" text-anchor="middle" fill="var(--color-text-tertiary)" font-size="9" style="font-family:inherit"><tspan style="font-size:14px">&#8593;</tspan> ENTRADA</text>`;
+
+    // Place non-checkout workers by zone
     const zonePos = {
-      checkout:{gx:[1,10],gy:[10.5,11.5]},
       gondola:{gx:[3,9],gy:[5,8.5]},
       acougue:{gx:[1,3.5],gy:[2.2,2.8]},
       padaria:{gx:[4.5,7],gy:[2.2,2.8]},
@@ -1248,6 +1263,7 @@ function renderStoreFloorMap(data) {
       outro:{gx:[4,7],gy:[7.5,8.5]}
     };
     Object.entries(byZone).forEach(([z, workers]) => {
+      if (z === 'checkout') return;
       const pos = zonePos[z] || zonePos.outro;
       workers.forEach((w, i) => {
         const cols = Math.ceil(Math.sqrt(workers.length));
@@ -1257,7 +1273,7 @@ function renderStoreFloorMap(data) {
         const ty = rowCount > 1 ? row / (rowCount - 1) : 0.5;
         const gx = pos.gx[0] + tx * (pos.gx[1] - pos.gx[0]);
         const gy = pos.gy[0] + ty * (pos.gy[1] - pos.gy[0]);
-        h += isoWorker(gx, gy, ZC[z]||ZC.outro, w.nome, 'fw'+i, ZL[z]||z, w.shifts[_floorDay], isOnBreak(w, _floorHour));
+        h += isoWorker(gx, gy, ZC[z]||ZC.outro, w.nome, 'fw'+z+i, ZL[z]||z, w.shifts[_floorDay], isOnBreak(w, _floorHour));
       });
     });
 
@@ -1266,7 +1282,7 @@ function renderStoreFloorMap(data) {
     const noEscritorio = (byZone.escritorio||[]).length;
     const noRecebimento = (byZone.recebimento||[]).length;
     const noSalao = active.length - noEscritorio - noRecebimento;
-    return { svg: h, active: active.length, total: people.length, activePdvs, folga, breaks, noSalao, noEscritorio, noRecebimento, formation: Object.entries(byZone).filter(([z])=>z!=='escritorio').map(([z,w])=>`${w.length}`).join('-') || '0' };
+    return { svg: h, active: active.length, total: people.length, activePdvs, folga, breaks, noSalao, noEscritorio, noRecebimento, formation: Object.entries(byZone).map(([z,w])=>`${ZL[z]||z}: ${w.length}`).join(' · ') || '0' };
   }
 
   function render() {
