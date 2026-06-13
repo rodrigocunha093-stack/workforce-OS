@@ -481,6 +481,247 @@ function renderSetorDashboard(data) {
   `;
 }
 
+function operationalDayIndexToJs(dayIndex) {
+  return [1, 2, 3, 4, 5, 6, 0][dayIndex] ?? 1;
+}
+
+function plantZoneFromMaps(nome, setorMap = {}, cargoMap = {}) {
+  const s = ((setorMap[nome] || '') + (cargoMap[nome] || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (s.includes('acougue') || s.includes('carnes')) return 'acougue';
+  if (s.includes('padaria') || s.includes('confeitaria')) return 'padaria';
+  if (s.includes('hortifruti') || s.includes('frutas') || s.includes('flv')) return 'hortifruti';
+  if (s.includes('frios') || s.includes('laticinio')) return 'frios';
+  if (s.includes('bebidas')) return 'bebidas';
+  if (s.includes('recebimento') || s.includes('estoque') || s.includes('deposito') || s.includes('doca') || s.includes('descarga')) return 'recebimento';
+  if (s.includes('administrativo') || s.includes('admin') || s.includes('escritorio') || s.includes('rh') || s.includes('financeiro') || s.includes('contabil') || s.includes('dp') || s.includes('departamento pessoal')) return 'escritorio';
+  if (s.includes('mercearia') || s.includes('gondola') || s.includes('repositor') || s.includes('repos') || s.includes('perfumaria') || s.includes('higiene') || s.includes('limpeza') || s.includes('bazar') || s.includes('biscoitos') || s.includes('cereais')) return 'gondola';
+  if (s.includes('comercial') || s.includes('gerente') || s.includes('fiscal')) return 'comercial';
+  if (s.includes('caixa') || s.includes('frente') || s.includes('operador')) return 'checkout';
+  if (!s) return 'checkout';
+  return 'outro';
+}
+
+function plantZoneFromSectorName(setor) {
+  const key = String(setor || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (key.includes('acougue')) return 'acougue';
+  if (key.includes('padaria')) return 'padaria';
+  if (key.includes('hortifruti') || key.includes('flv')) return 'hortifruti';
+  if (key.includes('frios')) return 'frios';
+  if (key.includes('bebidas')) return 'bebidas';
+  if (key.includes('mercearia') || key.includes('biscoitos') || key.includes('limpeza') || key.includes('perfumaria') || key.includes('bazar') || key.includes('cereais')) return 'gondola';
+  if (key.includes('receb')) return 'recebimento';
+  if (key.includes('administr')) return 'escritorio';
+  return 'outro';
+}
+
+function isShiftActiveAt(shift, minutePoint) {
+  if (!shift || shift === 'Folga') return false;
+  return shiftBlocksFromDisplay(shift).some((block) => minutePoint >= block.start && minutePoint < block.end);
+}
+
+function buildOperationalPlant(data, context = {}) {
+  const cards = [];
+  const scenario = getSelectedCashierScenario(data);
+  const dayIndex = Number.isInteger(context.dayIndex) ? context.dayIndex : ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].indexOf(currentCoverageDay);
+  const dayKey = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'][dayIndex] || currentCoverageDay;
+  const cfg = data.dailyCoverage?.[dayKey];
+  const weeklyPeople = scenario.people || {};
+  const availableWorkers = Object.values(weeklyPeople).filter((shifts) => shifts?.[dayIndex] !== 'Folga').length;
+  const currentHour = typeof context.hour === 'number' ? context.hour : Math.floor(new Date().getHours());
+  const currentMinutePoint = Math.round(currentHour * 60);
+  const hourBucket = `${String(Math.floor(currentHour)).padStart(2, '0')}-${String(Math.floor(currentHour) + 1).padStart(2, '0')}`;
+  const setorMap = data.employeeSetorMap || {};
+  const cargoMap = data.employeeCargoMap || {};
+  const activeByZone = {};
+
+  Object.entries(weeklyPeople).forEach(([nome, shifts]) => {
+    const shift = shifts?.[dayIndex];
+    if (!isShiftActiveAt(shift, currentMinutePoint)) return;
+    const zone = plantZoneFromMaps(nome, setorMap, cargoMap);
+    activeByZone[zone] = activeByZone[zone] || [];
+    activeByZone[zone].push(nome);
+  });
+
+  if (cfg && !cfg.closed) {
+    const baseRows = (cfg.rows || []).map((row) => ({
+      ...row,
+      [currentCoverageScenario]: Math.min(countWorkersAtHourLabel(weeklyPeople, dayIndex, row.hora), availableWorkers)
+    }));
+    const effectiveRows = applyCoverageAdjustment(baseRows, currentCoverageScenario, availableWorkers);
+    const evaluated = effectiveRows.map((row) => ({ row, status: coverageStatus(row, currentCoverageScenario) }));
+    const known = evaluated.filter((item) => item.row.demanda !== null);
+    const current = known.find((item) => item.row.hora === hourBucket) || null;
+    const worst = known.reduce((current, item) => {
+      if (!current) return item;
+      if ((item.status.balance || 0) < (current.status.balance || 0)) return item;
+      if ((item.status.balance || 0) === (current.status.balance || 0) && Number(item.row.demanda || 0) > Number(current.row.demanda || 0)) return item;
+      return current;
+    }, null);
+    const peak = known.reduce((current, item) => {
+      if (!current) return item;
+      return Number(item.row.demanda || 0) > Number(current.row.demanda || 0) ? item : current;
+    }, null);
+    const deficits = known.filter((item) => item.status.balance < 0).length;
+    const supportHours = known.reduce((sum, item) => sum + Math.max(0, item.status.balance || 0), 0);
+    const pdvBottlenecks = known.filter((item) => queueFromLoad(item.row.cargaCaixa, item.row[currentCoverageScenario]).bottleneck).length;
+    const status = deficits ? 'critical' : pdvBottlenecks ? 'attention' : 'adequate';
+    const action = deficits
+      ? `Reforçar a frente no intervalo ${worst?.row?.hora || ''}`
+      : pdvBottlenecks
+        ? 'Revisar pico e limite físico de PDVs'
+        : supportHours >= 1
+          ? 'Manter cobertura e converter sobra em apoio'
+          : 'Manter desenho atual';
+    const explanation = deficits
+      ? `Pior faixa: ${worst?.row?.hora || '—'} com demanda ${worst?.row?.demanda || 0} e ${worst ? worst.row[currentCoverageScenario] : 0} caixas ativos.`
+      : `Base ${cfg.label}. Pico em ${peak?.row?.hora || '—'} com demanda ${peak?.row?.demanda || 0}; sobra acumulada de ${supportHours} caixas-hora para tarefas auxiliares.`;
+
+    cards.push({
+      setor: 'Frente de Caixa',
+      fonte: cfg.label,
+      status,
+      statusLabel: status === 'critical' ? 'Crítico' : status === 'attention' ? 'Atenção' : 'Adequado',
+      necessario: current?.row?.demanda ?? peak?.row?.demanda ?? 0,
+      escalado: current ? current.row[currentCoverageScenario] : (peak ? peak.row[currentCoverageScenario] : 0),
+      saldo: current ? (current.row[currentCoverageScenario] - current.row.demanda) : (peak ? (peak.row[currentCoverageScenario] - peak.row.demanda) : 0),
+      action,
+      explanation: current
+        ? `Agora em ${current.row.hora}: demanda ${current.row.demanda}, ${current.row[currentCoverageScenario]} caixas abríveis e fila ${queueFromLoad(current.row.cargaCaixa, current.row[currentCoverageScenario]).label.toLowerCase()}. ${explanation}`
+        : explanation,
+      team: activeByZone.checkout || [],
+      metrics: [
+        { label: 'Agora', value: current?.row?.hora || hourBucket },
+        { label: 'Pior faixa', value: worst?.row?.hora || '—' },
+        { label: 'Pico', value: peak?.row?.hora || '—' },
+        { label: 'Apoio', value: `${supportHours} cx-h` }
+      ]
+    });
+  }
+
+  const jsDayIndex = operationalDayIndexToJs(dayIndex);
+  (data.setorDashboard || []).forEach((sector) => {
+    const zone = plantZoneFromSectorName(sector.setor);
+    const ativosAgora = activeByZone[zone] || [];
+    const escalado = Math.max(0, ativosAgora.length || Math.round(Number(sector.colaboradores || 0)));
+    const rule = sector.operationalNeed || null;
+    const curva = Array.isArray(sector.curvaDiaSemana) ? sector.curvaDiaSemana : [];
+    const curvaBase = curva.filter((value) => value > 0);
+    const mediaCurva = curvaBase.length ? (curvaBase.reduce((sum, value) => sum + value, 0) / curvaBase.length) : 0;
+    const cargaDiaSelecionado = curva[jsDayIndex] || 0;
+    const fatorDia = mediaCurva > 0 && cargaDiaSelecionado > 0 ? (cargaDiaSelecionado / mediaCurva) : 1;
+    let necessario = rule ? Math.max(0, Math.ceil((Number(rule.pessoasNecessarias || 0)) * fatorDia)) : escalado;
+    let status = rule ? rule.status : 'adequate';
+    let action = rule ? rule.acao : 'Manter a equipe no setor';
+
+    if (sector.status === 'sem-equipe' && sector.vendaDia > 0) {
+      necessario = 1;
+      status = 'critical';
+      action = 'Alocar cobertura mínima imediatamente';
+    } else if (!rule && sector.status === 'sobrecarga') {
+      necessario = Math.max(escalado + 1, Math.ceil(escalado * 1.2));
+      status = 'critical';
+      action = 'Reforçar setor ou redistribuir apoio';
+    } else if (!rule && sector.status === 'folga') {
+      necessario = Math.max(1, escalado - 1);
+      status = 'attention';
+      action = 'Usar parte da capacidade em apoio operacional';
+    } else if (!rule && escalado === 0 && sector.vendaDia === 0) {
+      necessario = 0;
+      status = 'adequate';
+      action = 'Sem ação imediata';
+    }
+
+    const saldo = escalado - necessario;
+    if (saldo < 0 && status !== 'critical') status = 'critical';
+    if (saldo === 0 && status === 'attention') status = 'attention';
+    if (saldo > 0 && status === 'adequate' && sector.status === 'folga') status = 'attention';
+
+    const productivity = sector.colaboradores ? `${money(sector.vendaPorColab || 0)}/colab.` : 'Sem produtividade';
+    const benchmark = rule
+      ? `${rule.driver} · benchmark inicial ${rule.benchmark} ${rule.unidade}.`
+      : sector.matriz?.caixasHora && sector.matriz.caixasHora !== '—'
+        ? `Benchmark inicial ${sector.matriz.caixasHora} cx/h.`
+        : 'Benchmark inicial qualitativo; calibrar com histórico real.';
+    const explanation = rule
+      ? `${rule.explicacao} Proxy usada: ${rule.proxyLabel}. Fator do dia ${fatorDia.toFixed(2)} com base na curva semanal. Confiança ${rule.confianca}.`
+      : sector.colaboradores
+        ? `${money(sector.vendaDia || 0)}/dia, ${sector.itensDia?.toLocaleString('pt-BR') || 0} itens/dia, ${productivity}. ${benchmark}`
+        : `${money(sector.vendaDia || 0)}/dia sem equipe associada. ${benchmark}`;
+
+    cards.push({
+      setor: sector.setor,
+      fonte: 'Mercadológico',
+      status,
+      statusLabel: status === 'critical' ? 'Crítico' : status === 'attention' ? 'Atenção' : 'Adequado',
+      necessario,
+      escalado,
+      saldo,
+      action,
+      explanation,
+      team: ativosAgora,
+      metrics: [
+        { label: 'Venda/dia', value: money(sector.vendaDia || 0) },
+        { label: 'Dia', value: cargaDiaSelecionado ? money(cargaDiaSelecionado) : (sector.picoDia || '—') },
+        { label: rule ? 'Volume proxy' : 'Pico', value: rule ? `${Number(rule.volumeDia || 0).toLocaleString('pt-BR')} ${rule.unidade.split('/')[0] || ''}`.trim() : (sector.picoDia || '—') },
+        { label: 'Equipe', value: escalado }
+      ]
+    });
+  });
+
+  const summary = {
+    critical: cards.filter((card) => card.status === 'critical').length,
+    attention: cards.filter((card) => card.status === 'attention').length,
+    adequate: cards.filter((card) => card.status === 'adequate').length
+  };
+
+  return { cards, summary };
+}
+
+function renderOperationalPlant(data, context = {}) {
+  const el = document.getElementById('storeFloorPlant');
+  if (!el) return;
+  const plant = buildOperationalPlant(data, context);
+  if (!plant.cards.length) {
+    el.innerHTML = '<div class="summary-empty"><strong>Base insuficiente para a Planta Inteligente</strong><span>Importe equipe e vendas para liberar necessário x escalado por setor.</span></div>';
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="plant-summary">
+      <article class="plant-summary-card critical"><small>Críticos</small><strong>${plant.summary.critical}</strong><span>Déficit ou cobertura ausente</span></article>
+      <article class="plant-summary-card attention"><small>Atenção</small><strong>${plant.summary.attention}</strong><span>Capacidade ociosa ou gargalo</span></article>
+      <article class="plant-summary-card adequate"><small>Adequados</small><strong>${plant.summary.adequate}</strong><span>Setores operando dentro da régua</span></article>
+    </div>
+    <div class="plant-grid">
+      ${plant.cards.map((card) => `
+        <article class="plant-card ${card.status}">
+          <div class="plant-card-top">
+            <div>
+              <small>${card.fonte}</small>
+              <h3>${card.setor}</h3>
+            </div>
+            <span class="plant-status ${card.status}">${card.statusLabel}</span>
+          </div>
+          <div class="plant-metrics">
+            <div><small>Necessário</small><strong>${card.necessario}</strong></div>
+            <div><small>Escalado</small><strong>${card.escalado}</strong></div>
+            <div><small>Saldo</small><strong class="${card.saldo < 0 ? 'neg' : card.saldo > 0 ? 'pos' : ''}">${card.saldo > 0 ? '+' : ''}${card.saldo}</strong></div>
+          </div>
+          <div class="plant-action">
+            <small>Ação recomendada</small>
+            <strong>${card.action}</strong>
+          </div>
+          <p class="plant-explanation">${card.explanation}</p>
+          <div class="plant-team">${card.team?.length ? card.team.map((name) => `<span>${name}</span>`).join('') : '<span class="empty">Sem equipe ativa neste momento</span>'}</div>
+          <div class="plant-foot-metrics">
+            ${card.metrics.map((metric) => `<span><b>${metric.label}:</b> ${metric.value}</span>`).join('')}
+          </div>
+        </article>
+      `).join('')}
+    </div>
+  `;
+}
+
 function renderSectorEngine(data) {
   renderSetorDashboard(data);
   const engine = data.sectorEngine || { coreSectors: [], library: [], example: {}, evolution: [] };
@@ -1118,6 +1359,7 @@ function renderStoreFloorMap(data) {
   if (_floorHour < loja.open || _floorHour >= loja.close) _floorHour = loja.open;
 
   const DAYS = ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  const DAY_LABELS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
   const ZC = {checkout:'#2563eb',gondola:'#16a34a',acougue:'#dc2626',padaria:'#ea580c',hortifruti:'#65a30d',frios:'#0891b2',comercial:'#9333ea',recebimento:'#78350f',escritorio:'#6366f1',outro:'#6b7280'};
   const ZL = {checkout:'Frente de loja',gondola:'Mercearia',acougue:'Acougue',padaria:'Padaria',hortifruti:'Hortifruti',frios:'Frios',comercial:'Comercial',recebimento:'Recebimento',escritorio:'Administrativo',outro:'Outros'};
 
@@ -1163,13 +1405,17 @@ function renderStoreFloorMap(data) {
     const x = isoX(gx,gy), y = isoY(gx,gy);
     const ini = name.split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase();
     const c = brk ? '#9e9e9e' : color;
+    const dk = matchMedia('(prefers-color-scheme:dark)').matches;
+    const firstName = name.split(' ')[0].slice(0,8);
+    const lblW = firstName.length * 4.2 + 6;
     let s = `<g class="floor-worker" data-n="${name}" data-z="${zl}" data-s="${sh}" data-brk="${brk?1:0}" style="cursor:pointer">`;
-    s += `<ellipse cx="${x}" cy="${y+2}" rx="7" ry="3" fill="rgba(0,0,0,.12)"/>`;
-    s += `<rect x="${x-5}" y="${y-14}" width="10" height="10" rx="2" fill="${c}" stroke="rgba(255,255,255,.5)" stroke-width="0.4"/>`;
-    s += `<circle cx="${x}" cy="${y-19}" r="4.5" fill="${c}" stroke="rgba(255,255,255,.5)" stroke-width="0.4"/>`;
-    s += `<text x="${x}" y="${y-12}" text-anchor="middle" fill="#fff" font-size="5.5" font-weight="600" style="font-family:inherit">${ini}</text>`;
-    s += `<text x="${x}" y="${y+10}" text-anchor="middle" fill="var(--color-text-secondary)" font-size="6" style="font-family:inherit">${name.split(' ')[0].slice(0,8)}</text>`;
-    if (brk) s += `<text x="${x}" y="${y-25}" text-anchor="middle" font-size="8">&#9749;</text>`;
+    s += `<ellipse cx="${x}" cy="${y+2}" rx="8" ry="4" fill="rgba(0,0,0,.2)"/>`;
+    s += `<rect x="${x-6}" y="${y-16}" width="12" height="14" rx="3" fill="${c}" stroke="#fff" stroke-width="0.8"/>`;
+    s += `<circle cx="${x}" cy="${y-21}" r="5.5" fill="${c}" stroke="#fff" stroke-width="0.8"/>`;
+    s += `<text x="${x}" y="${y-13}" text-anchor="middle" fill="#fff" font-size="6" font-weight="700" style="font-family:inherit;text-shadow:0 1px 2px rgba(0,0,0,.5)">${ini}</text>`;
+    s += `<rect x="${x-lblW/2}" y="${y+3}" width="${lblW}" height="11" rx="3" fill="${dk?'rgba(0,0,0,.7)':'rgba(255,255,255,.85)'}" stroke="${dk?'rgba(255,255,255,.15)':'rgba(0,0,0,.1)'}" stroke-width="0.4"/>`;
+    s += `<text x="${x}" y="${y+11}" text-anchor="middle" fill="${dk?'#e2e8f0':'#1e293b'}" font-size="6.5" font-weight="500" style="font-family:inherit">${firstName}</text>`;
+    if (brk) s += `<text x="${x}" y="${y-28}" text-anchor="middle" font-size="9">&#9749;</text>`;
     s += '</g>';
     return s;
   }
@@ -1306,6 +1552,7 @@ function renderStoreFloorMap(data) {
     const hh = Math.floor(_floorHour), mm = Math.round((_floorHour-hh)*60);
     const timeStr = String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
     const pct = ((_floorHour - lojaH.open) / (lojaH.close - lojaH.open)) * 100;
+    const plantSourceLabel = `${DAY_LABELS[_floorDay] || 'Dia selecionado'} · ${timeStr}`;
 
     let pipHtml = '';
     const pipH = 4;
@@ -1370,6 +1617,14 @@ function renderStoreFloorMap(data) {
         <div style="background:var(--color-background-secondary);border-radius:8px;padding:8px 10px"><p style="font-size:11px;color:var(--color-text-secondary);margin:0"><i class="ti ti-users" style="margin-right:3px"></i>Total ativos</p><p style="font-size:17px;font-weight:500;margin:2px 0 0;color:var(--color-text-primary)">${r.active} / ${r.total}</p></div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;font-size:11px;color:var(--color-text-secondary)">${legendHtml}</div>
+      <div class="plant-inline-head">
+        <div>
+          <small>Planta inteligente operacional</small>
+          <strong>Necessário x escalado x ação recomendada</strong>
+        </div>
+        <span>${plantSourceLabel} · ${scenario.label || ''}</span>
+      </div>
+      <div id="storeFloorPlant"></div>
     `;
 
     // Event: day buttons
@@ -1447,6 +1702,8 @@ function renderStoreFloorMap(data) {
       });
       w.addEventListener('mouseleave', () => { if (w._tip) { w._tip.remove(); w._tip = null; } });
     });
+
+    renderOperationalPlant(data, { dayIndex: _floorDay, hour: _floorHour });
   }
 
   render();
