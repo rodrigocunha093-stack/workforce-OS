@@ -117,6 +117,22 @@ Criado `CODEMAP.md` para que qualquer dev/IA ache as funções no `server.js` (3
 - **Bug corrigido: `shiftWorkedHours` ignorava minutos.** Turno `7h20` retornava 7 em vez de 7.33. Agora captura `NNhMM` com a regex `/·\s*(\d+)h(\d{2})?/`.
 - Pipeline pós-otimização: (1) redistribui intervalos na escala, (2) recalcula cobertura a partir dos turnos modificados, (3) aplica targets finais.
 
+## Atualização 2026-06-12 — deficit sábado fechadores
+
+- **Bug corrigido: déficit 06-12h no sábado.** Com 2 de 5 operadoras configuradas como "fechamento" (Girlene e Thais), ambas começavam às 10h+, deixando apenas 3 caixas nas 6h de pico (06-12h) quando o target era 4.
+- **Fix:** `generateScheduleByProfile` agora identifica todos os fechadores explícitos (`idxFechadores`). Em dias de pico (sex/sáb), apenas o último (`idxFechadorPrimario`) mantém o turno de fechamento; os demais são redirecionados para a abertura com offset escalonado (0.5h entre cada).
+- **Resultado:** 4 caixas cobertos 06-12h (target atingido). Déficit residual 13-18h (1 pessoa vs target 2) é **estrutural** — 5×7h20=36h40 disponíveis vs ~39h requeridas. Resolver requer contratação ou redução de targets.
+- Em dias normais (seg-qui), fechadores mantêm o turno de fechamento normalmente.
+
+## Atualização 2026-06-12 — pico sex/sáb + art. 71 + revisão Blue Yonder
+
+- **Regra de pico consolidada (sex/sáb):** só 1 fechador(a) mantém o turno de fechamento; fechadores extras viram cobertura de manhã. `peakShift` calcula entrada e intervalo juntos: intervalos espaçados de 1h entre operadores, começando após a chegada da fechadora; entrada escalonada para que ninguém exceda **5h40 contínuas** (6h do art. 71 − 20min de margem).
+- **Jornada variável:** teto diário 9h (`distribuirJornada` e `shiftHours`). Distribuição típica 44h/6x1: seg-qui ~6h40, sex ~8h20, sáb 9h. Compensação semanal dentro das 44h (art. 59 §2º).
+- **Limite contínuo corrigido:** era 6h→ entendido errado como 5h; confirmado no art. 71 que o teto é 6h. `maxAntes = 340min` (5h40) em `parseWorkedBlocks` (server), `app.js` e `applyOptimizationToSchedule`.
+- **Compliance ampliado:** `checkComplianceCLT` agora detecta (5) bloco contínuo >6h sem intervalo — art. 71; (6) jornada diária >10h — art. 59. Antes mostrava "Conforme" mesmo com 7h contínuas.
+- **`applyOptimizationToSchedule`:** janela de realocação do intervalo agora limitada para nunca criar bloco >5h40 (antes permitia mover a pausa até 3h do fim, criando blocos de 7h).
+- **Revisão comparativa Blue Yonder:** lacunas conhecidas (não bloqueantes): demanda heurística vs Erlang-C; otimização gulosa (greedy) vs solver; escala semanal padrão vs calendário datado; sem regras de CCT locais; sem rodízio de domingo (Lei 10.101 — 1 domingo a cada 3 para comércio). Registradas como evolução, não bug.
+
 ## Referências
 
 - Roadmap completo e análise vs Blue Yonder: `ANALISE-E-ROADMAP.md`.
