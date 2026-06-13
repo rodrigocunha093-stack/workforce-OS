@@ -1344,7 +1344,13 @@ function renderStoreFloorMap(data) {
   const source = getSelectedCashierScenario(data);
   const setorMap = data.employeeSetorMap || {};
   const cargoMap = data.employeeCargoMap || {};
-  const people = Object.entries(source.people).map(([n, s]) => ({ nome: n, shifts: s }));
+  // A planta mostra TODOS os setores. getSelectedCashierScenario prefere caixaPeople (só caixa)
+  // quando o período está fechado; aqui preferimos o conjunto completo do snapshot.
+  let peopleSource = source.people;
+  if (source.usarFechada && data.escalaFechada && data.escalaFechada.people && Object.keys(data.escalaFechada.people).length) {
+    peopleSource = data.escalaFechada.people;
+  }
+  const people = Object.entries(peopleSource).map(([n, s]) => ({ nome: n, shifts: s }));
   if (!people.length) { el.innerHTML = ''; return; }
 
   const pdvs = Number(profile.quantidadePdvs || data.storeConfig?.pdvs || 4);
@@ -1365,7 +1371,8 @@ function renderStoreFloorMap(data) {
 
   // Motor de necessidade — mapear zona da planta → setor do dashboard
   const setorDash = data.setorDashboard || [];
-  const ZONE_TO_SETOR = {checkout:'frente de caixa',gondola:'mercearia',acougue:'acougue',padaria:'padaria',hortifruti:'hortifruti',frios:'frios e laticineos',recebimento:'mercearia',escritorio:null,comercial:null,outro:null};
+  // recebimento/escritorio/comercial não têm benchmark próprio → sem status (evita exibir déficit de outro setor na zona errada)
+  const ZONE_TO_SETOR = {checkout:'frente de caixa',gondola:'mercearia',acougue:'acougue',padaria:'padaria',hortifruti:'hortifruti',frios:'frios e laticineos',recebimento:null,escritorio:null,comercial:null,outro:null};
   function getNeed(zone) {
     const setorKey = ZONE_TO_SETOR[zone];
     if (!setorKey) return null;
@@ -1378,7 +1385,8 @@ function renderStoreFloorMap(data) {
     const n = need.operationalNeed;
     const statusColors = { adequate: '#16a34a', attention: '#eab308', critical: '#dc2626' };
     const statusIcons = { adequate: '🟢', attention: '🟡', critical: '🔴' };
-    return { status: n.status, color: statusColors[n.status] || '#6b7280', icon: statusIcons[n.status] || '⚪', necessario: n.pessoasNecessarias, saldo: n.saldo, acao: n.acao, explicacao: n.explicacao, driver: n.driver };
+    const equipe = Math.round((n.saldo + n.pessoasNecessarias) * 10) / 10; // equipe total do setor (coerente: equipe - necessario = saldo)
+    return { status: n.status, color: statusColors[n.status] || '#6b7280', icon: statusIcons[n.status] || '⚪', necessario: n.pessoasNecessarias, equipe, saldo: n.saldo, acao: n.acao, explicacao: n.explicacao, driver: n.driver };
   }
 
   function zoneOf(nome) {
@@ -1399,7 +1407,7 @@ function renderStoreFloorMap(data) {
     if (!sh || sh === 'Folga') return null;
     const c = sh.split('·')[0].trim().split('/');
     const r = [];
-    c.forEach(b => { const p = b.split('-'); const s = parseInt(p[0]), e = parseInt(p[1]); if (!isNaN(s) && !isNaN(e)) r.push({s,e}); });
+    c.forEach(b => { const p = b.split('-'); const s = hhToNum(p[0]), e = hhToNum(p[1]); if (!isNaN(s) && !isNaN(e)) r.push({s,e}); });
     return r.length ? r : null;
   }
   function isWorking(p, h) { const r = parseRanges(p.shifts[_floorDay]); return r ? r.some(x => h >= x.s && h < x.e) : false; }
@@ -1588,10 +1596,11 @@ function renderStoreFloorMap(data) {
       return `<div style="background:${bgColor};border-left:3px solid ${borderColor};border-radius:6px;padding:8px 10px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
           <span style="font-weight:600;font-size:12px;color:var(--color-text-primary)">${st.icon} ${ZL[z]}</span>
-          <span style="font-size:11px;font-weight:600;color:${borderColor}">${escalados} / ${st.necessario} <small style="opacity:.7">${saldoTxt}</small></span>
+          <span style="font-size:11px;font-weight:600;color:${borderColor}" title="Equipe total do setor / necessário no dia">${st.equipe} / ${st.necessario} <small style="opacity:.7">${saldoTxt}</small></span>
         </div>
         <p style="margin:0;font-size:11px;color:var(--color-text-secondary)">${st.acao || ''}</p>
         ${st.explicacao ? `<p style="margin:3px 0 0;font-size:10px;color:var(--color-text-tertiary)">${st.explicacao}</p>` : ''}
+        <p style="margin:3px 0 0;font-size:10px;color:var(--color-text-tertiary)">${escalados} ativo(s) neste horário</p>
       </div>`;
     }).filter(Boolean).join('');
     const recommendations = recCards ? `<div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:6px"><div style="grid-column:1/-1;font-size:12px;font-weight:600;color:var(--color-text-secondary);margin-bottom:2px"><i class="ti ti-alert-triangle" style="margin-right:3px"></i>Motor de necessidade operacional</div>${recCards}</div>` : '';
@@ -1607,18 +1616,33 @@ function renderStoreFloorMap(data) {
       if (st.saldo > 0) excessZones.push({ zone: z, sobra: st.saldo, label: ZL[z], workers: byZone[z] || [] });
     });
 
-    // Also check non-operational zones for available workers
-    ['comercial','outro'].forEach(z => {
+    // Zonas-pool sem benchmark próprio (recebimento livre à tarde, comercial, apoio) entram como fonte de reforço
+    ['recebimento','comercial','outro'].forEach(z => {
       const workers = byZone[z] || [];
       if (workers.length > 0) excessZones.push({ zone: z, sobra: workers.length, label: ZL[z], workers });
     });
 
+    // Compatibilidade operacional: para onde cada déficit pode puxar reforço.
+    // Especialistas (açougue/padaria/frios) exigem técnica — não recebem realocação genérica
+    // (o motor de necessidade já recomenda reforço/capacitação nesses casos).
+    const ZONE_COMPAT = {
+      checkout: ['gondola', 'recebimento', 'comercial', 'outro'],
+      gondola: ['checkout', 'recebimento', 'comercial', 'outro'],
+      hortifruti: ['gondola', 'recebimento', 'outro'],
+      acougue: [],
+      padaria: [],
+      frios: []
+    };
+
     // Generate reallocation suggestions
     const sugestoes = [];
     deficitZones.forEach(def => {
+      const origensOk = ZONE_COMPAT[def.zone] || [];
+      if (!origensOk.length) return; // especialista: sem realocação cruzada
       let remaining = def.falta;
       excessZones.forEach(exc => {
         if (remaining <= 0 || exc.sobra <= 0) return;
+        if (!origensOk.includes(exc.zone)) return; // origem incompatível com o destino
         const available = exc.workers.filter(w => !isOnBreak(w, _floorHour));
         const toMove = available.slice(0, Math.min(remaining, exc.sobra));
         toMove.forEach(w => {

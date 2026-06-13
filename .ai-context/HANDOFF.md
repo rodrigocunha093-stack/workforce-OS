@@ -2,6 +2,20 @@
 
 > Última sessão: 2026-06-11 (Claude). Leia antes de agir.
 
+## 🔎 Auditoria de consistência de dados (2026-06-13, Opus) — planta + motores
+
+Foco: garantir que dados dependentes/cálculos/regras estão corretos e interligados. Bugs encontrados e corrigidos em `public/app.js` (`renderStoreFloorMap`):
+
+1. **Minutos truncados na planta (parseRanges).** Usava `parseInt('13:20')→13`, descartando minutos. Turnos em `HH:MM` perdiam até 59min → headcount horário, `isWorking`/`isOnBreak`, contagens e timeline (passos de 30min) ficavam errados na fronteira. **Fix:** `parseRanges` agora usa `hhToNum` (fracionário), igual ao resto do app.
+2. **Motor de realocação sem regra de habilidade.** Sugeria mover qualquer pessoa de qualquer zona com excedente para qualquer déficit (ex.: caixa → açougue). **Fix:** mapa `ZONE_COMPAT` — especialistas (açougue/padaria/frios) não recebem realocação cruzada; frente de caixa/mercearia/hortifruti só puxam do pool flexível (gôndola/repositor, recebimento, comercial/apoio). Recebimento entrou como fonte de excedente (livre à tarde).
+3. **Card do motor de necessidade incoerente.** Mostrava `escalados(hora) / necessário(dia) · saldo(equipe total−dia)` — 3 bases diferentes, podendo exibir "2 ativos · +1 excedente". **Fix:** numerador agora é a **equipe total do setor** (= necessário + saldo, coerente); "ativos neste horário" virou nota separada. `zoneStatus` retorna `equipe`.
+4. **Recebimento exibia status da mercearia.** `ZONE_TO_SETOR.recebimento='mercearia'` mostrava o déficit da mercearia na doca, mas o pessoal do recebimento não está no headcount da mercearia. **Fix:** recebimento/escritório/comercial → `null` (sem badge falso).
+5. **Planta perdia setores em período fechado.** `getSelectedCashierScenario` prefere `caixaPeople` (só caixa) quando há escala fechada — correto p/ aba Escala, mas a planta mostrava só caixas. **Fix:** a planta agora prefere `escalaFechada.people` (conjunto completo, que o snapshot já guarda).
+
+**Não-bugs confirmados (semântica intencional):** `activePdvs=min(operadores,PDVs)` na planta (mostra PDV com operador) ≠ cobertura da aba Escala que aplica `min(...,demanda)` — views distintas, ok. Resumo recalcula tudo por request (documentado, sem O(n²) novo). CLT art.71/44h/interjornada já auditados em sessões anteriores.
+
+---
+
 ## 🔭 Sessão mais recente (fechar período + correção 44h)
 
 **Feito:**
