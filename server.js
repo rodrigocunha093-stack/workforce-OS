@@ -1619,6 +1619,23 @@ function checkComplianceCLT(people) {
         if (descanso < 11) { v.push(`Interjornada de ${descanso}h (mín 11h)`); break; }
       }
     }
+    // 5) Art. 71 — bloco contínuo de trabalho > 6h sem intervalo
+    for (let d = 0; d < 7; d++) {
+      const blocks = parseWorkedBlocks(shifts[d]);
+      const longo = blocks.find(b => (b.end - b.start) > 360);
+      if (longo) {
+        v.push(`Bloco contínuo de ${formatDur((longo.end - longo.start) / 60)} sem intervalo (máx 6h — art. 71)`);
+        break;
+      }
+    }
+    // 6) Art. 59 — jornada diária > 10h (8h + 2h extras)
+    for (let d = 0; d < 7; d++) {
+      const horasDia = shiftWorkedHours(shifts[d]);
+      if (horasDia > 10) {
+        v.push(`Jornada diária de ${formatDur(horasDia)} excede 10h (art. 59)`);
+        break;
+      }
+    }
     if (v.length) violacoes.push({ nome, violacoes: v });
   });
   return violacoes;
@@ -2073,12 +2090,14 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
           const workedMin = Math.round(workedHours * 60);
           const beforeBase = Math.round((workedMin / 2) / 5) * 5;
           const minAntes = workedHours > 6 ? 180 : 120;
+          const maxAntes = workedHours > 6 ? 340 : workedMin; // 5h40 (6h art.71 - 20min)
           const minDepois = 120;
-          const beforeMin = Math.max(minAntes, Math.min(beforeBase, workedMin - minDepois));
+          const beforeMin = Math.min(maxAntes, Math.max(minAntes, Math.min(beforeBase, workedMin - minDepois)));
           const currentBreakStart = shiftStart + beforeMin;
 
-          const earliest = Math.max(shiftStart + 180, Math.ceil(shiftStart / 60) * 60);
-          const latest = Math.min(shiftEnd - 180, Math.floor((shiftEnd - 60) / 60) * 60);
+          // Janela legal p/ mover o intervalo: nenhum bloco contínuo > 5h40 (art. 71 c/ margem)
+          const earliest = Math.max(shiftStart + 120, shiftEnd - 60 - 340, Math.ceil(shiftStart / 60) * 60);
+          const latest = Math.min(shiftStart + 340, shiftEnd - 60 - 120, Math.floor((shiftEnd - 60) / 60) * 60);
           if (earliest > latest) return null;
 
           return { nome, shifts, dayIndex, shiftStart, shiftEnd, workedHours, breakStart: currentBreakStart, earliest, latest };
