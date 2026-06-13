@@ -1596,7 +1596,71 @@ function renderStoreFloorMap(data) {
     }).filter(Boolean).join('');
     const recommendations = recCards ? `<div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:6px"><div style="grid-column:1/-1;font-size:12px;font-weight:600;color:var(--color-text-secondary);margin-bottom:2px"><i class="ti ti-alert-triangle" style="margin-right:3px"></i>Motor de necessidade operacional</div>${recCards}</div>` : '';
 
-    return { svg: h, active: active.length, total: people.length, activePdvs, folga, breaks, noSalao, noEscritorio, noRecebimento, formation: Object.entries(byZone).map(([z,w])=>`${ZL[z]||z}: ${w.length}`).join(' · ') || '0', recommendations };
+    // Motor de Realocação: cruzar déficit x excedente
+    const deficitZones = [];
+    const excessZones = [];
+    recZones.forEach(z => {
+      const escalados = (byZone[z]||[]).length;
+      const st = zoneStatus(z, escalados);
+      if (st.status === 'unknown') return;
+      if (st.saldo < 0) deficitZones.push({ zone: z, falta: Math.abs(st.saldo), label: ZL[z] });
+      if (st.saldo > 0) excessZones.push({ zone: z, sobra: st.saldo, label: ZL[z], workers: byZone[z] || [] });
+    });
+
+    // Also check non-operational zones for available workers
+    ['comercial','outro'].forEach(z => {
+      const workers = byZone[z] || [];
+      if (workers.length > 0) excessZones.push({ zone: z, sobra: workers.length, label: ZL[z], workers });
+    });
+
+    // Generate reallocation suggestions
+    const sugestoes = [];
+    deficitZones.forEach(def => {
+      let remaining = def.falta;
+      excessZones.forEach(exc => {
+        if (remaining <= 0 || exc.sobra <= 0) return;
+        const available = exc.workers.filter(w => !isOnBreak(w, _floorHour));
+        const toMove = available.slice(0, Math.min(remaining, exc.sobra));
+        toMove.forEach(w => {
+          const ranges = parseRanges(w.shifts[_floorDay]);
+          if (!ranges) return;
+          const currentBlock = ranges.find(r => _floorHour >= r.s && _floorHour < r.e);
+          if (!currentBlock) return;
+          const hStart = String(Math.floor(currentBlock.s)).padStart(2,'0') + ':' + String(Math.round((currentBlock.s%1)*60)).padStart(2,'0');
+          const hEnd = String(Math.floor(currentBlock.e)).padStart(2,'0') + ':' + String(Math.round((currentBlock.e%1)*60)).padStart(2,'0');
+          sugestoes.push({
+            nome: w.nome,
+            de: exc.label,
+            para: def.label,
+            horario: `${hStart} - ${hEnd}`,
+            deZone: exc.zone,
+            paraZone: def.zone
+          });
+          remaining--;
+          exc.sobra--;
+        });
+      });
+    });
+
+    let realocacaoHtml = '';
+    if (sugestoes.length > 0) {
+      const cards = sugestoes.map(s => {
+        return `<div style="background:rgba(99,102,241,.08);border-left:3px solid #6366f1;border-radius:6px;padding:8px 10px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <span style="font-size:14px">💡</span>
+            <span style="font-weight:600;font-size:12px;color:var(--color-text-primary)">${s.nome}</span>
+          </div>
+          <p style="margin:0;font-size:11px;color:var(--color-text-secondary)">Mover de <strong>${s.de}</strong> → <strong>${s.para}</strong></p>
+          <p style="margin:2px 0 0;font-size:10px;color:var(--color-text-tertiary)">Disponível ${s.horario} · ${s.de} tem excedente, ${s.para} precisa de reforço</p>
+        </div>`;
+      }).join('');
+      realocacaoHtml = `<div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:6px">
+        <div style="grid-column:1/-1;font-size:12px;font-weight:600;color:#6366f1;margin-bottom:2px"><i class="ti ti-arrows-exchange" style="margin-right:3px"></i>Motor de realocação — ${sugestoes.length} sugestão(ões)</div>
+        ${cards}
+      </div>`;
+    }
+
+    return { svg: h, active: active.length, total: people.length, activePdvs, folga, breaks, noSalao, noEscritorio, noRecebimento, formation: Object.entries(byZone).map(([z,w])=>`${ZL[z]||z}: ${w.length}`).join(' · ') || '0', recommendations, realocacao: realocacaoHtml };
   }
 
   function render() {
@@ -1671,6 +1735,7 @@ function renderStoreFloorMap(data) {
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;font-size:11px;color:var(--color-text-secondary)">${legendHtml}</div>
       ${r.recommendations}
+      ${r.realocacao || ''}
     `;
 
     // Event: day buttons
