@@ -14,7 +14,9 @@ const CLIENTS_DIR = path.join(DATA_DIR, 'clients');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const AUDIT_DIR = path.join(DATA_DIR, 'audit');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
-const MODEL_SALES_FILE = 'C:\\Users\\LOJA1321\\OneDrive\\Área de Trabalho\\dados vendas';
+// Caminho do arquivo de vendas-modelo (apenas para o DEMO local). Em produção
+// (Vercel) o arquivo não existe e o demo segue sem dados-modelo — loadModelSalesRows() trata.
+const MODEL_SALES_FILE = process.env.MODEL_SALES_FILE || 'C:\\Users\\LOJA1321\\OneDrive\\Área de Trabalho\\dados vendas';
 const sessions = new Map();
 const attempts = new Map();
 const PILOT_INVITE_CODE = process.env.PILOT_INVITE_CODE || 'PILOTO-CX-2026';
@@ -124,20 +126,30 @@ function requireSameOrigin(req) {
   if (!host || new URL(origin).host !== host) throw new Error('Origem da requisição não autorizada.');
 }
 
-function enforceRateLimit(req, action, maxAttempts = 8, windowMs = 15 * 60 * 1000) {
+async function enforceRateLimit(req, action, maxAttempts = 8, windowMs = 15 * 60 * 1000) {
   const ip = requestIp(req);
   const key = `${action}:${ip}`;
   const now = Date.now();
-  const current = attempts.get(key) || [];
-  const recent = current.filter((time) => now - time < windowMs);
 
-  if (recent.length >= maxAttempts) {
-    audit(null, 'RATE_LIMIT_EXCEEDED', { action, ip, attempts: recent.length });
+  // 1) Fast path em memória (protege rajadas dentro de uma instância quente).
+  const current = (attempts.get(key) || []).filter((time) => now - time < windowMs);
+  if (current.length >= maxAttempts) {
     throw new Error('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
   }
+  current.push(now);
+  attempts.set(key, current);
 
-  recent.push(now);
-  attempts.set(key, recent);
+  // 2) Store compartilhado (cross-instance, serverless-safe). Best-effort: se a
+  //    tabela rate_limits não existir, countRecentRateHits retorna null e seguimos
+  //    apenas com o limitador em memória.
+  const sinceIso = new Date(now - windowMs).toISOString();
+  const shared = await dbSupabase.countRecentRateHits(key, sinceIso);
+  if (shared !== null) {
+    dbSupabase.recordRateHit(key);
+    if (shared >= maxAttempts) {
+      throw new Error('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
+    }
+  }
 }
 
 function securityHeaders(res) {
@@ -168,6 +180,145 @@ function sanitizeString(str) {
   return String(str).slice(0, 1000).replace(/[<>"']/g, '');
 }
 
+function defaultOperationalRules() {
+  return {
+    lojaNaoAbreFraca: true,
+    minimoAberturaPorSetor: 1,
+    minimoFechamentoPorSetor: 1,
+    reposicaoNaoSoCedo: true,
+    intervaloMinimoMinutos: 60,
+    intervaloMulherMaximoMinutos: 120,
+    fechamentoSeguroMinimo: 2,
+    permitirFolgaSexta: false,
+    permitirFolgaSabado: false,
+    domingoConfiguravel: true
+  };
+}
+
+function defaultEmployeeProfileFields() {
+  return {
+    setoresAptos: [],
+    proficiencia: 'pleno',
+    preferenciaTurno: 'flexivel',
+    restricoes: [],
+    papelOperacional: 'auto'
+  };
+}
+
+function defaultEscalaWorkflow() {
+  return {
+    status: 'rascunho',
+    updatedAt: null,
+    updatedBy: null,
+    reviewedAt: null,
+    reviewedBy: null,
+    publishedAt: null,
+    publishedBy: null,
+    completedAt: null,
+    completedBy: null
+  };
+}
+
+function normalizeStringList(value, maxItems = 20, maxLength = 60) {
+  const list = Array.isArray(value)
+    ? value
+    : String(value || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+  return list
+    .map((item) => sanitizeString(String(item)).slice(0, maxLength))
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function normalizeOperationalRules(rules) {
+  const base = defaultOperationalRules();
+  const src = rules && typeof rules === 'object' ? rules : {};
+  return {
+    ...base,
+    ...src,
+    minimoAberturaPorSetor: Math.max(1, Number(src.minimoAberturaPorSetor ?? base.minimoAberturaPorSetor) || base.minimoAberturaPorSetor),
+    minimoFechamentoPorSetor: Math.max(1, Number(src.minimoFechamentoPorSetor ?? base.minimoFechamentoPorSetor) || base.minimoFechamentoPorSetor),
+    intervaloMinimoMinutos: Math.max(15, Number(src.intervaloMinimoMinutos ?? base.intervaloMinimoMinutos) || base.intervaloMinimoMinutos),
+    intervaloMulherMaximoMinutos: Math.max(60, Number(src.intervaloMulherMaximoMinutos ?? base.intervaloMulherMaximoMinutos) || base.intervaloMulherMaximoMinutos),
+    fechamentoSeguroMinimo: Math.max(1, Number(src.fechamentoSeguroMinimo ?? base.fechamentoSeguroMinimo) || base.fechamentoSeguroMinimo),
+    permitirFolgaSexta: src.permitirFolgaSexta === true,
+    permitirFolgaSabado: src.permitirFolgaSabado === true,
+    domingoConfiguravel: src.domingoConfiguravel !== false
+  };
+}
+
+function normalizeEmployeeRecord(row) {
+  const base = defaultEmployeeProfileFields();
+  const turnosValidos = ['abertura', 'intermediario', 'fechamento', 'flexivel'];
+  const diasValidos = ['', 'segunda', 'terca', 'quarta', 'quinta', 'domingo'];
+  const proficienciasValidas = ['iniciante', 'pleno', 'senior', 'lider'];
+  const papeisValidos = ['auto', 'abertura', 'sustentacao', 'fechamento', 'apoio'];
+  const mercadologicos = Array.isArray(row.mercadologicos)
+    ? row.mercadologicos.map((m) => sanitizeString(String(m)).slice(0, 80)).filter(Boolean).slice(0, 30)
+    : [];
+
+  let setor = sanitizeString(String(row.setor || 'Caixa')).slice(0, 60);
+  if (mercadologicos.length) {
+    const setoresOp = mercadologicos.map(mercadologicoParaSetor);
+    const freq = {};
+    setoresOp.forEach((s) => { freq[s] = (freq[s] || 0) + 1; });
+    setor = Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
+  }
+
+  const preferenciaTurno = turnosValidos.includes(String(row.preferenciaTurno || row.turno || '').toLowerCase())
+    ? String(row.preferenciaTurno || row.turno).toLowerCase()
+    : 'flexivel';
+
+  return {
+    nome: sanitizeString(String(row.nome || '')).slice(0, 100),
+    sexo: ['masculino', 'feminino'].includes(String(row.sexo || '').toLowerCase()) ? String(row.sexo).toLowerCase() : 'feminino',
+    cargo: sanitizeString(String(row.cargo || 'Operador de Caixa')).slice(0, 60),
+    setor,
+    mercadologicos,
+    horasSemanais: Math.min(168, Math.max(1, Number(row.horasSemanais) || 44)),
+    salario: Math.max(0, Number(row.salario) || 0),
+    turno: turnosValidos.includes(String(row.turno || preferenciaTurno || '').toLowerCase()) ? String(row.turno || preferenciaTurno).toLowerCase() : 'flexivel',
+    podeDomingo: row.podeDomingo === false ? false : true,
+    folgaPreferencial: diasValidos.includes(String(row.folgaPreferencial || '').toLowerCase()) ? String(row.folgaPreferencial).toLowerCase() : '',
+    setoresAptos: normalizeStringList(row.setoresAptos || row.setor || [], 12, 60),
+    proficiencia: proficienciasValidas.includes(String(row.proficiencia || '').toLowerCase()) ? String(row.proficiencia).toLowerCase() : base.proficiencia,
+    preferenciaTurno,
+    restricoes: normalizeStringList(row.restricoes || [], 12, 80),
+    papelOperacional: papeisValidos.includes(String(row.papelOperacional || '').toLowerCase()) ? String(row.papelOperacional).toLowerCase() : base.papelOperacional
+  };
+}
+
+function normalizeEscalaWorkflow(workflow) {
+  const base = defaultEscalaWorkflow();
+  const src = workflow && typeof workflow === 'object' ? workflow : {};
+  const status = ['rascunho', 'revisado', 'publicado', 'realizado'].includes(String(src.status || '').toLowerCase())
+    ? String(src.status).toLowerCase()
+    : base.status;
+  return { ...base, ...src, status };
+}
+
+function applyWorkflowStatus(workflow, status, user, at = new Date().toISOString()) {
+  const next = normalizeEscalaWorkflow(workflow);
+  next.status = status;
+  next.updatedAt = at;
+  next.updatedBy = user?.email || null;
+  if (status === 'revisado') {
+    next.reviewedAt = at;
+    next.reviewedBy = user?.email || null;
+  }
+  if (status === 'publicado') {
+    next.publishedAt = at;
+    next.publishedBy = user?.email || null;
+  }
+  if (status === 'realizado') {
+    next.completedAt = at;
+    next.completedBy = user?.email || null;
+  }
+  return next;
+}
+
 function defaultClientState() {
   return {
     profile: {
@@ -181,15 +332,20 @@ function defaultClientState() {
       horarioSabado: '06:00-19:00',
       domingoOperacao: 'aberto',
       domingosFechadosMes: 0,
-      horarioDomingo: '08:00-12:00'
+      horarioDomingo: '08:00-12:00',
+      regrasOperacionais: defaultOperationalRules()
     },
     employees: [],
     salesRows: [],
     salesByMercadologico: [],
     dailyRevenue: [],           // faturamento diário [{data, faturamento}] — histórico longo para forecast
+    eventos: [],                // calendário de eventos [{data, tipo, nome, fator}]
+    timecardRows: [],           // registros de ponto [{nome, data, entrada, saida}]
+    escalaOverrides: {},      // edições manuais { "nome::dayIndex::cenario": "turno" }
     enabledModules: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     escalaFechada: null,      // período vigente fechado (snapshot imutável)
     escalaHistorico: [],      // períodos fechados anteriores
+    escalaWorkflow: defaultEscalaWorkflow(),
     updatedAt: null
   };
 }
@@ -269,7 +425,17 @@ function clientStateFile(userId) {
 async function loadClientState(userId) {
   if (!userId) return defaultClientState();
   const data = await dbSupabase.getClientData(userId);
-  return { ...defaultClientState(), ...data };
+  const base = defaultClientState();
+  const merged = { ...base, ...(data || {}) };
+  merged.profile = {
+    ...base.profile,
+    ...((data && data.profile) || {}),
+    regrasOperacionais: normalizeOperationalRules(data?.profile?.regrasOperacionais)
+  };
+  merged.employees = Array.isArray(data?.employees) ? data.employees.map(normalizeEmployeeRecord).filter((e) => e.nome.length >= 2) : [];
+  merged.escalaWorkflow = normalizeEscalaWorkflow(data?.escalaWorkflow);
+  merged.escalaHistorico = Array.isArray(data?.escalaHistorico) ? data.escalaHistorico : [];
+  return merged;
 }
 
 async function saveClientState(userId, state) {
@@ -1190,6 +1356,120 @@ function assignCoverageRolesBySector(employees) {
   return result.sort((a, b) => a._sortIndex - b._sortIndex);
 }
 
+function rotateArray(list, offset = 0) {
+  const arr = Array.isArray(list) ? [...list] : [];
+  if (!arr.length) return arr;
+  const shift = ((offset % arr.length) + arr.length) % arr.length;
+  return arr.slice(shift).concat(arr.slice(0, shift));
+}
+
+function uniqueVariantKey(employees) {
+  return (employees || [])
+    .map((emp) => `${emp.nome}:${emp._coverageRole || emp.turno || 'flexivel'}:${emp._sortIndex ?? ''}`)
+    .join('|');
+}
+
+function assignCoverageRolesVariant(employees, variantIndex = 0) {
+  const prepared = (employees || []).map((emp, index) => ({ ...emp, _sortIndex: index }));
+  if (prepared.length <= 1) {
+    return prepared.map((emp) => ({ ...emp, _coverageRole: 'central' }));
+  }
+
+  const half = Math.floor(prepared.length / 2);
+  const explicitOpen = [];
+  const explicitClose = [];
+  const explicitMiddle = [];
+  const flex = [];
+
+  prepared.forEach((emp) => {
+    const turno = String(emp.turno || 'flexivel').toLowerCase();
+    if (turno === 'abertura') explicitOpen.push(emp);
+    else if (turno === 'fechamento') explicitClose.push(emp);
+    else if (turno === 'intermediario') explicitMiddle.push(emp);
+    else flex.push(emp);
+  });
+
+  const rotations = [
+    (list) => [...list],
+    (list) => [...list].reverse(),
+    (list) => rotateArray(list, 1),
+    (list) => rotateArray(list, -1),
+    (list) => list.length > 2 ? rotateArray(list, Math.floor(list.length / 2)) : [...list]
+  ];
+  const flexOrdered = rotations[variantIndex % rotations.length](flex);
+  const result = [];
+  explicitOpen.forEach((emp) => result.push({ ...emp, _coverageRole: 'abertura' }));
+  explicitClose.forEach((emp) => result.push({ ...emp, _coverageRole: 'fechamento' }));
+  explicitMiddle.forEach((emp) => result.push({ ...emp, _coverageRole: 'intermediario' }));
+
+  const openFirst = variantIndex % 2 === 0;
+  let openingSlots = Math.max(0, half - explicitOpen.length);
+  let closingSlots = Math.max(0, half - explicitClose.length);
+  const flexPool = [...flexOrdered];
+
+  const takeFront = () => flexPool.shift();
+  const takeBack = () => flexPool.pop();
+  const fillOpen = () => {
+    while (openingSlots > 0 && flexPool.length) {
+      const emp = openFirst ? takeFront() : takeBack();
+      if (!emp) break;
+      result.push({ ...emp, _coverageRole: 'abertura' });
+      openingSlots -= 1;
+    }
+  };
+  const fillClose = () => {
+    while (closingSlots > 0 && flexPool.length) {
+      const emp = openFirst ? takeBack() : takeFront();
+      if (!emp) break;
+      result.push({ ...emp, _coverageRole: 'fechamento' });
+      closingSlots -= 1;
+    }
+  };
+
+  if (openFirst) {
+    fillOpen();
+    fillClose();
+  } else {
+    fillClose();
+    fillOpen();
+  }
+  flexPool.forEach((emp) => result.push({ ...emp, _coverageRole: 'intermediario' }));
+
+  const orderingStrategies = [
+    (list) => [...list].sort((a, b) => a._sortIndex - b._sortIndex),
+    (list) => [...list].sort((a, b) => {
+      const roleOrder = { abertura: 0, intermediario: 1, central: 1, fechamento: 2 };
+      const diff = (roleOrder[a._coverageRole] ?? 1) - (roleOrder[b._coverageRole] ?? 1);
+      return diff || a._sortIndex - b._sortIndex;
+    }),
+    (list) => [...list].sort((a, b) => {
+      const roleOrder = { fechamento: 0, intermediario: 1, central: 1, abertura: 2 };
+      const diff = (roleOrder[a._coverageRole] ?? 1) - (roleOrder[b._coverageRole] ?? 1);
+      return diff || a._sortIndex - b._sortIndex;
+    })
+  ];
+
+  const ordered = orderingStrategies[Math.floor(variantIndex / rotations.length) % orderingStrategies.length](result);
+  return ordered.map((emp, index) => ({ ...emp, _variantIndex: variantIndex, _variantOrder: index }));
+}
+
+function buildCoverageRoleVariants(employees, maxVariants = 6) {
+  const variants = [];
+  const seen = new Set();
+  const totalVariants = Math.max(1, maxVariants);
+  for (let index = 0; index < totalVariants; index += 1) {
+    const variant = assignCoverageRolesVariant(employees, index);
+    const key = uniqueVariantKey(variant);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    variants.push(variant);
+  }
+  if (!variants.length) {
+    variants.push(assignCoverageRolesBySector(employees));
+  }
+  return variants;
+}
+
 // Distribui a carga semanal pelos dias trabalhados conforme o PESO de demanda de cada dia.
 // Dias de pico (sex/sáb) recebem mais horas; dias fracos menos. Respeita piso/teto e soma exata.
 // diasTrabalho: array de índices (0=seg..6=dom). pesos: array[7] com peso de cada dia.
@@ -1311,10 +1591,15 @@ function buildForecast(mercRows, caixaRows) {
   return { sazonalidade, proximos, eventos, picoDiaSemana: sazonalidade.reduce((a, b) => b.valor > a.valor ? b : a) };
 }
 
-// Decomposição multiplicativa: índice dia-da-semana × fator semana-do-mês
-// Com 30 dias: ~4 amostras/dow (robusto), ~1-2 amostras/wom (direcional)
+// Decomposição multiplicativa: índice dia-da-semana × fator semana-do-mês.
+// O fator semana-do-mês é calculado ESPECÍFICO por dia-da-semana (interação dow×wom),
+// porque o efeito da semana de pagamento no sábado ≠ na terça. Validado por backtest
+// walk-forward nos dados reais (WAPE 20,1% → 17,9% vs fator global). Fallback ao fator
+// global quando a célula [dow][wom] tem menos de MIN_CELL amostras.
+// Com 30 dias: ~4 amostras/dow (robusto), ~1-2 amostras/wom (direcional).
 function buildDemandIndices(rows) {
   if (!rows || !rows.length) return null;
+  const MIN_CELL = 4; // amostras mínimas p/ confiar no fator específico da célula
 
   // Índice por dia da semana (dow 0=dom..6=sab)
   const dowSum = [0,0,0,0,0,0,0];
@@ -1322,6 +1607,9 @@ function buildDemandIndices(rows) {
   // Fator por semana do mês (wom 1..5)
   const womSum = [0,0,0,0,0,0]; // idx 0 unused, 1-5
   const womDays = [null, new Set(), new Set(), new Set(), new Set(), new Set()];
+  // Interação dow×wom: soma e contagem por célula [dow][wom]
+  const cellSum = Array.from({ length: 7 }, () => [0,0,0,0,0,0]);
+  const cellCnt = Array.from({ length: 7 }, () => [0,0,0,0,0,0]);
 
   rows.forEach(r => {
     const venda = Number(r.vendaLiquida || 0);
@@ -1331,6 +1619,7 @@ function buildDemandIndices(rows) {
     const wom = weekOfMonth(r.data);
     womSum[wom] += venda;
     womDays[wom].add(r.data);
+    if (wom >= 1 && wom <= 5) { cellSum[d][wom] += venda; cellCnt[d][wom] += 1; }
   });
 
   // Média por dow
@@ -1339,11 +1628,26 @@ function buildDemandIndices(rows) {
   const dowMean = dowActive.length ? dowActive.reduce((a, b) => a + b, 0) / dowActive.length : 1;
   const dowIndex = dowAvg.map(v => dowMean > 0 ? Number((v / dowMean).toFixed(3)) : 1);
 
-  // Média por wom
+  // Média por wom (fator GLOBAL — usado como fallback)
   const womAvg = womSum.map((v, i) => i > 0 && womDays[i].size ? v / womDays[i].size : 0);
   const womActive = womAvg.filter((v, i) => i > 0 && v > 0);
   const womMean = womActive.length ? womActive.reduce((a, b) => a + b, 0) / womActive.length : 1;
   const womFactor = womAvg.map((v, i) => i > 0 && womMean > 0 ? Number((v / womMean).toFixed(3)) : 1);
+
+  // Fator semana-do-mês ESPECÍFICO por dia-da-semana (interação). Relativo à média daquele dia.
+  // womByDow[dow][wom] = média(dias dow&wom) / média(dias dow); fallback ao womFactor global.
+  const womByDow = Array.from({ length: 7 }, (_, d) => {
+    const row = [1,1,1,1,1,1];
+    const baseDia = dowAvg[d];
+    for (let w = 1; w <= 5; w++) {
+      if (cellCnt[d][w] >= MIN_CELL && baseDia > 0) {
+        row[w] = Number(((cellSum[d][w] / cellCnt[d][w]) / baseDia).toFixed(3));
+      } else {
+        row[w] = womFactor[w] || 1; // fallback global
+      }
+    }
+    return row;
+  });
 
   // Dias com dados por célula (para nível de confiança)
   const totalDays = new Set(rows.map(r => r.data)).size;
@@ -1357,7 +1661,8 @@ function buildDemandIndices(rows) {
 
   return {
     dowIndex,     // [7] — 0=dom..6=sab, 1.0 = média
-    womFactor,    // [6] — idx 0 unused, 1-5, 1.0 = média
+    womFactor,    // [6] — idx 0 unused, 1-5, 1.0 = média (GLOBAL, fallback)
+    womByDow,     // [7][6] — fator semana-do-mês específico por dia-da-semana (interação)
     baseMedia: dowMean,
     confianca,
     totalDays,
@@ -1366,13 +1671,175 @@ function buildDemandIndices(rows) {
   };
 }
 
-// Aplica decomposição multiplicativa a uma venda média para obter previsão ajustada
-// targetDow: 0-6 (dia da semana), targetWom: 1-5 (semana do mês)
-function adjustedDemand(baseDia, indices, targetDow, targetWom) {
+// Feriados nacionais fixos (MM-DD) — recorrentes todo ano
+const FERIADOS_FIXOS = {
+  '01-01': 'Ano Novo', '04-21': 'Tiradentes', '05-01': 'Dia do Trabalho',
+  '09-07': 'Independência', '10-12': 'N.S. Aparecida', '11-02': 'Finados',
+  '11-15': 'Proclamação da República', '12-25': 'Natal'
+};
+
+// Eventos que afetam demanda com fator padrão por tipo
+const EVENTO_TIPO_FATOR = {
+  feriado: 0.3,      // loja fecha ou opera parcial
+  vespera: 1.4,       // véspera de feriado — pico
+  promocao: 1.35,     // promoção ativa
+  data_comemorativa: 1.25, // Dia das Mães, Namorados, etc.
+  pagamento: 1.15,    // dia de pagamento (5o dia útil, etc.)
+  normal: 1.0
+};
+
+function buildEventMap(eventos, year) {
+  const map = {};
+  (eventos || []).forEach(ev => {
+    map[ev.data] = { tipo: ev.tipo, nome: ev.nome, fator: Number(ev.fator) || EVENTO_TIPO_FATOR[ev.tipo] || 1 };
+  });
+  // Auto-gerar feriados fixos se não há evento manual nessa data
+  if (year) {
+    Object.entries(FERIADOS_FIXOS).forEach(([mmdd, nome]) => {
+      const dataStr = `${year}-${mmdd}`;
+      if (!map[dataStr]) {
+        map[dataStr] = { tipo: 'feriado', nome, fator: EVENTO_TIPO_FATOR.feriado };
+      }
+      // Véspera automática (dia anterior, se não for domingo)
+      const vespera = new Date(`${dataStr}T12:00:00`);
+      vespera.setDate(vespera.getDate() - 1);
+      if (vespera.getDay() !== 0) {
+        const vesperaStr = vespera.toISOString().slice(0, 10);
+        if (!map[vesperaStr]) {
+          map[vesperaStr] = { tipo: 'vespera', nome: `Véspera ${nome}`, fator: EVENTO_TIPO_FATOR.vespera };
+        }
+      }
+    });
+  }
+  return map;
+}
+
+// Aplica decomposição multiplicativa a uma venda média para obter previsão ajustada.
+// Usa o fator semana-do-mês ESPECÍFICO do dia-da-semana (womByDow) quando disponível,
+// senão o fator global (womFactor). Modelo K — comprovado por backtest.
+function adjustedDemand(baseDia, indices, targetDow, targetWom, eventoFator) {
   if (!indices) return baseDia;
   const dowF = indices.dowIndex[targetDow] || 1;
-  const womF = (targetWom >= 1 && targetWom <= 5) ? (indices.womFactor[targetWom] || 1) : 1;
-  return baseDia * dowF * womF;
+  let womF = 1;
+  if (targetWom >= 1 && targetWom <= 5) {
+    if (indices.womByDow && indices.womByDow[targetDow]) {
+      womF = indices.womByDow[targetDow][targetWom] || 1;
+    } else {
+      womF = indices.womFactor[targetWom] || 1;
+    }
+  }
+  const evF = eventoFator || 1;
+  return baseDia * dowF * womF * evF;
+}
+
+// Gera sugestão de escala semanal baseada no forecast
+function buildEscalaSugerida(demandIndices, setorDashboard, employees, profile, eventMap) {
+  if (!demandIndices || !employees || !employees.length) return null;
+  const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const today = new Date();
+
+  // Próximos 7 dias
+  const dias = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today); d.setDate(today.getDate() + i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const dow = d.getDay();
+    const wom = weekOfMonth(dateStr);
+    const ev = eventMap ? eventMap[dateStr] : null;
+    const evFator = ev ? ev.fator : 1;
+    const fatorTotal = (demandIndices.dowIndex[dow] || 1) * (demandIndices.womFactor[wom] || 1) * evFator;
+    dias.push({ data: dateStr, dow, wom, diaSemana: dayNames[dow], fatorTotal, evento: ev });
+  }
+
+  // Separar operadores de caixa vs setor
+  const caixaEmps = employees.filter(e => isOperadorCaixa(e));
+  const setorEmps = employees.filter(e => !isOperadorCaixa(e));
+  const totalCaixa = caixaEmps.length;
+
+  // Para cada setor com operationalNeed, calcular pessoas por dia
+  const setorNecessidades = (setorDashboard || []).filter(s => s.operationalNeed && s.operationalNeed.pessoasNecessarias > 0);
+
+  // Horários da loja
+  const hrSegSex = String(profile.horarioSegSex || '07:00-19:00');
+  const hrSab = String(profile.horarioSabado || hrSegSex);
+  const hrDom = String(profile.horarioDomingo || '08:00-12:00');
+  const domOp = String(profile.domingoOperacao || 'aberto');
+
+  const sugestao = dias.map(dia => {
+    const isDom = dia.dow === 0;
+    const isSab = dia.dow === 6;
+    const horario = isDom ? hrDom : (isSab ? hrSab : hrSegSex);
+    const lojaFechada = isDom && domOp === 'fechado';
+
+    if (lojaFechada || (dia.evento && dia.evento.tipo === 'feriado' && dia.evento.fator <= 0.1)) {
+      return { ...dia, horario, lojaFechada: true, caixaNecessario: 0, setores: [], totalPessoas: 0, folgas: employees.length };
+    }
+
+    // Caixa: escalar com fator de demanda (base = quantidadeOperadores do profile)
+    const baseCaixa = Number(profile.quantidadeOperadores || totalCaixa || 4);
+    const caixaNecessario = Math.max(1, Math.round(baseCaixa * dia.fatorTotal));
+    const caixaReal = Math.min(caixaNecessario, totalCaixa);
+
+    // Setores: ajustar pessoasNecessarias pelo fator DOW×WOM específico do setor
+    const setores = setorNecessidades.map(s => {
+      const baseNeed = s.operationalNeed.pessoasNecessarias;
+      const curva = s.curvaDiaSemana;
+      let setorFator = dia.fatorTotal; // fallback global
+      if (curva && curva.some(v => v > 0)) {
+        const ativoDias = curva.filter(v => v > 0);
+        const mediaSetor = ativoDias.length ? ativoDias.reduce((a, b) => a + b, 0) / ativoDias.length : 1;
+        const dowFatorSetor = mediaSetor > 0 ? (curva[dia.dow] || mediaSetor) / mediaSetor : 1;
+        const womFatorSetor = s.womFactor || 1;
+        const evFator = dia.evento ? dia.evento.fator : 1;
+        setorFator = dowFatorSetor * womFatorSetor * evFator;
+      }
+      const ajustado = Math.max(1, Math.round(baseNeed * setorFator));
+      return {
+        setor: s.setor,
+        pessoasBase: baseNeed,
+        pessoasAjustadas: ajustado,
+        fatorSetor: Number(setorFator.toFixed(2)),
+        disponivel: Math.round(s.colaboradores),
+        saldo: Math.round(s.colaboradores) - ajustado
+      };
+    });
+
+    const totalSetorNeed = setores.reduce((s, x) => s + x.pessoasAjustadas, 0);
+    const totalSetorDisp = setores.reduce((s, x) => s + x.disponivel, 0);
+    const totalPessoas = caixaReal + totalSetorNeed;
+    const totalDisponivel = totalCaixa + totalSetorDisp;
+    const folgas = Math.max(0, totalDisponivel - totalPessoas);
+
+    return {
+      ...dia,
+      horario,
+      lojaFechada: false,
+      caixaNecessario: caixaReal,
+      caixaTotal: totalCaixa,
+      setores,
+      totalPessoas,
+      totalDisponivel,
+      folgas
+    };
+  });
+
+  // Resumo semanal
+  const totalHorasNecessarias = sugestao.filter(d => !d.lojaFechada).reduce((s, d) => {
+    const [h1, h2] = d.horario.split('-').map(t => { const p = t.split(':'); return Number(p[0]) + Number(p[1] || 0) / 60; });
+    return s + d.totalPessoas * (h2 - h1);
+  }, 0);
+
+  return {
+    periodo: `${sugestao[0].data} a ${sugestao[6].data}`,
+    dias: sugestao,
+    resumo: {
+      totalColaboradores: employees.length,
+      caixaOperadores: totalCaixa,
+      setorColaboradores: setorEmps.length,
+      horasSemanaisEstimadas: Math.round(totalHorasNecessarias),
+      diasAbertos: sugestao.filter(d => !d.lojaFechada).length
+    }
+  };
 }
 
 // FASE 2: Banco de horas (saldo por colaborador conforme escala vs jornada contratual)
@@ -1397,19 +1864,45 @@ function buildOperationalDashboard(state, caixaSalesRows) {
   const employees = state.employees || [];
   const caixaRows = caixaSalesRows || state.salesRows || [];
 
-  // --- FATURAMENTO ---
-  let fatDia = 0, fonteFat = 'sem dados';
-  if (mercRows.length) {
-    const diasMerc = new Set(mercRows.map(r => r.data)).size || 1;
-    fatDia = mercRows.reduce((s, r) => s + r.vendaLiquida, 0) / diasMerc;
+  // --- FATURAMENTO (último mês completo ou rolling 30 dias) ---
+  // Prioridade: dailyRevenue (mais dias) > mercadológico > caixa VRSoft
+  let fatDia = 0, fatMes = 0, fatSemana = 0, fonteFat = 'sem dados';
+  const dailyRev = Array.isArray(state.dailyRevenue) ? state.dailyRevenue : [];
+  const _fatByDate = {};
+  if (dailyRev.length >= 7) {
+    fonteFat = 'faturamento diário';
+    dailyRev.forEach(r => { _fatByDate[r.data] = (_fatByDate[r.data] || 0) + Number(r.faturamento || 0); });
+  } else if (mercRows.length) {
     fonteFat = 'mercadológico';
+    mercRows.forEach(r => { _fatByDate[r.data] = (_fatByDate[r.data] || 0) + Number(r.vendaLiquida || 0); });
   } else if (caixaRows.length) {
-    const diasCx = new Set(caixaRows.map(r => r.data)).size || 1;
-    fatDia = caixaRows.reduce((s, r) => s + Number(r.vendaLiquida || 0), 0) / diasCx;
     fonteFat = 'caixa VRSoft';
+    caixaRows.forEach(r => { _fatByDate[r.data] = (_fatByDate[r.data] || 0) + Number(r.vendaLiquida || 0); });
   }
-  const fatMes = fatDia * 30;
-  const fatSemana = fatDia * 7;
+  const _fatDates = Object.keys(_fatByDate).sort();
+  if (_fatDates.length) {
+    const _lastDate = _fatDates[_fatDates.length - 1];
+    const _prevMonth = new Date(_lastDate + 'T12:00:00');
+    _prevMonth.setMonth(_prevMonth.getMonth() - 1);
+    const _prevMonthStr = _prevMonth.toISOString().slice(0, 7);
+    const _lastCompleteDates = _fatDates.filter(d => d.slice(0, 7) === (_lastDate.slice(8, 10) <= '06' ? _prevMonthStr : _lastDate.slice(0, 7)));
+    if (_lastCompleteDates.length >= 20) {
+      fatMes = _lastCompleteDates.reduce((s, d) => s + _fatByDate[d], 0);
+      fatDia = fatMes / _lastCompleteDates.length;
+      fonteFat += ` (${_lastCompleteDates[0].slice(5,7)}/${_lastCompleteDates[0].slice(0,4)})`;
+    } else {
+      const _cutoff = new Date(_lastDate + 'T12:00:00');
+      _cutoff.setDate(_cutoff.getDate() - 29);
+      const _cutoffStr = _cutoff.toISOString().slice(0, 10);
+      const _rolling = _fatDates.filter(d => d >= _cutoffStr);
+      const _rollingTotal = _rolling.reduce((s, d) => s + _fatByDate[d], 0);
+      const _rollingDays = _rolling.length || 1;
+      fatDia = _rollingTotal / _rollingDays;
+      fatMes = fatDia * 30;
+      fonteFat += ` (últ. ${_rollingDays}d)`;
+    }
+    fatSemana = fatDia * 7;
+  }
 
   // --- DIMENSIONAMENTO GLOBAL (1 func / R$33-40k/mês) ---
   const headcountIdeal = fatMes ? Math.round(fatMes / BENCH.fatPorFuncionario) : 0;
@@ -1438,7 +1931,10 @@ function buildOperationalDashboard(state, caixaSalesRows) {
     const picoEntry = Object.entries(porHora).sort((a, b) => b[1] - a[1])[0];
     if (picoEntry) { clientesPicoHora = Math.round(picoEntry[1] / diasCx); horaPico = `${picoEntry[0]}h`; }
     clientesDia = Math.round(totalCupons / diasCx);
-    ticketMedio = totalCupons ? Math.round(totalVenda / totalCupons) : BENCH.ticketMedio;
+    const ticketVrsoft = totalCupons ? Math.round(totalVenda / totalCupons) : BENCH.ticketMedio;
+    ticketMedio = (!fonteFat.startsWith('caixa') && fatDia > 0 && clientesDia > 0)
+      ? Math.round(fatDia / clientesDia)
+      : ticketVrsoft;
   }
   const checkoutsPico = Math.max(1, Math.ceil(clientesPicoHora / BENCH.clientesPorHoraCaixa));
   const operadoresCaixa = employees.filter(isOperadorCaixa).length;
@@ -1791,8 +2287,10 @@ function shiftStartEnd(shift) {
 function shiftWorkedHours(shift) {
   if (!shift || shift === 'Folga') return 0;
   const m = String(shift).match(/·\s*(\d+)h(\d{2})?/);
-  if (!m) return 0;
-  return Number(m[1]) + (m[2] ? Number(m[2]) / 60 : 0);
+  if (m) return Number(m[1]) + (m[2] ? Number(m[2]) / 60 : 0);
+  const bounds = shiftStartEnd(shift);
+  if (bounds) return Math.max(0, bounds.end - bounds.start - (bounds.end - bounds.start > 6 ? 1 : 0));
+  return 0;
 }
 
 // Analisa a escala de um cenário e retorna violações CLT por colaborador
@@ -2737,6 +3235,930 @@ function generateGroupedSchedule(profile, employees, targetHours = 44, targetDay
   return merged;
 }
 
+const PROFICIENCY_SCORE = { iniciante: 1, pleno: 2, senior: 3, lider: 4 };
+const ROLE_WEIGHT = { abertura: 6, intermediario: 3, central: 3, sustentacao: 3, fechamento: 7 };
+
+function normalizeRestrictionList(emp) {
+  return (Array.isArray(emp?.restricoes) ? emp.restricoes : [])
+    .map((item) => normalizeSetor(String(item || '')))
+    .filter(Boolean);
+}
+
+function restrictionHas(emp, ...terms) {
+  const restrictions = normalizeRestrictionList(emp);
+  return terms.some((term) => restrictions.includes(normalizeSetor(term)));
+}
+
+function canEmployeeWorkRole(emp, role) {
+  if (role === 'fechamento' && restrictionHas(emp, 'noturno', 'noite', 'fechamento')) return false;
+  if (role === 'abertura' && restrictionHas(emp, 'abertura', 'manha', 'manhã')) return false;
+  if (role === 'intermediario' && restrictionHas(emp, 'intermediario', 'intermediário', 'central')) return false;
+  return true;
+}
+
+function canEmployeeWorkSunday(emp) {
+  if (emp?.podeDomingo === false) return false;
+  if (restrictionHas(emp, 'domingo')) return false;
+  return true;
+}
+
+function employeeSectorFit(emp, groupKey) {
+  const normalizedGroup = normalizeSetor(groupKey);
+  if (normalizedGroup === 'frente de caixa') return isOperadorCaixa(emp);
+  const aptos = Array.isArray(emp?.setoresAptos) && emp.setoresAptos.length
+    ? emp.setoresAptos.map((item) => normalizeSetor(item))
+    : [normalizeSetor(empSetorOperacional(emp) || emp.setor || '')];
+  return aptos.includes(normalizedGroup);
+}
+
+function employeeRolePreferenceScore(emp, role) {
+  const pref = String(emp?.preferenciaTurno || emp?.turno || 'flexivel').toLowerCase();
+  const papel = String(emp?.papelOperacional || 'auto').toLowerCase();
+  let score = 0;
+  if (pref === role) score += 12;
+  else if (pref !== 'flexivel' && pref !== role) score -= 4;
+  if (papel === role) score += 14;
+  else if (papel !== 'auto' && papel !== role) score -= 3;
+  return score;
+}
+
+function employeeRoleScore(emp, groupKey, role) {
+  const prof = PROFICIENCY_SCORE[String(emp?.proficiencia || 'pleno').toLowerCase()] || 2;
+  const setorFit = employeeSectorFit(emp, groupKey);
+  let score = setorFit ? 40 : -1000;
+  if (!canEmployeeWorkRole(emp, role)) score -= 1000;
+  score += prof * (ROLE_WEIGHT[role] || 2);
+  score += employeeRolePreferenceScore(emp, role);
+  if (String(emp?.turno || '').toLowerCase() === role) score += 6;
+  if (role === 'fechamento' && canEmployeeWorkSunday(emp)) score += 2;
+  if (role === 'abertura' && !restrictionHas(emp, 'sabado', 'sábado')) score += 1;
+  return score;
+}
+
+function buildNominalCoverageRoles(groupKey, employees) {
+  const prepared = (employees || []).map((emp, index) => ({ ...emp, _sortIndex: index }));
+  if (prepared.length <= 1) {
+    return prepared.map((emp) => ({ ...emp, _coverageRole: 'central' }));
+  }
+
+  const half = Math.floor(prepared.length / 2);
+  const explicit = { abertura: [], fechamento: [], intermediario: [] };
+  const autoCandidates = [];
+
+  prepared.forEach((emp) => {
+    const turno = String(emp.turno || 'flexivel').toLowerCase();
+    if (['abertura', 'fechamento', 'intermediario'].includes(turno) && canEmployeeWorkRole(emp, turno)) {
+      explicit[turno].push(emp);
+    } else {
+      autoCandidates.push(emp);
+    }
+  });
+
+  const result = [];
+  const used = new Set();
+  const pushRole = (emp, role) => {
+    if (!emp || used.has(emp.nome)) return;
+    used.add(emp.nome);
+    result.push({ ...emp, _coverageRole: role });
+  };
+  explicit.abertura.forEach((emp) => pushRole(emp, 'abertura'));
+  explicit.fechamento.forEach((emp) => pushRole(emp, 'fechamento'));
+  explicit.intermediario.forEach((emp) => pushRole(emp, 'intermediario'));
+
+  const pickBest = (role) => {
+    const ranked = autoCandidates
+      .filter((emp) => !used.has(emp.nome))
+      .map((emp) => ({ emp, score: employeeRoleScore(emp, groupKey, role) }))
+      .sort((a, b) => b.score - a.score || a.emp._sortIndex - b.emp._sortIndex);
+    return ranked.length ? ranked[0].emp : null;
+  };
+
+  while (result.filter((emp) => emp._coverageRole === 'abertura').length < half) {
+    const best = pickBest('abertura');
+    if (!best) break;
+    pushRole(best, 'abertura');
+  }
+  while (result.filter((emp) => emp._coverageRole === 'fechamento').length < half) {
+    const best = pickBest('fechamento');
+    if (!best) break;
+    pushRole(best, 'fechamento');
+  }
+
+  autoCandidates
+    .filter((emp) => !used.has(emp.nome))
+    .sort((a, b) => {
+      const diff = employeeRoleScore(b, groupKey, 'intermediario') - employeeRoleScore(a, groupKey, 'intermediario');
+      return diff || a._sortIndex - b._sortIndex;
+    })
+    .forEach((emp) => pushRole(emp, 'intermediario'));
+
+  return result.sort((a, b) => {
+    const roleOrder = { abertura: 0, intermediario: 1, central: 1, fechamento: 2 };
+    const diff = (roleOrder[a._coverageRole] ?? 1) - (roleOrder[b._coverageRole] ?? 1);
+    if (diff !== 0) return diff;
+    const scoreA = employeeRoleScore(a, groupKey, a._coverageRole);
+    const scoreB = employeeRoleScore(b, groupKey, b._coverageRole);
+    if (scoreB !== scoreA) return scoreB - scoreA;
+    return a._sortIndex - b._sortIndex;
+  });
+}
+
+function inferRoleFromShift(shift, loja, fallback = 'sustentacao') {
+  if (!shift || shift === 'Folga') return 'folga';
+  const bounds = shiftStartEnd(shift);
+  if (!bounds || !loja) return fallback;
+  const abre = bounds.start <= loja.open;
+  const fecha = bounds.end >= loja.close;
+  if (abre && fecha) return 'abertura-fechamento';
+  if (abre) return 'abertura';
+  if (fecha) return 'fechamento';
+  return fallback === 'central' ? 'sustentacao' : fallback;
+}
+
+function computeGroupHourSpread(people, names) {
+  const totals = names.map((name) => (people[name] || []).reduce((sum, shift) => sum + shiftWorkedHours(shift), 0));
+  if (!totals.length) return 0;
+  return Math.max(...totals) - Math.min(...totals);
+}
+
+function buildRoleJustification(emp, role, groupKey, stats = {}) {
+  const refs = [];
+  if (employeeSectorFit(emp, groupKey)) refs.push(`apto para ${groupKey}`);
+  if (emp?.proficiencia) refs.push(`proficiência ${emp.proficiencia}`);
+  if (emp?.preferenciaTurno && emp.preferenciaTurno !== 'flexivel') refs.push(`preferência ${emp.preferenciaTurno}`);
+  if (emp?.papelOperacional && emp.papelOperacional !== 'auto') refs.push(`papel ${emp.papelOperacional}`);
+  if (Array.isArray(emp?.restricoes) && emp.restricoes.length) refs.push(`restrições respeitadas: ${emp.restricoes.join(', ')}`);
+  if (stats.hoursDiffLabel) refs.push(`dispersão do grupo ${stats.hoursDiffLabel}`);
+  const roleLabel = role === 'abertura-fechamento' ? 'abertura e fechamento' : role;
+  return `Alocado em ${roleLabel} no grupo ${groupKey} por aderência de perfil${refs.length ? ` (${refs.join(' · ')})` : ''}.`;
+}
+
+function buildRoleAssignmentQuality(people, groupEmployees, groupKey, lojas) {
+  const byName = Object.fromEntries((groupEmployees || []).map((emp) => [emp.nome, emp]));
+  let total = 0;
+  let ponta = 0;
+  Object.entries(people || {}).forEach(([nome, shifts]) => {
+    const emp = byName[nome];
+    if (!emp) return;
+    (shifts || []).forEach((shift, dayIndex) => {
+      if (!shift || shift === 'Folga') return;
+      const role = inferRoleFromShift(shift, lojas[dayIndex], emp._coverageRole || 'sustentacao');
+      const score = employeeRoleScore(emp, groupKey, role);
+      total += score;
+      if (role === 'abertura' || role === 'fechamento' || role === 'abertura-fechamento') {
+        ponta += score;
+      }
+    });
+  });
+  return { total, ponta };
+}
+
+function clonePeopleMap(people) {
+  return Object.fromEntries(Object.entries(people || {}).map(([name, shifts]) => [name, Array.isArray(shifts) ? [...shifts] : []]));
+}
+
+function isWorkingAtHour(shift, hour) {
+  const bounds = shiftStartEnd(shift);
+  if (!bounds) return false;
+  return hour >= bounds.start && hour < bounds.end;
+}
+
+function hourlyCoverageUnchanged(baselinePeople, candidatePeople, names, dayIndex) {
+  for (let h = 5; h <= 23; h++) {
+    let baseCov = 0, candCov = 0;
+    for (let n = 0; n < names.length; n++) {
+      if (isWorkingAtHour(baselinePeople[names[n]]?.[dayIndex], h)) baseCov++;
+      if (isWorkingAtHour(candidatePeople[names[n]]?.[dayIndex], h)) candCov++;
+    }
+    if (candCov < baseCov) return false;
+  }
+  return true;
+}
+
+function shiftSlotPriority(shift, dayIndex, lojas) {
+  if (!shift || shift === 'Folga') return dayIndex === 6 ? 0.5 : 0;
+  const role = inferRoleFromShift(shift, lojas[dayIndex], 'sustentacao');
+  if (role === 'abertura-fechamento') return 10;
+  if (role === 'fechamento') return 9;
+  if (role === 'abertura') return 8;
+  if (role === 'sustentacao' || role === 'intermediario') return 4;
+  return 2;
+}
+
+function scoreEmployeeShiftForGroup(emp, shift, dayIndex, lojas, groupKey) {
+  if (!shift || shift === 'Folga') {
+    if (dayIndex === 6 && !canEmployeeWorkSunday(emp)) return 4;
+    return 0;
+  }
+  if (dayIndex === 6 && !canEmployeeWorkSunday(emp)) return -1000;
+  const role = inferRoleFromShift(shift, lojas[dayIndex], emp._coverageRole || emp.papelOperacional || 'sustentacao');
+  return employeeRoleScore(emp, groupKey, role);
+}
+
+function buildGroupMetrics(people, groupEmployees, groupKey, lojas) {
+  const names = groupEmployees.map((emp) => emp.nome);
+  const complianceCount = checkComplianceCLT(people).length;
+  const spread = computeGroupHourSpread(people, names);
+  const quality = buildRoleAssignmentQuality(people, groupEmployees, groupKey, lojas);
+  return { complianceCount, spread, quality };
+}
+
+function isBetterGroupCandidate(candidateMetrics, referenceMetrics) {
+  if (candidateMetrics.complianceCount > referenceMetrics.complianceCount) return false;
+  if (candidateMetrics.spread > Math.max(2, referenceMetrics.spread)) return false;
+  if (candidateMetrics.quality.total < referenceMetrics.quality.total) return false;
+  if (candidateMetrics.quality.ponta < referenceMetrics.quality.ponta) return false;
+  return (
+    candidateMetrics.quality.total > referenceMetrics.quality.total ||
+    candidateMetrics.quality.ponta > referenceMetrics.quality.ponta
+  );
+}
+
+function optimizeWeeklyTemplateAssignments(groupKey, groupEmployees, baselineGroupPeople, lojas) {
+  const templates = (groupEmployees || []).map((emp, index) => ({
+    sourceName: emp.nome,
+    shifts: baselineGroupPeople?.[emp.nome] || [],
+    sortIndex: index,
+    priority: (baselineGroupPeople?.[emp.nome] || []).reduce((sum, shift, dayIndex) => sum + shiftSlotPriority(shift, dayIndex, lojas), 0)
+  }));
+  const remaining = [...(groupEmployees || [])];
+  const assigned = {};
+
+  templates
+    .sort((a, b) => b.priority - a.priority || a.sortIndex - b.sortIndex)
+    .forEach((template) => {
+      const ranked = remaining
+        .map((emp, index) => ({
+          emp,
+          index,
+          score: (template.shifts || []).reduce((sum, shift, dayIndex) => (
+            sum + scoreEmployeeShiftForGroup(emp, shift, dayIndex, lojas, groupKey)
+          ), 0)
+        }))
+        .sort((a, b) => b.score - a.score || a.index - b.index);
+      const best = ranked[0];
+      if (!best) return;
+      assigned[best.emp.nome] = [...template.shifts];
+      remaining.splice(best.index, 1);
+    });
+
+  return assigned;
+}
+
+function optimizeSingleDayAssignments(groupKey, groupEmployees, people, dayIndex, lojas, baselineMetrics) {
+  const current = clonePeopleMap(people);
+  const slots = groupEmployees
+    .map((emp, index) => ({
+      sourceName: emp.nome,
+      shift: current[emp.nome]?.[dayIndex] || 'Folga',
+      sortIndex: index,
+      priority: shiftSlotPriority(current[emp.nome]?.[dayIndex] || 'Folga', dayIndex, lojas)
+    }))
+    .sort((a, b) => b.priority - a.priority || a.sortIndex - b.sortIndex);
+  const remaining = [...groupEmployees];
+  const dayAssignment = {};
+
+  slots.forEach((slot) => {
+    const ranked = remaining
+      .map((emp, index) => ({
+        emp,
+        index,
+        score: scoreEmployeeShiftForGroup(emp, slot.shift, dayIndex, lojas, groupKey)
+      }))
+      .sort((a, b) => b.score - a.score || a.index - b.index);
+    const best = ranked[0];
+    if (!best) return;
+    dayAssignment[best.emp.nome] = slot.shift;
+    remaining.splice(best.index, 1);
+  });
+
+  Object.entries(dayAssignment).forEach(([name, shift]) => {
+    current[name][dayIndex] = shift;
+  });
+
+  const candidateMetrics = buildGroupMetrics(current, groupEmployees, groupKey, lojas);
+  return isBetterGroupCandidate(candidateMetrics, baselineMetrics)
+    ? { people: current, metrics: candidateMetrics }
+    : null;
+}
+
+function tryPairSwaps(groupKey, groupEmployees, people, lojas, baselineMetrics) {
+  const names = groupEmployees.map((emp) => emp.nome);
+  const byName = Object.fromEntries(groupEmployees.map((emp) => [emp.nome, emp]));
+  const baselineCovRef = clonePeopleMap(people);
+  let current = clonePeopleMap(people);
+  let currentMetrics = buildGroupMetrics(current, groupEmployees, groupKey, lojas);
+
+  for (let pass = 0; pass < 6; pass += 1) {
+    let improved = false;
+
+    for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
+      for (let i = 0; i < names.length; i += 1) {
+        for (let j = i + 1; j < names.length; j += 1) {
+          const leftName = names[i];
+          const rightName = names[j];
+          const leftShift = current[leftName]?.[dayIndex] || 'Folga';
+          const rightShift = current[rightName]?.[dayIndex] || 'Folga';
+          if (leftShift === rightShift) continue;
+
+          const leftEmp = byName[leftName];
+          const rightEmp = byName[rightName];
+          const currentScore =
+            scoreEmployeeShiftForGroup(leftEmp, leftShift, dayIndex, lojas, groupKey) +
+            scoreEmployeeShiftForGroup(rightEmp, rightShift, dayIndex, lojas, groupKey);
+          const swappedScore =
+            scoreEmployeeShiftForGroup(leftEmp, rightShift, dayIndex, lojas, groupKey) +
+            scoreEmployeeShiftForGroup(rightEmp, leftShift, dayIndex, lojas, groupKey);
+          if (swappedScore <= currentScore) continue;
+
+          const candidate = clonePeopleMap(current);
+          candidate[leftName][dayIndex] = rightShift;
+          candidate[rightName][dayIndex] = leftShift;
+
+          if (!hourlyCoverageUnchanged(baselineCovRef, candidate, names, dayIndex)) continue;
+
+          const candidateMetrics = buildGroupMetrics(candidate, groupEmployees, groupKey, lojas);
+          if (!isBetterGroupCandidate(candidateMetrics, baselineMetrics)) continue;
+          if (!isBetterGroupCandidate(candidateMetrics, currentMetrics)) continue;
+          current = candidate;
+          currentMetrics = candidateMetrics;
+          improved = true;
+        }
+      }
+    }
+
+    // Cross-day rest swap: trocar dia de folga entre dois colaboradores
+    for (let i = 0; i < names.length; i += 1) {
+      for (let j = i + 1; j < names.length; j += 1) {
+        const nameA = names[i], nameB = names[j];
+        const folgaA = (current[nameA] || []).findIndex(s => s === 'Folga');
+        const folgaB = (current[nameB] || []).findIndex(s => s === 'Folga');
+        if (folgaA < 0 || folgaB < 0 || folgaA === folgaB) continue;
+
+        const shiftAatFolgaB = current[nameA]?.[folgaB];
+        const shiftBatFolgaA = current[nameB]?.[folgaA];
+        if (!shiftAatFolgaB || shiftAatFolgaB === 'Folga') continue;
+        if (!shiftBatFolgaA || shiftBatFolgaA === 'Folga') continue;
+
+        const oldScore =
+          scoreEmployeeShiftForGroup(byName[nameA], shiftAatFolgaB, folgaB, lojas, groupKey) +
+          scoreEmployeeShiftForGroup(byName[nameB], shiftBatFolgaA, folgaA, lojas, groupKey);
+        const newScore =
+          scoreEmployeeShiftForGroup(byName[nameA], shiftBatFolgaA, folgaA, lojas, groupKey) +
+          scoreEmployeeShiftForGroup(byName[nameB], shiftAatFolgaB, folgaB, lojas, groupKey);
+        if (newScore <= oldScore) continue;
+
+        const candidate = clonePeopleMap(current);
+        candidate[nameA][folgaA] = shiftBatFolgaA;
+        candidate[nameA][folgaB] = 'Folga';
+        candidate[nameB][folgaA] = 'Folga';
+        candidate[nameB][folgaB] = shiftAatFolgaB;
+
+        if (!hourlyCoverageUnchanged(baselineCovRef, candidate, names, folgaA)) continue;
+        if (!hourlyCoverageUnchanged(baselineCovRef, candidate, names, folgaB)) continue;
+
+        const candidateMetrics = buildGroupMetrics(candidate, groupEmployees, groupKey, lojas);
+        if (!isBetterGroupCandidate(candidateMetrics, baselineMetrics)) continue;
+        if (!isBetterGroupCandidate(candidateMetrics, currentMetrics)) continue;
+        current = candidate;
+        currentMetrics = candidateMetrics;
+        improved = true;
+      }
+    }
+
+    if (!improved) break;
+  }
+
+  return current;
+}
+
+function tryThreeCycles(groupKey, groupEmployees, people, lojas, baselineMetrics) {
+  const names = groupEmployees.map((emp) => emp.nome);
+  const byName = Object.fromEntries(groupEmployees.map((emp) => [emp.nome, emp]));
+  const baselineCovRef = clonePeopleMap(people);
+  let current = clonePeopleMap(people);
+  let currentMetrics = buildGroupMetrics(current, groupEmployees, groupKey, lojas);
+
+  for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
+    const working = names.filter(n => current[n]?.[dayIndex] && current[n][dayIndex] !== 'Folga');
+    if (working.length < 3) continue;
+
+    for (let i = 0; i < working.length; i += 1) {
+      for (let j = i + 1; j < working.length; j += 1) {
+        for (let k = j + 1; k < working.length; k += 1) {
+          const a = working[i], b = working[j], c = working[k];
+          const shiftA = current[a][dayIndex];
+          const shiftB = current[b][dayIndex];
+          const shiftC = current[c][dayIndex];
+
+          const currentScore =
+            scoreEmployeeShiftForGroup(byName[a], shiftA, dayIndex, lojas, groupKey) +
+            scoreEmployeeShiftForGroup(byName[b], shiftB, dayIndex, lojas, groupKey) +
+            scoreEmployeeShiftForGroup(byName[c], shiftC, dayIndex, lojas, groupKey);
+
+          // Try both rotation directions: A→B→C→A and A→C→B→A
+          const rotations = [
+            [shiftB, shiftC, shiftA],
+            [shiftC, shiftA, shiftB]
+          ];
+
+          for (const [rA, rB, rC] of rotations) {
+            const rotatedScore =
+              scoreEmployeeShiftForGroup(byName[a], rA, dayIndex, lojas, groupKey) +
+              scoreEmployeeShiftForGroup(byName[b], rB, dayIndex, lojas, groupKey) +
+              scoreEmployeeShiftForGroup(byName[c], rC, dayIndex, lojas, groupKey);
+            if (rotatedScore <= currentScore) continue;
+
+            const candidate = clonePeopleMap(current);
+            candidate[a][dayIndex] = rA;
+            candidate[b][dayIndex] = rB;
+            candidate[c][dayIndex] = rC;
+
+            if (!hourlyCoverageUnchanged(baselineCovRef, candidate, names, dayIndex)) continue;
+
+            const candidateMetrics = buildGroupMetrics(candidate, groupEmployees, groupKey, lojas);
+            if (!isBetterGroupCandidate(candidateMetrics, baselineMetrics)) continue;
+            if (!isBetterGroupCandidate(candidateMetrics, currentMetrics)) continue;
+            current = candidate;
+            currentMetrics = candidateMetrics;
+          }
+        }
+      }
+    }
+  }
+
+  return current;
+}
+
+function optimizeCoverageConstrainedAssignments(groupKey, groupEmployees, baselineGroupPeople, lojas) {
+  const baselineMetrics = buildGroupMetrics(baselineGroupPeople, groupEmployees, groupKey, lojas);
+  let current = clonePeopleMap(baselineGroupPeople);
+  let currentMetrics = baselineMetrics;
+
+  const weeklyCandidate = optimizeWeeklyTemplateAssignments(groupKey, groupEmployees, baselineGroupPeople, lojas);
+  const weeklyMetrics = buildGroupMetrics(weeklyCandidate, groupEmployees, groupKey, lojas);
+  if (isBetterGroupCandidate(weeklyMetrics, baselineMetrics)) {
+    current = weeklyCandidate;
+    currentMetrics = weeklyMetrics;
+  }
+
+  for (let pass = 0; pass < 4; pass += 1) {
+    let improved = false;
+    for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
+      const candidate = optimizeSingleDayAssignments(groupKey, groupEmployees, current, dayIndex, lojas, baselineMetrics);
+      if (candidate && isBetterGroupCandidate(candidate.metrics, currentMetrics)) {
+        current = candidate.people;
+        currentMetrics = candidate.metrics;
+        improved = true;
+      }
+    }
+    const pairOptimized = tryPairSwaps(groupKey, groupEmployees, current, lojas, baselineMetrics);
+    const pairMetrics = buildGroupMetrics(pairOptimized, groupEmployees, groupKey, lojas);
+    if (isBetterGroupCandidate(pairMetrics, currentMetrics)) {
+      current = pairOptimized;
+      currentMetrics = pairMetrics;
+      improved = true;
+    }
+    const cycleOptimized = tryThreeCycles(groupKey, groupEmployees, current, lojas, baselineMetrics);
+    const cycleMetrics = buildGroupMetrics(cycleOptimized, groupEmployees, groupKey, lojas);
+    if (isBetterGroupCandidate(cycleMetrics, currentMetrics)) {
+      current = cycleOptimized;
+      currentMetrics = cycleMetrics;
+      improved = true;
+    }
+    if (!improved) break;
+  }
+
+  return current;
+}
+
+function summarizeProfileFit(profile, employees, people) {
+  const lojaSegSex = parseStoreHours(profile.horarioSegSex);
+  const lojaSabado = parseStoreHours(profile.horarioSabado);
+  const lojaDomingo = sundayIsClosed(profile) ? null : parseStoreHours(profile.horarioDomingo);
+  const lojas = [lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSabado, lojaDomingo];
+  const groups = {};
+  (employees || []).forEach((emp) => {
+    const key = scheduleGroupKey(emp);
+    groups[key] = groups[key] || [];
+    groups[key].push(emp);
+  });
+  return Object.entries(groups).reduce((acc, [groupKey, groupEmployees]) => {
+    const groupFit = buildRoleAssignmentQuality(people, groupEmployees, groupKey, lojas);
+    acc.total += groupFit.total;
+    acc.ponta += groupFit.ponta;
+    return acc;
+  }, { total: 0, ponta: 0 });
+}
+
+function buildPeoplePresentation(peopleMap, employees, lojas) {
+  const byName = Object.fromEntries((employees || []).map((emp) => [emp.nome, emp]));
+  const groups = {};
+  (employees || []).forEach((emp) => {
+    const key = scheduleGroupKey(emp);
+    groups[key] = groups[key] || [];
+    groups[key].push(emp);
+  });
+
+  const roles = {};
+  const justifications = {};
+  Object.entries(groups).forEach(([groupKey, groupEmployees]) => {
+    const groupSpread = computeGroupHourSpread(peopleMap, groupEmployees.map((worker) => worker.nome));
+    groupEmployees.forEach((emp) => {
+      const shifts = peopleMap[emp.nome] || [];
+      roles[emp.nome] = shifts.map((shift, dayIndex) => inferRoleFromShift(shift, lojas[dayIndex], emp._coverageRole || emp.papelOperacional || 'sustentacao'));
+      justifications[emp.nome] = shifts.map((shift, dayIndex) => (
+        shift === 'Folga'
+          ? 'Folga planejada para cumprir descanso semanal e preservar equilíbrio da equipe.'
+          : buildRoleJustification(emp, roles[emp.nome][dayIndex], groupKey, { hoursDiffLabel: `${Number(groupSpread.toFixed(2)).toLocaleString('pt-BR')}h` })
+      ));
+    });
+  });
+  return { roles, justifications };
+}
+
+function buildEscalaNominal(profile, employees, targetHours = 44, targetDaysOff = 1, pesosDia = null, basePeople = null, coverageSummary = null, mode = 'hybrid') {
+  const baselinePeople = basePeople || generateGroupedSchedule(profile, employees, targetHours, targetDaysOff, pesosDia);
+  const lojaSegSex = parseStoreHours(profile.horarioSegSex);
+  const lojaSabado = parseStoreHours(profile.horarioSabado);
+  const lojaDomingo = sundayIsClosed(profile) ? null : parseStoreHours(profile.horarioDomingo);
+  const lojas = [lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSabado, lojaDomingo];
+  const byName = Object.fromEntries((employees || []).map((emp) => [emp.nome, emp]));
+  const groups = {};
+  (employees || []).forEach((emp) => {
+    const key = scheduleGroupKey(emp);
+    groups[key] = groups[key] || [];
+    groups[key].push(emp);
+  });
+
+  const people = {};
+  const roles = {};
+  const justifications = {};
+  const optimizedBaselinePeople = {};
+  const diagnostics = { groups: {}, baselineCompliance: [], candidateCompliance: [], selected: 'nominal' };
+
+  Object.entries(groups).forEach(([groupKey, groupEmployees]) => {
+    const baselineGroupPeople = Object.fromEntries(groupEmployees.map((emp) => [emp.nome, baselinePeople[emp.nome] || []]));
+    const baselineCompliance = checkComplianceCLT(baselineGroupPeople);
+    const baselineSpread = computeGroupHourSpread(baselineGroupPeople, groupEmployees.map((emp) => emp.nome));
+    const baselinePrepared = groupEmployees.map((emp, index) => ({ ...emp, _sortIndex: index }));
+    const baselineQuality = buildRoleAssignmentQuality(baselineGroupPeople, baselinePrepared, groupKey, lojas);
+    const baselineMetrics = {
+      complianceCount: baselineCompliance.length,
+      spread: baselineSpread,
+      quality: baselineQuality
+    };
+    const roleVariants = buildCoverageRoleVariants(groupEmployees, 9);
+
+    let bestCandidateGroupPeople = baselineGroupPeople;
+    let bestCandidateMetrics = baselineMetrics;
+    let bestVariantIndex = -1;
+
+    roleVariants.forEach((variantEmployees, variantIndex) => {
+      const validSectorFit = variantEmployees.every((emp) => employeeSectorFit(emp, groupKey));
+      const validRestrictions = variantEmployees.every((emp) => canEmployeeWorkRole(emp, emp._coverageRole || 'intermediario'));
+      if (!validSectorFit || !validRestrictions) return;
+
+      const variantSeedPeople = generateScheduleByProfile(profile, variantEmployees, targetHours, targetDaysOff, pesosDia);
+      const variantCandidatePeople = optimizeCoverageConstrainedAssignments(groupKey, variantEmployees, variantSeedPeople, lojas);
+      const variantMetrics = buildGroupMetrics(variantCandidatePeople, variantEmployees, groupKey, lojas);
+      if (!isBetterGroupCandidate(variantMetrics, baselineMetrics)) return;
+      if (!isBetterGroupCandidate(variantMetrics, bestCandidateMetrics)) return;
+
+      bestCandidateGroupPeople = variantCandidatePeople;
+      bestCandidateMetrics = variantMetrics;
+      bestVariantIndex = variantIndex;
+    });
+
+    const candidateGroupPeople = bestCandidateGroupPeople;
+    const optimizedGroupPeople = candidateGroupPeople;
+    const candidateCompliance = checkComplianceCLT(candidateGroupPeople);
+    const optimizedCompliance = candidateCompliance;
+    const candidateSpread = computeGroupHourSpread(candidateGroupPeople, groupEmployees.map((emp) => emp.nome));
+    const optimizedSpread = candidateSpread;
+    const candidateQuality = bestCandidateMetrics.quality;
+    const optimizedQuality = candidateQuality;
+    const candidateBetterOrEqual = isBetterGroupCandidate(bestCandidateMetrics, baselineMetrics);
+    const optimizedBetterOrEqual = candidateBetterOrEqual;
+
+    let selected = 'baseline';
+    let selectedGroupPeople = baselineGroupPeople;
+    if (
+      candidateBetterOrEqual &&
+      (candidateQuality.total > baselineQuality.total || candidateQuality.ponta > baselineQuality.ponta)
+    ) {
+      selected = 'nominal';
+      selectedGroupPeople = candidateGroupPeople;
+    } else if (
+      optimizedBetterOrEqual &&
+      (optimizedQuality.total > baselineQuality.total || optimizedQuality.ponta > baselineQuality.ponta)
+    ) {
+      selected = 'baseline-otimizado';
+      selectedGroupPeople = optimizedGroupPeople;
+    }
+
+    diagnostics.groups[groupKey] = {
+      baselineCompliance: baselineCompliance.length,
+      candidateCompliance: candidateCompliance.length,
+      optimizedCompliance: optimizedCompliance.length,
+      baselineHourSpread: Number(baselineSpread.toFixed(2)),
+      candidateHourSpread: Number(candidateSpread.toFixed(2)),
+      optimizedHourSpread: Number(optimizedSpread.toFixed(2)),
+      baselineQuality,
+      candidateQuality,
+      optimizedQuality,
+      variantCount: roleVariants.length,
+      selectedVariantIndex: bestVariantIndex,
+      selected
+    };
+
+    Object.entries(selectedGroupPeople).forEach(([nome, shifts]) => {
+      people[nome] = shifts;
+    });
+    Object.entries(optimizedGroupPeople).forEach(([nome, shifts]) => {
+      optimizedBaselinePeople[nome] = shifts;
+    });
+
+    baselinePrepared.forEach((emp) => {
+      if (!byName[emp.nome]) byName[emp.nome] = emp;
+    });
+  });
+
+  let selectedPeople = people;
+  let presentation = buildPeoplePresentation(selectedPeople, employees, lojas);
+  Object.assign(roles, presentation.roles);
+  Object.assign(justifications, presentation.justifications);
+
+  diagnostics.baselineCompliance = checkComplianceCLT(baselinePeople);
+  diagnostics.candidateCompliance = checkComplianceCLT(selectedPeople);
+  if (coverageSummary) {
+    const baselineCoverage = summarizeCoverageAgainstDemand(coverageSummary, baselinePeople);
+    const selectedCoverage = summarizeCoverageAgainstDemand(coverageSummary, selectedPeople);
+    const optimizedCoverage = summarizeCoverageAgainstDemand(coverageSummary, optimizedBaselinePeople);
+    diagnostics.baselineCoverage = baselineCoverage;
+    diagnostics.selectedCoverage = selectedCoverage;
+    diagnostics.optimizedCoverage = optimizedCoverage;
+    if (selectedCoverage.totalDeficit > baselineCoverage.totalDeficit) {
+      if (optimizedCoverage.totalDeficit <= baselineCoverage.totalDeficit) {
+        diagnostics.selected = 'baseline-otimizado';
+        selectedPeople = optimizedBaselinePeople;
+      } else {
+        diagnostics.selected = 'baseline';
+        selectedPeople = baselinePeople;
+      }
+      Object.keys(people).forEach((name) => { delete people[name]; delete roles[name]; delete justifications[name]; });
+      Object.entries(selectedPeople).forEach(([nome, shifts]) => { people[nome] = shifts; });
+      presentation = buildPeoplePresentation(selectedPeople, employees, lojas);
+      Object.assign(roles, presentation.roles);
+      Object.assign(justifications, presentation.justifications);
+      diagnostics.candidateCompliance = checkComplianceCLT(selectedPeople);
+    }
+  }
+  if (diagnostics.candidateCompliance.length > diagnostics.baselineCompliance.length) {
+    diagnostics.selected = 'baseline';
+    Object.keys(people).forEach((name) => { delete people[name]; delete roles[name]; delete justifications[name]; });
+    Object.entries(baselinePeople).forEach(([nome, shifts]) => {
+      people[nome] = shifts;
+    });
+    presentation = buildPeoplePresentation(baselinePeople, employees, lojas);
+    Object.assign(roles, presentation.roles);
+    Object.assign(justifications, presentation.justifications);
+  }
+
+  return {
+    people,
+    roles,
+    justifications,
+    metadata: {
+      targetHours,
+      targetDaysOff,
+      generatedAt: new Date().toISOString()
+    },
+    diagnostics
+  };
+}
+
+function countPeopleAtHour(people, dayIndex, hourLabel) {
+  const [startStr, endStr] = String(hourLabel).split('-');
+  const faixaStart = Number(startStr) * 60;
+  const faixaEnd = Number(endStr) * 60;
+  let count = 0;
+  Object.values(people || {}).forEach((shifts) => {
+    const shift = shifts?.[dayIndex];
+    if (!shift || shift === 'Folga') return;
+    const blocks = parseWorkedBlocks(shift);
+    if (blocks.some((block) => block.start < faixaEnd && block.end > faixaStart)) {
+      count += 1;
+    }
+  });
+  return count;
+}
+
+function summarizeCoverageAgainstDemand(summary, people) {
+  const map = [
+    ['monday', 0],
+    ['tuesday', 1],
+    ['wednesday', 2],
+    ['thursday', 3],
+    ['friday', 4],
+    ['saturday', 5],
+    ['sunday', 6]
+  ];
+  const rows = [];
+  map.forEach(([dayKey, dayIndex]) => {
+    const day = summary.dailyCoverage?.[dayKey];
+    if (!day || !Array.isArray(day.rows) || !day.rows.length) return;
+    day.rows.forEach((row) => {
+      const demanda = Number(row.demanda || 0);
+      const escalados = countPeopleAtHour(people, dayIndex, row.hora);
+      const saldo = escalados - demanda;
+      rows.push({
+        dayKey,
+        dayIndex,
+        hora: row.hora,
+        demanda,
+        escalados,
+        saldo,
+        deficit: Math.max(0, -saldo)
+      });
+    });
+  });
+  return {
+    rows,
+    totalDeficit: rows.reduce((sum, row) => sum + row.deficit, 0),
+    coveredRows: rows.filter((row) => row.saldo >= 0).length,
+    exactRows: rows.filter((row) => row.saldo === 0).length
+  };
+}
+
+function summarizeProfileViolations(profile, employees, people) {
+  const lojaSegSex = parseStoreHours(profile.horarioSegSex);
+  const lojaSabado = parseStoreHours(profile.horarioSabado);
+  const lojaDomingo = sundayIsClosed(profile) ? null : parseStoreHours(profile.horarioDomingo);
+  const lojas = [lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSabado, lojaDomingo];
+  const byName = Object.fromEntries((employees || []).map((emp) => [emp.nome, emp]));
+  const violations = [];
+  Object.entries(people || {}).forEach(([nome, shifts]) => {
+    const emp = byName[nome];
+    if (!emp) return;
+    const groupKey = scheduleGroupKey(emp);
+    if (!employeeSectorFit(emp, groupKey)) {
+      violations.push({ nome, tipo: 'setor', detalhe: `Colaborador fora da aptidão principal do grupo ${groupKey}.` });
+    }
+    (shifts || []).forEach((shift, dayIndex) => {
+      if (!shift || shift === 'Folga') return;
+      const role = inferRoleFromShift(shift, lojas[dayIndex], 'sustentacao');
+      if ((role === 'fechamento' || role === 'abertura-fechamento') && !canEmployeeWorkRole(emp, 'fechamento')) {
+        violations.push({ nome, tipo: 'restricao', detalhe: `Fechamento alocado apesar da restrição do colaborador.`, diaIndex: dayIndex });
+      }
+      if (role === 'abertura' && !canEmployeeWorkRole(emp, 'abertura')) {
+        violations.push({ nome, tipo: 'restricao', detalhe: `Abertura alocada apesar da restrição do colaborador.`, diaIndex: dayIndex });
+      }
+      if (dayIndex === 6 && !canEmployeeWorkSunday(emp)) {
+        violations.push({ nome, tipo: 'domingo', detalhe: 'Domingo alocado apesar da restrição de domingo.', diaIndex: dayIndex });
+      }
+    });
+  });
+  return violations;
+}
+
+function summarizePontaProtection(profile, employees, people) {
+  const lojaSegSex = parseStoreHours(profile.horarioSegSex);
+  const lojaSabado = parseStoreHours(profile.horarioSabado);
+  const lojaDomingo = sundayIsClosed(profile) ? null : parseStoreHours(profile.horarioDomingo);
+  const lojas = [lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSabado, lojaDomingo];
+  const byName = Object.fromEntries((employees || []).map((emp) => [emp.nome, emp]));
+  let totalSlots = 0;
+  let totalScore = 0;
+  let seniorSlots = 0;
+
+  Object.entries(people || {}).forEach(([nome, shifts]) => {
+    const emp = byName[nome];
+    if (!emp) return;
+    const prof = PROFICIENCY_SCORE[String(emp?.proficiencia || 'pleno').toLowerCase()] || 2;
+    (shifts || []).forEach((shift, dayIndex) => {
+      if (!shift || shift === 'Folga') return;
+      const role = inferRoleFromShift(shift, lojas[dayIndex], emp.papelOperacional || 'sustentacao');
+      const weight = role === 'abertura-fechamento' ? 2 : 1;
+      if (role === 'abertura' || role === 'fechamento' || role === 'abertura-fechamento') {
+        totalSlots += weight;
+        totalScore += prof * weight;
+        if (prof >= 3) seniorSlots += weight;
+      }
+    });
+  });
+
+  return {
+    slotsCriticos: totalSlots,
+    scoreTotal: totalScore,
+    mediaProficiencia: totalSlots ? Number((totalScore / totalSlots).toFixed(2)) : 0,
+    slotsSeniorOuLider: seniorSlots
+  };
+}
+
+function compareScheduleEngines(summary, profile, employees, scenarioKey = 'atual') {
+  const currentScenario = summary.weeklyScenarioSchedule?.[scenarioKey];
+  const nominalScenario = currentScenario?.nominal;
+  const currentPeople = currentScenario?.people || {};
+  const nominalPeople = nominalScenario?.people || currentPeople;
+  const currentCompliance = checkComplianceCLT(currentPeople);
+  const nominalCompliance = checkComplianceCLT(nominalPeople);
+  const currentCoverage = summarizeCoverageAgainstDemand(summary, currentPeople);
+  const nominalCoverage = summarizeCoverageAgainstDemand(summary, nominalPeople);
+  const currentProfileViolations = summarizeProfileViolations(profile, employees, currentPeople);
+  const nominalProfileViolations = summarizeProfileViolations(profile, employees, nominalPeople);
+  const currentPontaProtection = summarizePontaProtection(profile, employees, currentPeople);
+  const nominalPontaProtection = summarizePontaProtection(profile, employees, nominalPeople);
+  const currentProfileFit = summarizeProfileFit(profile, employees, currentPeople);
+  const nominalProfileFit = summarizeProfileFit(profile, employees, nominalPeople);
+  return {
+    scenarioKey,
+    current: {
+      compliance: currentCompliance,
+      complianceCount: currentCompliance.length,
+      coverage: currentCoverage,
+      profileViolations: currentProfileViolations,
+      profileViolationCount: currentProfileViolations.length,
+      pontaProtection: currentPontaProtection,
+      profileFit: currentProfileFit
+    },
+    nominal: {
+      compliance: nominalCompliance,
+      complianceCount: nominalCompliance.length,
+      coverage: nominalCoverage,
+      profileViolations: nominalProfileViolations,
+      profileViolationCount: nominalProfileViolations.length,
+      pontaProtection: nominalPontaProtection,
+      profileFit: nominalProfileFit,
+      diagnostics: nominalScenario?.diagnostics || null
+    },
+    verdict: {
+      complianceBetterOrEqual: nominalCompliance.length <= currentCompliance.length,
+      coverageBetterOrEqual: nominalCoverage.totalDeficit <= currentCoverage.totalDeficit,
+      profileBetterOrEqual: nominalProfileViolations.length <= currentProfileViolations.length,
+      pontaBetterOrEqual: nominalPontaProtection.mediaProficiencia >= currentPontaProtection.mediaProficiencia,
+      fitBetterOrEqual: nominalProfileFit.total >= currentProfileFit.total
+    }
+  };
+}
+
+function reconcileNominalScenario(summary, profile, employees, scenario, pesosDia = null) {
+  if (!scenario?.people || !scenario?.nominal?.people) return scenario;
+  const currentCoverage = summarizeCoverageAgainstDemand(summary, scenario.people);
+  const nominalCoverage = summarizeCoverageAgainstDemand(summary, scenario.nominal.people);
+  const currentPonta = summarizePontaProtection(profile, employees, scenario.people);
+  const lojaSegSex = parseStoreHours(profile.horarioSegSex);
+  const lojaSabado = parseStoreHours(profile.horarioSabado);
+  const lojaDomingo = sundayIsClosed(profile) ? null : parseStoreHours(profile.horarioDomingo);
+  const lojas = [lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSegSex, lojaSabado, lojaDomingo];
+  if (nominalCoverage.totalDeficit <= currentCoverage.totalDeficit) return scenario;
+
+  const optimized = buildEscalaNominal(
+    profile,
+    employees,
+    scenario.targetHours || 44,
+    scenario.targetDaysOff || 1,
+    pesosDia,
+    scenario.people,
+    null,
+    'baseline-optimized'
+  );
+  const optimizedCoverage = summarizeCoverageAgainstDemand(summary, optimized.people);
+  const optimizedPonta = summarizePontaProtection(profile, employees, optimized.people);
+
+  if (
+    optimizedCoverage.totalDeficit <= currentCoverage.totalDeficit &&
+    optimizedPonta.mediaProficiencia >= currentPonta.mediaProficiencia
+  ) {
+    optimized.diagnostics = {
+      ...(optimized.diagnostics || {}),
+      reconciledFrom: 'nominal',
+      reconciledTo: 'baseline-otimizado',
+      coverageCurrent: currentCoverage.totalDeficit,
+      coverageNominal: nominalCoverage.totalDeficit,
+      coverageOptimized: optimizedCoverage.totalDeficit
+    };
+    scenario.nominal = optimized;
+    return scenario;
+  }
+
+  const baselinePresentation = buildPeoplePresentation(scenario.people, employees, lojas);
+  scenario.nominal = {
+    ...scenario.nominal,
+    people: scenario.people,
+    roles: baselinePresentation.roles,
+    justifications: baselinePresentation.justifications,
+    diagnostics: {
+      ...(scenario.nominal.diagnostics || {}),
+      reconciledFrom: 'nominal',
+      reconciledTo: 'baseline',
+      coverageCurrent: currentCoverage.totalDeficit,
+      coverageNominal: nominalCoverage.totalDeficit
+    }
+  };
+  return scenario;
+}
+
 // Calcula o peso de demanda por dia da semana (0=seg..6=dom) a partir das vendas.
 // Usado para a jornada variável (mais horas nos dias de pico).
 function pesosDiaSemanaDeVendas(salesRows, mercRows) {
@@ -2964,7 +4386,7 @@ function applySalesRowsToSummary(summary, salesRows, sourceLabel) {
   summary.scenarios.forEach((scenario) => { scenario.caixaNecessario = weeklyDemand; });
   summary.monthlyWeekAnalysis = buildMonthlyWeekAnalysis(summary, salesRows);
   summary.metadata.diasComVenda = dates.length;
-  summary.metadata.confianca = Math.min(95, Math.round(35 + dates.length * 4.7));
+  summary.metadata.confianca = Math.min(95, Math.round(20 + dates.length * 0.83));
   summary.metadata.periodoAmostra = `${dateLabel(dates[0])} a ${dateLabel(dates[dates.length - 1])}`;
   summary.metadata.ultimaImportacao = 'Empresa modelo · dados vendas';
   return summary;
@@ -2993,9 +4415,144 @@ function weekOfMonth(dateStr) {
   return 5;
 }
 
+function computeAdherence(summary, timecardRows) {
+  if (!timecardRows || !timecardRows.length || !summary.calendarioSemana) return;
+  const dias = summary.calendarioSemana.dias;
+  const scheduleKey = Object.keys(summary.fullSchedule || {})[0];
+  let curPeople = scheduleKey ? summary.fullSchedule[scheduleKey].people : {};
+  if (!Object.keys(curPeople).length && summary.weeklyScenarioSchedule) {
+    const wssKey = Object.keys(summary.weeklyScenarioSchedule)[0];
+    if (wssKey && summary.weeklyScenarioSchedule[wssKey].people) {
+      curPeople = summary.weeklyScenarioSchedule[wssKey].people;
+    }
+  }
+  if (!Object.keys(curPeople).length) return;
+  const tcByKey = {};
+  timecardRows.forEach(r => {
+    const key = `${r.nome}::${r.data}`;
+    if (!tcByKey[key]) tcByKey[key] = [];
+    tcByKey[key].push(r);
+  });
+  const adherence = {};
+  let totalPlanned = 0, totalWorked = 0, totalDeviation = 0, totalSlots = 0;
+  Object.entries(curPeople).forEach(([nome, shifts]) => {
+    adherence[nome] = [];
+    shifts.forEach((shift, dayIdx) => {
+      if (dayIdx >= dias.length) return;
+      const dataStr = dias[dayIdx].data;
+      const records = tcByKey[`${nome}::${dataStr}`] || [];
+      const planned = shiftStartEnd(shift);
+      if (!planned && shift === 'Folga') {
+        const worked = records.length > 0;
+        adherence[nome].push({
+          status: worked ? 'extra' : 'ok',
+          planned: 'Folga',
+          actual: worked ? records.map(r => `${r.entrada}-${r.saida}`).join(', ') : 'Folga',
+          desvioMin: worked ? records.reduce((s, r) => s + (hhToNum(r.saida) - hhToNum(r.entrada)) * 60, 0) : 0
+        });
+        if (worked) { totalWorked += records.reduce((s, r) => s + Math.max(0, hhToNum(r.saida) - hhToNum(r.entrada)), 0); totalSlots++; }
+        return;
+      }
+      if (!planned) { adherence[nome].push({ status: 'sem-turno', planned: shift || '—', actual: '—', desvioMin: 0 }); return; }
+      totalSlots++;
+      const plannedHours = planned.end - planned.start;
+      totalPlanned += plannedHours;
+      if (!records.length) {
+        adherence[nome].push({ status: 'falta', planned: shift, actual: 'Ausente', desvioMin: Math.round(-plannedHours * 60) });
+        totalDeviation += plannedHours;
+        return;
+      }
+      const actualStart = Math.min(...records.map(r => hhToNum(r.entrada)));
+      const actualEnd = Math.max(...records.map(r => hhToNum(r.saida)));
+      const actualHours = actualEnd - actualStart;
+      totalWorked += actualHours;
+      const desvioEntrada = Math.round((actualStart - planned.start) * 60);
+      const desvioSaida = Math.round((actualEnd - planned.end) * 60);
+      const desvioTotal = Math.abs(desvioEntrada) + Math.abs(desvioSaida);
+      totalDeviation += Math.abs(actualHours - plannedHours);
+      let status = 'ok';
+      if (desvioTotal > 30) status = 'desvio-alto';
+      else if (desvioTotal > 10) status = 'desvio-leve';
+      const hh = (v) => { const h = Math.floor(v); const m = Math.round((v - h) * 60); return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; };
+      adherence[nome].push({
+        status,
+        planned: shift,
+        actual: `${hh(actualStart)}-${hh(actualEnd)}`,
+        desvioMin: desvioEntrada + desvioSaida,
+        desvioEntrada,
+        desvioSaida
+      });
+    });
+  });
+  const aderenciaGeral = totalSlots > 0 ? Math.round((1 - totalDeviation / Math.max(totalPlanned, 1)) * 100) : 100;
+  summary.adherence = {
+    byPerson: adherence,
+    summary: {
+      totalPlannedHours: Math.round(totalPlanned),
+      totalWorkedHours: Math.round(totalWorked * 10) / 10,
+      aderencia: Math.max(0, Math.min(100, aderenciaGeral)),
+      totalSlots,
+      registros: timecardRows.length
+    }
+  };
+}
+
+function computeWeekComparison(summary) {
+  const scheduleKey = Object.keys(summary.fullSchedule || {})[0];
+  let curPeople = scheduleKey ? summary.fullSchedule[scheduleKey].people : {};
+  if (!Object.keys(curPeople).length && summary.weeklyScenarioSchedule) {
+    const wssKey = Object.keys(summary.weeklyScenarioSchedule)[0];
+    if (wssKey && summary.weeklyScenarioSchedule[wssKey].people) {
+      curPeople = summary.weeklyScenarioSchedule[wssKey].people;
+    }
+  }
+  const headcount = Object.keys(curPeople).length;
+  if (headcount > 0) {
+    const totalHours = Object.values(curPeople).reduce((s, shifts) => s + shifts.reduce((h, sh) => h + shiftWorkedHours(sh), 0), 0);
+    const totalFolgas = Object.values(curPeople).reduce((s, shifts) => s + shifts.filter(sh => sh === 'Folga').length, 0);
+    const curCompliance = summary.complianceCLT?.[Object.keys(summary.complianceCLT)[0]] || [];
+    let forecastBlock = null;
+    if (summary.forecastSemana && summary.forecastSemana.length && summary.demandIndices) {
+      const prevDias = summary.calendarioSemana.dias.map(dia => {
+        const d = new Date(dia.data + 'T12:00:00');
+        d.setDate(d.getDate() - 7);
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      });
+      const eventMap = summary.eventMap || {};
+      const prevForecast = prevDias.map(dataStr => {
+        const d = new Date(dataStr + 'T12:00:00');
+        const dow = d.getDay();
+        const wom = weekOfMonth(dataStr);
+        const ev = eventMap[dataStr] || null;
+        const evFator = ev ? ev.fator : 1;
+        return Math.round(adjustedDemand(summary.demandIndices.baseMedia, summary.demandIndices, dow, wom, evFator));
+      });
+      const curTotal = summary.forecastSemana.reduce((s, f) => s + (f.lojaFechada ? 0 : (f.previsao || 0)), 0);
+      const prevTotal = prevForecast.reduce((s, v) => s + v, 0);
+      forecastBlock = {
+        current: curTotal,
+        previous: prevTotal,
+        delta: prevTotal > 0 ? Math.round(((curTotal - prevTotal) / prevTotal) * 100) : 0,
+        label: prevTotal > 0 ? (curTotal > prevTotal ? 'alta' : curTotal < prevTotal ? 'queda' : 'estável') : 'sem base'
+      };
+    }
+    summary.weekComparison = {
+      forecast: forecastBlock,
+      compliance: { violations: curCompliance.length },
+      schedule: {
+        headcount,
+        totalHours: Math.round(totalHours),
+        totalFolgas,
+        horasPerCapita: headcount > 0 ? Math.round(totalHours / headcount * 10) / 10 : 0
+      }
+    };
+  }
+}
+
 async function applyClientState(summary, user, weekFilter = null) {
   const state = await loadClientState(user.orgId);
   const profile = state.profile || defaultClientState().profile;
+  const today = new Date();
   // Filtrar vendas pela semana do mês (módulo 2 — análise semana a semana)
   if (weekFilter && Array.isArray(state.salesRows)) {
     const semanaLabels = { 1: 'Semana 1 (dias 1-7)', 2: 'Semana 2 (dias 8-14)', 3: 'Semana 3 (dias 15-21)', 4: 'Semana 4 (dias 22-28)', 5: 'Semana 5 (dias 29-31)' };
@@ -3005,6 +4562,10 @@ async function applyClientState(summary, user, weekFilter = null) {
     summary.metadata.semanaAtiva = Number(weekFilter);
     summary.metadata.semanaLabel = semanaLabels[Number(weekFilter)] || `Semana ${weekFilter}`;
     summary.metadata.demandaMediaSemana = filtradas.length ? `${filtradas.length} faixas analisadas` : 'Sem dados nesta semana';
+  }
+  // Aplicar vendas do cliente ao dailyCoverage (ICOC por dia da semana)
+  if (state.salesRows.length) {
+    applySalesRowsToSummary(summary, state.salesRows, 'VRSoft importado');
   }
   const requiredDayKeys = requiredOperationalDayKeys(profile);
   const importedDayKeys = new Set(state.salesRows.map((row) => dayKeys[new Date(`${row.data}T12:00:00`).getDay()]));
@@ -3059,6 +4620,87 @@ async function applyClientState(summary, user, weekFilter = null) {
   }
   summary.demandIndices = buildDemandIndices(allSalesForIndices);
   summary.demandIndices = summary.demandIndices ? { ...summary.demandIndices, semanaAtual: currentWom, fonte: indicesSource } : null;
+
+  // Calendário de eventos (fator_evento)
+  const eventMap = buildEventMap(state.eventos, today.getFullYear());
+  summary.eventMap = eventMap;
+  summary.eventos = Array.isArray(state.eventos) ? state.eventos : [];
+
+  // Forecast 7 dias com eventos
+  if (summary.demandIndices) {
+    const forecast7 = [];
+    for (let i = 0; i < 7; i++) {
+      const fd = new Date(today); fd.setDate(today.getDate() + i);
+      const dateStr = fd.toISOString().slice(0, 10);
+      const dow = fd.getDay();
+      const wom = weekOfMonth(dateStr);
+      const ev = eventMap[dateStr] || null;
+      const evFator = ev ? ev.fator : 1;
+      const previsao = adjustedDemand(summary.demandIndices.baseMedia, summary.demandIndices, dow, wom, evFator);
+      forecast7.push({
+        data: dateStr,
+        dow,
+        wom,
+        previsao: Math.round(previsao),
+        evento: ev,
+        fatores: {
+          dow: summary.demandIndices.dowIndex[dow],
+          wom: (summary.demandIndices.womByDow && summary.demandIndices.womByDow[dow])
+            ? summary.demandIndices.womByDow[dow][wom]
+            : summary.demandIndices.womFactor[wom],
+          evento: evFator
+        }
+      });
+    }
+    summary.forecast7 = forecast7;
+  }
+
+  // Forecast alinhado à semana da escala (seg-dom do calendarioSemana)
+  if (summary.demandIndices && summary.calendarioSemana && summary.calendarioSemana.dias) {
+    const pdvLimit = Number(profile.quantidadePdvs || 3);
+    const totalOperadores = caixaEmployees.length || Number(profile.quantidadeOperadores || 4);
+    summary.forecastSemana = summary.calendarioSemana.dias.map(dia => {
+      const d = new Date(dia.data + 'T12:00:00');
+      const dow = d.getDay();
+      const wom = weekOfMonth(dia.data);
+      const ev = eventMap[dia.data] || null;
+      const evFator = ev ? ev.fator : 1;
+      const previsao = adjustedDemand(summary.demandIndices.baseMedia, summary.demandIndices, dow, wom, evFator);
+      const fatorTotal = (summary.demandIndices.dowIndex[dow] || 1)
+        * ((summary.demandIndices.womByDow && summary.demandIndices.womByDow[dow]) ? summary.demandIndices.womByDow[dow][wom] : (summary.demandIndices.womFactor[wom] || 1))
+        * evFator;
+      const isDom = dow === 0;
+      const lojaFechada = isDom && sundayIsClosed(profile);
+      const excedentes = Math.max(0, totalOperadores - pdvLimit);
+      let atividadeSecundaria = null;
+      if (excedentes > 0 && !lojaFechada) {
+        const isPico = fatorTotal >= 1.1;
+        atividadeSecundaria = {
+          excedentes,
+          pdvs: pdvLimit,
+          operadores: totalOperadores,
+          atividade: isPico ? 'embalagem' : 'reposicao',
+          motivo: isPico
+            ? 'Pico de vendas — operadores excedentes auxiliam no empacotamento para acelerar o fluxo de clientes'
+            : 'Demanda moderada — operadores excedentes reforçam reposição para reduzir ruptura de gôndola'
+        };
+      }
+      return {
+        data: dia.data,
+        label: dia.label,
+        dow, wom,
+        previsao: Math.round(previsao),
+        fatorTotal: Number(fatorTotal.toFixed(2)),
+        evento: ev,
+        lojaFechada,
+        atividadeSecundaria
+      };
+    });
+  }
+
+  computeWeekComparison(summary);
+  computeAdherence(summary, state.timecardRows || []);
+
   // Resumo do faturamento diário para o frontend
   if (dailyRev.length) {
     const totalFat = dailyRev.reduce((s, r) => s + r.faturamento, 0);
@@ -3070,6 +4712,12 @@ async function applyClientState(summary, user, weekFilter = null) {
       total: Math.round(totalFat)
     };
   }
+  // Escala sugerida (7 dias, baseada no forecast × setorDashboard)
+  summary.escalaSugerida = buildEscalaSugerida(
+    summary.demandIndices, summary.setorDashboard,
+    state.employees || [], profile, eventMap
+  );
+
   // Mercadológicos nível 2 disponíveis (para o campo Setor do cadastro)
   summary.mercadologicosM2 = mercRows.length
     ? [...new Set(mercRows.map(r => r.mercadologico))].sort()
@@ -3078,6 +4726,7 @@ async function applyClientState(summary, user, weekFilter = null) {
     profile: { ...profile, cnpj: '' },
     account: { name: user.name, email: user.email },
     employeesList: state.employees || [],
+    escalaWorkflow: normalizeEscalaWorkflow(state.escalaWorkflow),
     caixaCount: caixaEmployees.length,
     onboarding: {
       profileComplete: Boolean(profile.empresa && profile.loja && profile.quantidadeOperadores),
@@ -3086,6 +4735,10 @@ async function applyClientState(summary, user, weekFilter = null) {
       employees: state.employees.length,
       salesRows: state.salesRows.length,
       salesDays: representedSalesDays(state.salesRows),
+      mercRows: (state.salesByMercadologico || []).length,
+      mercDays: new Set((state.salesByMercadologico || []).map(r => r.data)).size,
+      dailyRevDays: (state.dailyRevenue || []).length,
+      timecardRows: (state.timecardRows || []).length,
       operationalDayTypes: requiredDayKeys.length,
       operationalDayTypesImported: importedOperationalDayKeys.length,
       missingOperationalDayTypes: missingOperationalDayKeys,
@@ -3210,6 +4863,8 @@ async function applyClientState(summary, user, weekFilter = null) {
       const targetHours = scenario.targetHours || 44;
       const targetDaysOff = scenario.targetDaysOff || 1;
       scenario.people = generateGroupedSchedule(profile, caixaEmployees, targetHours, targetDaysOff, pesosDia);
+      scenario.nominal = buildEscalaNominal(profile, caixaEmployees, targetHours, targetDaysOff, pesosDia, scenario.people, summary);
+      reconcileNominalScenario(summary, profile, caixaEmployees, scenario, pesosDia);
     });
 
     summary.sundayRotation.forEach((item) => {
@@ -3233,13 +4888,28 @@ async function applyClientState(summary, user, weekFilter = null) {
     const pesosFull = pesosDiaSemanaDeVendas(state.salesRows, mercRows);
     summary.fullSchedule = {};
     Object.entries(summary.weeklyScenarioSchedule).forEach(([key, sc]) => {
+      const people = generateGroupedSchedule(profile, state.employees, sc.targetHours || 44, sc.targetDaysOff || 1, pesosFull);
       summary.fullSchedule[key] = {
         label: sc.label,
         targetHours: sc.targetHours,
         targetDaysOff: sc.targetDaysOff,
-        people: generateGroupedSchedule(profile, state.employees, sc.targetHours || 44, sc.targetDaysOff || 1, pesosFull)
+        people,
+        nominal: buildEscalaNominal(profile, state.employees, sc.targetHours || 44, sc.targetDaysOff || 1, pesosFull, people, summary)
       };
+      reconcileNominalScenario(summary, profile, state.employees, summary.fullSchedule[key], pesosFull);
     });
+    // Aplicar edições manuais (overrides) do gerente
+    const overrides = state.escalaOverrides || {};
+    if (Object.keys(overrides).length) {
+      Object.entries(overrides).forEach(([oKey, turno]) => {
+        const [nome, dayStr, cenario] = oKey.split('::');
+        const dayIndex = parseInt(dayStr, 10);
+        if (!summary.fullSchedule[cenario]?.people?.[nome]) return;
+        if (dayIndex < 0 || dayIndex > 6) return;
+        summary.fullSchedule[cenario].people[nome][dayIndex] = turno;
+      });
+    }
+    summary.escalaOverrides = overrides;
     summary.complianceCLT = {};
     Object.entries(summary.fullSchedule).forEach(([key, sc]) => {
       summary.complianceCLT[key] = checkComplianceCLT(sc.people);
@@ -3247,11 +4917,15 @@ async function applyClientState(summary, user, weekFilter = null) {
     summary.bancoHoras = buildBancoHoras(summary.fullSchedule, state.employees);
   }
   summary.escalaFechada = state.escalaFechada || null;
+  summary.escalaWorkflow = normalizeEscalaWorkflow(state.escalaWorkflow);
   if (summary.escalaFechada && (!summary.escalaFechada.caixaPeople || !Object.keys(summary.escalaFechada.caixaPeople).length)) {
     const people = summary.escalaFechada.people || {};
     summary.escalaFechada.caixaPeople = Object.fromEntries(
       Object.entries(people).filter(([nome]) => isOperadorCaixaSnapshot(nome, summary.escalaFechada))
     );
+  }
+  if (summary.escalaFechada && !summary.escalaFechada.workflowStatus) {
+    summary.escalaFechada.workflowStatus = 'publicado';
   }
   summary.escalaHistorico = (state.escalaHistorico || []).map(h => ({
     label: h.label, dataInicio: h.dataInicio, dataFim: h.dataFim,
@@ -3343,6 +5017,14 @@ async function applyClientState(summary, user, weekFilter = null) {
   summary.monthlyWeekAnalysis = buildMonthlyWeekAnalysis(summary, state.salesRows);
   // ANÁLISE DE ECONOMIA: operação real vs otimizada
   summary.optimizationSavings = buildOptimizationSavings(state.salesRows, profile, state.employees, summary);
+  const finalPesosCaixa = pesosDiaSemanaDeVendas(state.salesRows, mercRows);
+  const finalPesosFull = pesosDiaSemanaDeVendas(state.salesRows, mercRows);
+  Object.values(summary.weeklyScenarioSchedule || {}).forEach((scenario) => {
+    reconcileNominalScenario(summary, profile, caixaEmployees, scenario, finalPesosCaixa);
+  });
+  Object.values(summary.fullSchedule || {}).forEach((scenario) => {
+    reconcileNominalScenario(summary, profile, state.employees, scenario, finalPesosFull);
+  });
   const finalCapacity = operators * 40;
   const finalSurplus = finalCapacity - weeklyDemand;
   summary.decisionMemory.recommendations[0].dados = [`${operators} operadoras`, `${weeklyDemand} caixas-hora semanais`, `${finalCapacity}h de capacidade no cenário mais restritivo`];
@@ -3350,7 +5032,7 @@ async function applyClientState(summary, user, weekFilter = null) {
   summary.decisionMemory.recommendations[1].dados[0] = `${operators} operadoras`;
   summary.decisionMemory.recommendations[1].resultado = `${operators} x 4h = ${operators * 4}h/semana; aproximadamente ${Math.round(operators * 4 * 4.33)}h/mês de capacidade auxiliar perdida`;
   summary.metadata.diasComVenda = representedDays;
-  summary.metadata.confianca = Math.min(95, Math.round(35 + representedDays * 4.7));
+  summary.metadata.confianca = Math.min(95, Math.round(20 + representedDays * 0.83));
   summary.metadata.periodoAmostra = representedDays > dates.length
     ? `${dateLabel(dates[0])} · ${representedDays} dias agregados`
     : `${dateLabel(dates[0])} a ${dateLabel(dates[dates.length - 1])}`;
@@ -3451,11 +5133,11 @@ function brazilianHolidays(year) {
 
 // Semana-calendário corrente (seg→dom) com datas reais e feriados marcados.
 // dayIndex segue a convenção da escala: 0=seg ... 5=sáb, 6=dom.
-function buildCalendarWeek(baseDate = new Date()) {
+function buildCalendarWeek(baseDate = new Date(), weekOffset = 0) {
   const base = new Date(baseDate);
   const diasDesdeSegunda = (base.getDay() + 6) % 7;
   const segunda = new Date(base);
-  segunda.setDate(base.getDate() - diasDesdeSegunda);
+  segunda.setDate(base.getDate() - diasDesdeSegunda + (weekOffset * 7));
   const feriados = [...brazilianHolidays(segunda.getFullYear()), ...brazilianHolidays(segunda.getFullYear() + 1)];
   const dias = [];
   for (let i = 0; i < 7; i++) {
@@ -3473,14 +5155,16 @@ function buildCalendarWeek(baseDate = new Date()) {
   return { inicio: dias[0].data, fim: dias[6].data, dias, temFeriado: dias.some(d => d.feriado) };
 }
 
-async function summaryFromDatabase(user = null, weekFilter = null) {
+async function summaryFromDatabase(user = null, weekFilter = null, weekOffset = 0) {
   const connection = await db.status();
   if (!connection.connected) {
     const summary = JSON.parse(JSON.stringify({ ...data, dataSource: { mode: 'demo', ...connection } }));
-    summary.calendarioSemana = buildCalendarWeek();
+    summary.calendarioSemana = buildCalendarWeek(new Date(), weekOffset);
+    summary.weekOffset = weekOffset;
     if (user) return applyClientState(summary, user, weekFilter);
     applySalesRowsToSummary(summary, loadModelSalesRows(), 'Empresa modelo VRSoft');
     refreshCoverageLoads(summary, summary.storeConfig.pdvs);
+    computeWeekComparison(summary);
     return summary;
   }
 
@@ -3488,7 +5172,8 @@ async function summaryFromDatabase(user = null, weekFilter = null) {
     const [demandRows, scenarios] = await Promise.all([db.loadDemandRows(), db.loadScenarios()]);
     const summary = JSON.parse(JSON.stringify(data));
     summary.dataSource = { mode: 'postgresql', ...connection };
-    summary.calendarioSemana = buildCalendarWeek();
+    summary.calendarioSemana = buildCalendarWeek(new Date(), weekOffset);
+    summary.weekOffset = weekOffset;
 
     if (demandRows.length) {
       const dates = [...new Set(demandRows.map((row) => row.data_referencia))].sort();
@@ -3516,7 +5201,7 @@ async function summaryFromDatabase(user = null, weekFilter = null) {
         .reduce((sum, row) => sum + Number(row.demanda || 0), 0);
       summary.scenarios.forEach((scenario) => { scenario.caixaNecessario = weeklyDemand; });
       summary.metadata.diasComVenda = dates.length;
-      summary.metadata.confianca = Math.min(95, Math.round(35 + dates.length * 4.7));
+      summary.metadata.confianca = Math.min(95, Math.round(20 + dates.length * 0.83));
       summary.metadata.periodoAmostra = `${dateLabel(dates[0])} a ${dateLabel(dates[dates.length - 1])}`;
       summary.metadata.ultimaImportacao = new Date().toLocaleString('pt-BR');
     }
@@ -3535,17 +5220,19 @@ async function summaryFromDatabase(user = null, weekFilter = null) {
     }
     if (user) return applyClientState(summary, user, weekFilter);
     refreshCoverageLoads(summary, summary.storeConfig.pdvs);
+    computeWeekComparison(summary);
     return summary;
   } catch (error) {
     const summary = JSON.parse(JSON.stringify({ ...data, dataSource: { mode: 'demo', connected: true, database: connection.database, error: error.message } }));
     if (user) return applyClientState(summary, user, weekFilter);
     applySalesRowsToSummary(summary, loadModelSalesRows(), 'Empresa modelo VRSoft');
     refreshCoverageLoads(summary, summary.storeConfig.pdvs);
+    computeWeekComparison(summary);
     return summary;
   }
 }
 
-const server = http.createServer(async (req, res) => {
+const requestHandler = async (req, res) => {
   try {
     requireSameOrigin(req);
   } catch (error) {
@@ -3553,9 +5240,12 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ ok: false, error: error.message }));
   }
   const user = await authenticatedUser(req);
-  if (req.url === '/api/summary') {
+  const summaryUrlMatch = req.url.match(/^\/api\/summary(\?.*)?$/);
+  if (summaryUrlMatch) {
     try {
-      const summary = await summaryFromDatabase(user);
+      const params = new URLSearchParams(summaryUrlMatch[1] || '');
+      const weekOffset = parseInt(params.get('weekOffset') || '0', 10) || 0;
+      const summary = await summaryFromDatabase(user, null, weekOffset);
       return json(res, summary);
     } catch (error) {
       console.error('ERROR in /api/summary:', error.message, error.stack);
@@ -3653,7 +5343,7 @@ const server = http.createServer(async (req, res) => {
   if (req.url === '/api/colaborador/escala' && req.method === 'POST') {
     (async () => {
       try {
-        enforceRateLimit(req, 'colab', 30, 60 * 60 * 1000);
+        await enforceRateLimit(req, 'colab', 30, 60 * 60 * 1000);
         const body = await readJsonBody(req, 10_000);
         const orgCode = sanitizeString(String(body.orgCode || '').trim()).toUpperCase();
         const nome = sanitizeString(String(body.nome || '').trim());
@@ -3726,59 +5416,65 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   if (req.url === '/api/account/activity') {
-    if (!user) {
-      return json(res, { ok: false, error: 'Faça login para visualizar atividades.' }, 401);
-    }
-    return json(res, { ok: true, activities: loadAudit(user.id).slice(0, 20), backups: fs.existsSync(BACKUP_DIR) ? fs.readdirSync(BACKUP_DIR).filter((file) => file.startsWith(user.id)).length : 0, persistence: await db.appPersistenceStatus() });
+    (async () => {
+      if (!user) {
+        return json(res, { ok: false, error: 'Faça login para visualizar atividades.' }, 401);
+      }
+      const activities = await loadAudit(user.id);
+      return json(res, { ok: true, activities: activities.slice(0, 20), persistence: await db.appPersistenceStatus() });
+    })();
+    return;
   }
   if (req.url === '/api/account/export') {
-    if (!user) {
-      return json(res, { ok: false, error: 'Faça login para exportar seus dados.' }, 401);
-    }
-    audit(user.id, 'Dados exportados');
-    const payload = {
-      exportedAt: new Date().toISOString(),
-      account: { name: user.name, email: user.email, createdAt: user.createdAt },
-      state: loadClientState(user.orgId),
-      activities: loadAudit(user.id)
-    };
-    res.writeHead(200, {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Content-Disposition': `attachment; filename="workforce-os-backup-${user.id}.json"`,
-      'Cache-Control': 'no-store',
-      'X-Content-Type-Options': 'nosniff'
-    });
-    return res.end(JSON.stringify(payload, null, 2));
+    (async () => {
+      if (!user) {
+        return json(res, { ok: false, error: 'Faça login para exportar seus dados.' }, 401);
+      }
+      await audit(user.id, 'Dados exportados');
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        account: { name: user.name, email: user.email, createdAt: user.createdAt },
+        state: await loadClientState(user.orgId),
+        activities: await loadAudit(user.id)
+      };
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': `attachment; filename="workforce-os-backup-${user.id}.json"`,
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff'
+      });
+      return res.end(JSON.stringify(payload, null, 2));
+    })();
+    return;
   }
   if (req.url === '/api/account/change-password' && req.method === 'POST') {
-    try {
-      if (!user) throw new Error('Faça login para alterar sua senha.');
-      enforceRateLimit(req, 'change-password', 5);
-      const body = await readJsonBody(req, 50_000);
-      const currentPassword = String(body.currentPassword || '');
-      const newPassword = String(body.newPassword || '');
-      if (!(await verifyPassword(currentPassword, user))) throw new Error('Senha atual incorreta.');
-      if (newPassword.length < 8) throw new Error('A nova senha precisa ter pelo menos 8 caracteres.');
-      if (currentPassword === newPassword) throw new Error('A nova senha deve ser diferente da senha atual.');
-      const secured = await hashPassword(newPassword);
-      const users = loadUsers();
-      const target = users.find((item) => item.id === user.id);
-      target.passwordSalt = secured.salt;
-      target.passwordHash = secured.hash;
-      target.passwordChangedAt = new Date().toISOString();
-      saveUsers(users);
-      [...sessions.entries()].filter(([, session]) => session.userId === user.id).forEach(([key]) => sessions.delete(key));
-      createSession(res, req, user.id);
-      await audit(user.id, 'PASSWORD_CHANGED', { ip: requestIp(req) });
-      return json(res, { ok: true });
-    } catch (error) {
-      return json(res, { ok: false, error: error.message }, 400);
-    }
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login para alterar sua senha.');
+        await enforceRateLimit(req, 'change-password', 5);
+        const body = await readJsonBody(req, 50_000);
+        const currentPassword = String(body.currentPassword || '');
+        const newPassword = String(body.newPassword || '');
+        if (!(await verifyPassword(currentPassword, user))) throw new Error('Senha atual incorreta.');
+        if (newPassword.length < 8) throw new Error('A nova senha precisa ter pelo menos 8 caracteres.');
+        if (currentPassword === newPassword) throw new Error('A nova senha deve ser diferente da senha atual.');
+        const secured = await hashPassword(newPassword);
+        const updated = await dbSupabase.updateUserPassword(user.id, secured.hash, secured.salt);
+        if (!updated) throw new Error('Não foi possível atualizar a senha. Tente novamente.');
+        await dbSupabase.deleteUserSessions(user.id);
+        await createSession(res, req, user.id);
+        await audit(user.id, 'PASSWORD_CHANGED', { ip: requestIp(req) });
+        return json(res, { ok: true });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
+    })();
+    return;
   }
   if (req.url === '/api/auth/register' && req.method === 'POST') {
     (async () => {
       try {
-        enforceRateLimit(req, 'register', 20, 60 * 60 * 1000);  // Relaxed for testing
+        await enforceRateLimit(req, 'register', 20, 60 * 60 * 1000);
         const body = await readJsonBody(req, 50_000);
         const email = String(body.email || '').trim().toLowerCase();
         const name = sanitizeString(String(body.name || '').trim());
@@ -3814,7 +5510,7 @@ const server = http.createServer(async (req, res) => {
         } else {
           // Criar nova empresa
           orgId = userId;
-          orgCode = 'EMP-' + crypto.randomBytes(3).toString('hex').toUpperCase();
+          orgCode = 'EMP-' + crypto.randomBytes(4).toString('hex').toUpperCase();
           role = 'admin';
         }
 
@@ -3842,7 +5538,7 @@ const server = http.createServer(async (req, res) => {
   if (req.url === '/api/auth/login' && req.method === 'POST') {
     (async () => {
       try {
-        enforceRateLimit(req, 'login', 20, 60 * 60 * 1000);  // Relaxed for testing
+        await enforceRateLimit(req, 'login', 10, 60 * 60 * 1000);
         const body = await readJsonBody(req, 50_000);
         const email = String(body.email || '').trim().toLowerCase();
         const password = String(body.password || '');
@@ -3927,8 +5623,10 @@ const server = http.createServer(async (req, res) => {
           cenarioLabel: full.label,
           fechadoEm: new Date().toISOString(),
           fechadoPor: user.email,
+          workflowStatus: 'publicado',
           people: full.people,
           caixaPeople: caixa?.people || {},
+          nominal: full.nominal || null,
           setorMap: summary.employeeSetorMap || {},
           cargoMap: summary.employeeCargoMap || {},
           compliance: (summary.complianceCLT && summary.complianceCLT[cenario]) || []
@@ -3940,6 +5638,7 @@ const server = http.createServer(async (req, res) => {
           state.escalaHistorico = [state.escalaFechada, ...(state.escalaHistorico || [])].slice(0, 12);
         }
         state.escalaFechada = snapshot;
+        state.escalaWorkflow = applyWorkflowStatus(state.escalaWorkflow, 'publicado', user, snapshot.fechadoEm);
         state.updatedAt = new Date().toISOString();
         await saveClientState(user.orgId, state);
         await audit(user.id, 'ESCALA_FECHADA', { periodo: snapshot.label, cenario, ip: requestIp(req) });
@@ -3960,11 +5659,102 @@ const server = http.createServer(async (req, res) => {
         if (state.escalaFechada) {
           state.escalaHistorico = [state.escalaFechada, ...(state.escalaHistorico || [])].slice(0, 12);
           state.escalaFechada = null;
+          state.escalaWorkflow = applyWorkflowStatus(state.escalaWorkflow, 'rascunho', user);
           state.updatedAt = new Date().toISOString();
           await saveClientState(user.orgId, state);
           await audit(user.id, 'ESCALA_REABERTA', { ip: requestIp(req) });
         }
         return json(res, { ok: true });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
+    })();
+    return;
+  }
+  if (req.url === '/api/escala/status' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login.');
+        if (user.role !== 'admin' && user.role !== 'gestor' && user.orgId !== user.id) throw new Error('Apenas o administrador pode alterar o status da escala.');
+        const body = await readJsonBody(req);
+        const nextStatus = String(body.status || '').toLowerCase();
+        if (!['rascunho', 'revisado', 'publicado', 'realizado'].includes(nextStatus)) {
+          throw new Error('Status inválido.');
+        }
+        const state = await loadClientState(user.orgId);
+        if (state.escalaFechada) {
+          state.escalaFechada.workflowStatus = nextStatus;
+        }
+        state.escalaWorkflow = applyWorkflowStatus(state.escalaWorkflow, nextStatus, user);
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.orgId, state);
+        await audit(user.id, 'ESCALA_STATUS_UPDATED', { status: nextStatus, ip: requestIp(req) });
+        return json(res, {
+          ok: true,
+          escalaWorkflow: state.escalaWorkflow,
+          escalaFechada: state.escalaFechada
+        });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
+    })();
+    return;
+  }
+  if (req.url === '/api/escala/edit' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login para editar a escala.');
+        const body = await readJsonBody(req);
+        const nome = sanitizeString(String(body.nome || '').trim());
+        const dayIndex = parseInt(body.dayIndex, 10);
+        const cenario = sanitizeString(String(body.cenario || '').trim());
+        const turno = sanitizeString(String(body.turno || '').trim());
+        if (!nome || isNaN(dayIndex) || dayIndex < 0 || dayIndex > 6 || !cenario || !turno) {
+          throw new Error('Dados inválidos para edição.');
+        }
+        const validShift = turno === 'Folga'
+          || /^\d{2}:\d{2}-\d{2}:\d{2}$/.test(turno)
+          || /^\d{2}:\d{2}-\d{2}:\d{2}\/\d{2}:\d{2}-\d{2}:\d{2}/.test(turno);
+        if (!validShift) {
+          throw new Error('Formato de turno inválido. Use HH:MM-HH:MM ou HH:MM-HH:MM/HH:MM-HH:MM ou Folga.');
+        }
+        const state = await loadClientState(user.orgId);
+        if (!state.escalaOverrides) state.escalaOverrides = {};
+        const key = `${nome}::${dayIndex}::${cenario}`;
+        state.escalaOverrides[key] = turno;
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.orgId, state);
+        await audit(user.id, 'ESCALA_EDIT', { nome, dayIndex, cenario, turno, ip: requestIp(req) });
+        return json(res, { ok: true, key, turno });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
+    })();
+    return;
+  }
+  if (req.url === '/api/escala/reset-edits' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login.');
+        const body = await readJsonBody(req);
+        const cenario = sanitizeString(String(body.cenario || '').trim());
+        const state = await loadClientState(user.orgId);
+        if (!state.escalaOverrides) { return json(res, { ok: true, cleared: 0 }); }
+        if (cenario) {
+          const before = Object.keys(state.escalaOverrides).length;
+          Object.keys(state.escalaOverrides).forEach(k => { if (k.endsWith('::' + cenario)) delete state.escalaOverrides[k]; });
+          const cleared = before - Object.keys(state.escalaOverrides).length;
+          state.updatedAt = new Date().toISOString();
+          await saveClientState(user.orgId, state);
+          await audit(user.id, 'ESCALA_RESET_EDITS', { cenario, cleared, ip: requestIp(req) });
+          return json(res, { ok: true, cleared });
+        }
+        const cleared = Object.keys(state.escalaOverrides).length;
+        state.escalaOverrides = {};
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.orgId, state);
+        await audit(user.id, 'ESCALA_RESET_ALL_EDITS', { cleared, ip: requestIp(req) });
+        return json(res, { ok: true, cleared });
       } catch (error) {
         return json(res, { ok: false, error: error.message }, 400);
       }
@@ -4049,7 +5839,11 @@ const server = http.createServer(async (req, res) => {
         }
 
         const state = await loadClientState(user.orgId);
-        state.profile = { ...state.profile, ...body.profile };
+        state.profile = {
+          ...state.profile,
+          ...body.profile,
+          regrasOperacionais: normalizeOperationalRules(body.profile?.regrasOperacionais || state.profile?.regrasOperacionais)
+        };
         state.updatedAt = new Date().toISOString();
         await saveClientState(user.orgId, state);
         await audit(user.id, 'CONFIG_UPDATED', { empresa: state.profile.empresa, loja: state.profile.loja });
@@ -4066,35 +5860,7 @@ const server = http.createServer(async (req, res) => {
         if (!user) throw new Error('Faça login para gerenciar a equipe.');
         const body = await readJsonBody(req);
         const list = Array.isArray(body.employees) ? body.employees.slice(0, 500) : [];
-
-        const turnosValidos = ['abertura', 'intermediario', 'fechamento', 'flexivel'];
-        const diasValidos = ['', 'segunda', 'terca', 'quarta', 'quinta', 'domingo'];
-        const employees = list.map((row) => {
-          const mercadologicos = Array.isArray(row.mercadologicos)
-            ? row.mercadologicos.map(m => sanitizeString(String(m)).slice(0, 80)).filter(Boolean).slice(0, 30)
-            : [];
-          // Setor operacional predominante (derivado dos mercadológicos marcados)
-          let setor = sanitizeString(String(row.setor || 'Caixa')).slice(0, 60);
-          if (mercadologicos.length) {
-            const setoresOp = mercadologicos.map(mercadologicoParaSetor);
-            // setor mais frequente
-            const freq = {};
-            setoresOp.forEach(s => { freq[s] = (freq[s] || 0) + 1; });
-            setor = Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
-          }
-          return {
-            nome: sanitizeString(String(row.nome || '')).slice(0, 100),
-            sexo: ['masculino', 'feminino'].includes(String(row.sexo || '').toLowerCase()) ? String(row.sexo).toLowerCase() : 'feminino',
-            cargo: sanitizeString(String(row.cargo || 'Operador de Caixa')).slice(0, 60),
-            setor,
-            mercadologicos,
-            horasSemanais: Math.min(168, Math.max(1, Number(row.horasSemanais) || 44)),
-            salario: Math.max(0, Number(row.salario) || 0),
-            turno: turnosValidos.includes(String(row.turno || '').toLowerCase()) ? String(row.turno).toLowerCase() : 'flexivel',
-            podeDomingo: row.podeDomingo === false ? false : true,
-            folgaPreferencial: diasValidos.includes(String(row.folgaPreferencial || '').toLowerCase()) ? String(row.folgaPreferencial).toLowerCase() : ''
-          };
-        }).filter((e) => e.nome.length >= 2);
+        const employees = list.map(normalizeEmployeeRecord).filter((e) => e.nome.length >= 2);
 
         const state = await loadClientState(user.orgId);
         state.employees = employees;
@@ -4193,11 +5959,125 @@ const server = http.createServer(async (req, res) => {
     })();
     return;
   }
+  // CRUD de eventos (calendário de fator_evento)
+  if (req.url === '/api/eventos' && req.method === 'GET') {
+    (async () => {
+      try {
+        if (!user) return json(res, { ok: false, error: 'Login necessário.' }, 401);
+        const state = await loadClientState(user.orgId);
+        const eventos = Array.isArray(state.eventos) ? state.eventos : [];
+        const eventMap = buildEventMap(eventos, new Date().getFullYear());
+        return json(res, { ok: true, eventos, eventMap });
+      } catch (error) { return json(res, { ok: false, error: error.message }, 400); }
+    })();
+    return;
+  }
+  if (req.url === '/api/eventos' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Login necessário.');
+        const body = await readJsonBody(req, 100_000);
+        const eventos = Array.isArray(body.eventos) ? body.eventos : [];
+        const valid = eventos.filter(ev => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(String(ev.data || ''))) return false;
+          if (!ev.tipo || !EVENTO_TIPO_FATOR[ev.tipo]) return false;
+          return true;
+        }).map(ev => ({
+          data: String(ev.data),
+          tipo: String(ev.tipo),
+          nome: sanitizeString(String(ev.nome || '')).slice(0, 80),
+          fator: Math.max(0, Math.min(5, Number(ev.fator) || EVENTO_TIPO_FATOR[ev.tipo] || 1))
+        }));
+        const state = await loadClientState(user.orgId);
+        state.eventos = valid;
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.orgId, state);
+        await audit(user.id, 'EVENTOS_UPDATED', { total: valid.length, ip: requestIp(req) });
+        return json(res, { ok: true, total: valid.length });
+      } catch (error) { return json(res, { ok: false, error: error.message }, 400); }
+    })();
+    return;
+  }
+  // Adicionar/atualizar evento individual
+  if (req.url === '/api/eventos/upsert' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Login necessário.');
+        const ev = await readJsonBody(req, 10_000);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(ev.data || ''))) throw new Error('Data inválida.');
+        if (!ev.tipo || !EVENTO_TIPO_FATOR[ev.tipo]) throw new Error('Tipo inválido. Use: feriado, vespera, promocao, data_comemorativa, pagamento.');
+        const evento = {
+          data: String(ev.data),
+          tipo: String(ev.tipo),
+          nome: sanitizeString(String(ev.nome || '')).slice(0, 80),
+          fator: Math.max(0, Math.min(5, Number(ev.fator) || EVENTO_TIPO_FATOR[ev.tipo] || 1))
+        };
+        const state = await loadClientState(user.orgId);
+        if (!Array.isArray(state.eventos)) state.eventos = [];
+        const idx = state.eventos.findIndex(e => e.data === evento.data);
+        if (idx >= 0) state.eventos[idx] = evento; else state.eventos.push(evento);
+        state.eventos.sort((a, b) => a.data.localeCompare(b.data));
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.orgId, state);
+        return json(res, { ok: true, evento, total: state.eventos.length });
+      } catch (error) { return json(res, { ok: false, error: error.message }, 400); }
+    })();
+    return;
+  }
+  // Remover evento por data
+  if (req.url === '/api/eventos/delete' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Login necessário.');
+        const body = await readJsonBody(req, 1_000);
+        const data = String(body.data || '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) throw new Error('Data inválida.');
+        const state = await loadClientState(user.orgId);
+        if (!Array.isArray(state.eventos)) state.eventos = [];
+        state.eventos = state.eventos.filter(e => e.data !== data);
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.orgId, state);
+        return json(res, { ok: true, total: state.eventos.length });
+      } catch (error) { return json(res, { ok: false, error: error.message }, 400); }
+    })();
+    return;
+  }
+  if (req.url === '/api/import-timecard' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login para importar registros de ponto.');
+        const body = await readJsonBody(req, 16_000_000);
+        const rows = Array.isArray(body.rows) ? body.rows.slice(0, 50000) : [];
+        const timeRe = /^\d{2}:\d{2}$/;
+        const validRows = rows.filter(r => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(r.data)) return false;
+          if (!timeRe.test(r.entrada) || !timeRe.test(r.saida)) return false;
+          if (!r.nome || String(r.nome).trim().length < 2) return false;
+          return true;
+        }).map(r => ({
+          nome: sanitizeString(String(r.nome).trim()).slice(0, 100),
+          data: String(r.data),
+          entrada: String(r.entrada),
+          saida: String(r.saida)
+        }));
+        if (!validRows.length) throw new Error('Nenhum registro válido. Formato: nome, data (YYYY-MM-DD), entrada (HH:MM), saída (HH:MM).');
+        const state = await loadClientState(user.orgId);
+        state.timecardRows = validRows;
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.orgId, state);
+        const dias = new Set(validRows.map(r => r.data)).size;
+        const pessoas = new Set(validRows.map(r => r.nome)).size;
+        await audit(user.id, 'TIMECARD_IMPORTED', { registros: validRows.length, dias, pessoas, ip: requestIp(req) });
+        return json(res, { ok: true, imported: validRows.length, rejected: rows.length - validRows.length, dias, pessoas });
+      } catch (error) { return json(res, { ok: false, error: error.message }, 400); }
+    })();
+    return;
+  }
   if (req.url === '/api/import-sales' && req.method === 'POST') {
     (async () => {
       try {
         if (!user) throw new Error('Faça login para importar vendas.');
-        const body = await readJsonBody(req);
+        const body = await readJsonBody(req, 16_000_000);
         const rows = Array.isArray(body.rows) ? body.rows.slice(0, 10000) : [];
 
         const validRows = rows.filter((row) => {
@@ -4206,7 +6086,18 @@ const server = http.createServer(async (req, res) => {
           if (!/^\d{2}:\d{2}$/.test(row.horaFim)) return false;
           if (Number(row.cupons) < 0 || Number(row.cupons) > 100000) return false;
           return true;
-        });
+        }).map(row => ({
+          data: row.data,
+          horaInicio: row.horaInicio,
+          horaFim: row.horaFim,
+          operador: sanitizeString(String(row.operador || '')).slice(0, 100),
+          cupons: Number(row.cupons) || 0,
+          vendaLiquida: Number(row.vendaLiquida) || 0,
+          qtdItens: Number(row.qtdItens) || 0,
+          qtdeVendida: Number(row.qtdeVendida) || 0,
+          itensMedios: Number(row.itensMedios) || 0,
+          minutosAtendimento: Number(row.minutosAtendimento) || 0
+        }));
 
         if (!validRows.length) throw new Error('Nenhuma linha válida encontrada. Use o modelo de importação.');
 
@@ -4226,28 +6117,41 @@ const server = http.createServer(async (req, res) => {
     (async () => {
       try {
         if (!user) throw new Error('Faça login para importar a equipe.');
-        const body = await readJsonBody(req);
+        const body = await readJsonBody(req, 8_000_000);
         const rows = Array.isArray(body.rows) ? body.rows.slice(0, 1000) : [];
 
+        function parseHoras(v) {
+          if (typeof v === 'number' && v > 0) return v;
+          const s = String(v || '').trim().replace(/h$/i, '');
+          const m = s.match(/^(\d+)[h:,.](\d*)$/i);
+          if (m) return Number(m[1]) + (m[2] ? Number(m[2]) / (m[2].length <= 2 ? 100 : 1) : 0);
+          const n = Number(s.replace(',', '.'));
+          return isNaN(n) ? 0 : n;
+        }
+        let rejected = 0;
         const validRows = rows.filter((row) => {
           const nome = sanitizeString(String(row.nome || '')).slice(0, 100);
-          const horas = Number(row.horasSemanais);
-          return nome.length >= 2 && horas > 0 && horas <= 168;
+          const horas = parseHoras(row.horasSemanais);
+          if (nome.length < 2 || horas <= 0 || horas > 168) { rejected++; return false; }
+          return true;
         }).map(row => ({
           nome: sanitizeString(String(row.nome || '')).slice(0, 100),
-          horasSemanais: Math.min(168, Math.max(0, Number(row.horasSemanais))),
-          funcao: sanitizeString(String(row.funcao || '')).slice(0, 50)
+          horasSemanais: Math.min(168, Math.max(0, parseHoras(row.horasSemanais))),
+          funcao: sanitizeString(String(row.funcao || row.cargo || '')).slice(0, 50),
+          setor: sanitizeString(String(row.setor || row.departamento || '')).slice(0, 80),
+          cargo: sanitizeString(String(row.cargo || row.funcao || '')).slice(0, 50),
+          mercadologicos: Array.isArray(row.mercadologicos) ? row.mercadologicos.map(m => sanitizeString(String(m)).slice(0, 80)) : []
         }));
 
-        if (validRows.length < 1) throw new Error('Importe ao menos uma operadora válida.');
+        if (validRows.length < 1) throw new Error(`Nenhum colaborador válido. ${rejected} linha(s) rejeitada(s) — verifique se horasSemanais é numérico (ex: 44, não "44:00h").`);
 
         const state = await loadClientState(user.orgId);
         state.employees = validRows;
         state.profile.quantidadeOperadores = validRows.length;
         state.updatedAt = new Date().toISOString();
         await saveClientState(user.orgId, state);
-        await audit(user.id, 'EMPLOYEES_IMPORTED', { colaboradores: validRows.length, ip: requestIp(req) });
-        return json(res, { ok: true, imported: validRows.length, rejected: rows.length - validRows.length, state });
+        await audit(user.id, 'EMPLOYEES_IMPORTED', { colaboradores: validRows.length, rejeitados: rejected, ip: requestIp(req) });
+        return json(res, { ok: true, imported: validRows.length, rejected, state });
       } catch (error) {
         return json(res, { ok: false, error: error.message }, 400);
       }
@@ -4274,8 +6178,32 @@ const server = http.createServer(async (req, res) => {
     });
     res.end(buf);
   });
-});
+};
 
-server.listen(PORT, () => {
-  console.log(`Workforce OS rodando em http://localhost:${PORT}`);
+const server = http.createServer(requestHandler);
+
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`Workforce OS rodando em http://localhost:${PORT}`);
+  });
+}
+
+// Vercel (@vercel/node) exige que o entrypoint exporte uma função handler ou um server.
+// Exportamos o handler e anexamos os helpers como propriedades para os scripts internos
+// (que usam `const { loadClientState } = require('../server')`).
+module.exports = requestHandler;
+Object.assign(module.exports, {
+  server,
+  loadClientState,
+  summaryFromDatabase,
+  buildEscalaNominal,
+  generateGroupedSchedule,
+  generateScheduleByProfile,
+  checkComplianceCLT,
+  compareScheduleEngines,
+  scheduleGroupKey,
+  isOperadorCaixa,
+  employeeSectorFit,
+  canEmployeeWorkRole,
+  canEmployeeWorkSunday
 });
