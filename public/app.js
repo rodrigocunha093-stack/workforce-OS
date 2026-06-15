@@ -1123,6 +1123,7 @@ function getSelectedCashierScenario(data) {
     ? {
         usarFechada: true,
         people: fechada.caixaPeople || fechada.people || {},
+        nominal: fechada.nominal || null,
         label: fechada.cenarioLabel,
         fullLabel: `${fechada.cenarioLabel} · ${fechada.label}`,
         targetHours: (data.weeklyScenarioSchedule?.[currentCoverageScenario]?.targetHours) || 44,
@@ -1134,6 +1135,7 @@ function getSelectedCashierScenario(data) {
         return {
           usarFechada: false,
           people: scenario?.people || {},
+          nominal: scenario?.nominal || null,
           label: scenario?.label || '',
           fullLabel: scenario?.label || '',
           targetHours: scenario?.targetHours || 44,
@@ -1146,6 +1148,7 @@ function getSelectedCashierScenario(data) {
     return {
       ...scenarioBase,
       people: optimizePeopleAgainstCoverage(scenarioBase.people, targets),
+      nominal: scenarioBase.nominal,
       optimized: true
     };
   }
@@ -1518,27 +1521,29 @@ function renderStoreFloorMap(data) {
     const byZone = byZonePreview;
 
     const checkoutWorkers = byZone.checkout || [];
-    const activePdvs = Math.min(checkoutWorkers.length, pdvs);
+    // Limitar PDVs ativos pela demanda da hora atual
+    const _curRow = (cfg && cfg.rows || []).find(r => r.hora === hourBucket);
+    const hourDemand = _curRow ? Math.max(1, Number(_curRow.demanda || 0)) : checkoutWorkers.length;
+    const activePdvs = Math.min(checkoutWorkers.length, pdvs, hourDemand);
     const pdvSp = Math.min(2.5, 10 / pdvs), pdvSt = (12 - pdvs * pdvSp) / 2;
     for (let i = 0; i < pdvs; i++) {
       const gx = pdvSt + i * pdvSp;
       const act = i < activePdvs;
       h += isoBox(gx, 9.8, pdvSp*0.7, 1.2, 6, act?ctC:'#555', act?ctD:'#444', act?ctE:'#333');
-      // Screen
       const scrC = act ? (dk?'#e0f2e9':'#a5d6a7') : (dk?'#333':'#777');
       h += isoRect(gx+0.15, 10.0, 0.4, 0.3, scrC, null, 0.9);
       h += isoLabel(gx+pdvSp*0.35, 10.7, 'PDV '+(i+1), act?(dk?'#a5d6a7':'#fff'):(dk?'#555':'#999'), 6);
-      // Place worker at this PDV
-      if (i < checkoutWorkers.length) {
+      if (i < activePdvs && i < checkoutWorkers.length) {
         const w = checkoutWorkers[i];
         h += isoWorker(gx + pdvSp*0.35, 9.2, ZC.checkout, w.nome, 'fw-ck'+i, ZL.checkout, w.shifts[_floorDay], isOnBreak(w, _floorHour));
       }
     }
-    // Extra cashiers beyond PDV count wait nearby
-    for (let i = pdvs; i < checkoutWorkers.length; i++) {
+    // Excedentes: caixas no turno mas sem PDV necessário → apoio/reposição
+    for (let i = activePdvs; i < checkoutWorkers.length; i++) {
       const w = checkoutWorkers[i];
-      const gx = pdvSt + (i % pdvs) * pdvSp + pdvSp * 0.7;
-      h += isoWorker(gx, 8.8, '#64748b', w.nome, 'fw-ckx'+i, 'Auxiliar', w.shifts[_floorDay], isOnBreak(w, _floorHour));
+      const gx = 3 + ((i - activePdvs) % 4) * 1.8;
+      const gy = 8 + Math.floor((i - activePdvs) / 4) * 0.6;
+      h += isoWorker(gx, gy, '#64748b', w.nome, 'fw-ckx'+i, 'Apoio/Repos.', w.shifts[_floorDay], isOnBreak(w, _floorHour));
     }
     h += isoLabel(6,11.5,'FRENTE DE LOJA',dk?'rgba(255,255,255,.35)':'rgba(0,0,0,.25)',9);
     h += `<text x="${isoX(6,12)}" y="${isoY(6,12)+14}" text-anchor="middle" fill="var(--color-text-tertiary)" font-size="9" style="font-family:inherit"><tspan style="font-size:14px">&#8593;</tspan> ENTRADA</text>`;
@@ -1864,6 +1869,8 @@ function renderWeeklySchedule(data) {
   const source = getSelectedCashierScenario(data);
   const fechada = data.escalaFechada;
   const usarFechada = source.usarFechada;
+  const workflow = data.escalaWorkflow || data.client?.escalaWorkflow || { status: 'rascunho' };
+  const workflowStatus = usarFechada ? (fechada?.workflowStatus || workflow.status || 'publicado') : (workflow.status || 'rascunho');
   const setorMap = usarFechada ? (fechada.setorMap || {}) : (data.employeeSetorMap || {});
   const cargoMap = usarFechada ? (fechada.cargoMap || {}) : (data.employeeCargoMap || {});
   const days = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
@@ -1920,29 +1927,40 @@ function renderWeeklySchedule(data) {
       }).join('')}
     </div>` : '';
 
-  const periodoBox = `
-    <div class="periodo-box ${usarFechada ? 'periodo-fechado' : 'periodo-aberto'}">
-      ${usarFechada ? `
-        <div class="periodo-info">
-          <strong>🔒 PERÍODO FECHADO — escala oficial</strong>
-          <span>${fechada.label} · ${fechada.cenarioLabel} · fechado por ${fechada.fechadoPor} em ${new Date(fechada.fechadoEm).toLocaleDateString('pt-BR')}</span>
-          <small>Esta escala está congelada. Mudanças no cadastro NÃO a alteram.</small>
-        </div>
-        <div class="periodo-actions">
-          <button id="verRascunhoBtn" class="optimize-button" type="button">Ver rascunho atual</button>
-          <button id="reabrirBtn" class="optimize-button" type="button">Reabrir período</button>
-        </div>
-      ` : `
-        <div class="periodo-info">
-          <strong>📝 RASCUNHO ${fechada ? '(há um período fechado vigente)' : '— escala dinâmica'}</strong>
-          <span>Esta escala é recalculada automaticamente. Feche o período para gerar a versão oficial imutável.</span>
-        </div>
-        <div class="periodo-actions">
-          ${fechada ? '<button id="verFechadaBtn" class="optimize-button" type="button">Ver escala oficial</button>' : ''}
-          <button id="fecharPeriodoBtn" class="optimize-button save-optimization" type="button">🔒 Fechar período</button>
-        </div>
-      `}
-    </div>`;
+  const overrides = data.escalaOverrides || {};
+  const overrideCount = Object.keys(overrides).filter(k => k.endsWith('::' + currentCoverageScenario)).length;
+  const overrideLabel = overrideCount
+    ? '<small style="color:#f59e0b">✏️ ' + overrideCount + ' turno' + (overrideCount > 1 ? 's' : '') + ' editado' + (overrideCount > 1 ? 's' : '') + ' manualmente</small>'
+    : '<small style="opacity:.5">Clique num turno para editar</small>';
+
+  let periodoInner = '';
+  if (usarFechada) {
+    periodoInner = '<div class="periodo-info">'
+      + '<strong>🔒 PERÍODO FECHADO — escala oficial</strong>'
+      + '<span>' + (fechada.label || '') + ' · ' + (fechada.cenarioLabel || '') + ' · fechado por ' + (fechada.fechadoPor || '') + ' em ' + (fechada.fechadoEm ? new Date(fechada.fechadoEm).toLocaleDateString('pt-BR') : '') + '</span>'
+      + '<small class="workflow-pill workflow-' + workflowStatus + '">Status: ' + workflowStatus + '</small>'
+      + '<small>Esta escala está congelada. Mudanças no cadastro NÃO a alteram.</small>'
+      + '</div>'
+      + '<div class="periodo-actions">'
+      + '<button id="verRascunhoBtn" class="optimize-button" type="button">Ver rascunho atual</button>'
+      + (workflowStatus !== 'realizado' ? '<button id="markDoneBtn" class="optimize-button" type="button">Marcar realizado</button>' : '<button id="markPublishedBtn" class="optimize-button" type="button">Voltar para publicado</button>')
+      + '<button id="reabrirBtn" class="optimize-button" type="button">Reabrir período</button>'
+      + '</div>';
+  } else {
+    periodoInner = '<div class="periodo-info">'
+      + '<strong>📝 RASCUNHO ' + (fechada ? '(há um período fechado vigente)' : '— escala dinâmica') + '</strong>'
+      + '<span class="workflow-pill workflow-' + workflowStatus + '">Status atual: ' + workflowStatus + '</span>'
+      + '<span>Esta escala é recalculada automaticamente. Feche o período para gerar a versão oficial imutável.</span>'
+      + overrideLabel
+      + '</div>'
+      + '<div class="periodo-actions">'
+      + (fechada ? '<button id="verFechadaBtn" class="optimize-button" type="button">Ver escala oficial</button>' : '')
+      + (overrideCount ? '<button id="resetEditsBtn" class="optimize-button" type="button">↩ Desfazer edições</button>' : '')
+      + (workflowStatus === 'revisado' ? '<button id="markDraftBtn" class="optimize-button" type="button">Voltar para rascunho</button>' : '<button id="markReviewedBtn" class="optimize-button" type="button">Marcar revisado</button>')
+      + '<button id="fecharPeriodoBtn" class="optimize-button save-optimization" type="button">🔒 Fechar período</button>'
+      + '</div>';
+  }
+  const periodoBox = '<div class="periodo-box ' + (usarFechada ? 'periodo-fechado' : 'periodo-aberto') + '">' + periodoInner + '</div>';
 
   // FASE 1: Compliance CLT
   const compliance = usarFechada ? (fechada.compliance || []) : ((data.complianceCLT && data.complianceCLT[currentCoverageScenario]) || []);
@@ -1962,11 +1980,56 @@ function renderWeeklySchedule(data) {
     return cal.dias.findIndex(x => x.data === iso);
   })();
 
+  const currentWeekOffset = data.weekOffset || 0;
+  const calSemana = data.calendarioSemana;
+  const weekNavBar = `
+    <div class="week-nav-bar">
+      <button class="week-nav-btn" id="weekPrevBtn" type="button" title="Semana anterior">&larr; Anterior</button>
+      <span class="week-nav-label">${calSemana ? calSemana.dias[0].label + ' — ' + calSemana.dias[6].label : 'Semana atual'}${currentWeekOffset === 0 ? ' <em class="today-tag">atual</em>' : currentWeekOffset > 0 ? ` <em class="today-tag">+${currentWeekOffset}</em>` : ''}</span>
+      <button class="week-nav-btn" id="weekNextBtn" type="button" title="Próxima semana">Próxima &rarr;</button>
+    </div>`;
+
+  // Comparação semana-sobre-semana
+  const wc = data.weekComparison;
+  let weekComparisonBox = '';
+  if (wc) {
+    const fc = wc.forecast;
+    const sc = wc.schedule;
+    const fmtK = (v) => v >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + 'k' : String(v);
+    let forecastCard = '';
+    if (fc) {
+      const deltaClass = fc.delta > 0 ? 'wc-up' : fc.delta < 0 ? 'wc-down' : 'wc-flat';
+      const deltaIcon = fc.delta > 0 ? '▲' : fc.delta < 0 ? '▼' : '—';
+      forecastCard = '<div class="wc-card"><small>Previsão semana</small><strong>R$ ' + fmtK(fc.current) + '</strong>'
+        + '<span class="wc-delta ' + deltaClass + '">' + deltaIcon + ' ' + Math.abs(fc.delta) + '% vs anterior</span></div>';
+    } else {
+      forecastCard = '<div class="wc-card"><small>Previsão semana</small><strong>—</strong>'
+        + '<span class="wc-detail">Importe faturamento</span></div>';
+    }
+    weekComparisonBox = '<div class="week-comparison">'
+      + forecastCard
+      + '<div class="wc-card"><small>Equipe escalada</small><strong>' + sc.headcount + ' pessoas</strong>'
+      + '<span class="wc-detail">' + sc.totalHours + 'h total · ' + sc.horasPerCapita + 'h/pessoa</span></div>'
+      + '<div class="wc-card"><small>Folgas na semana</small><strong>' + sc.totalFolgas + ' folgas</strong>'
+      + '<span class="wc-detail">' + (sc.headcount > 0 ? (sc.totalFolgas / sc.headcount).toFixed(1) : 0) + ' por pessoa</span></div>'
+      + '<div class="wc-card"><small>Conformidade CLT</small><strong>' + (wc.compliance.violations === 0 ? '✅ Ok' : '⚠️ ' + wc.compliance.violations + ' alerta' + (wc.compliance.violations > 1 ? 's' : '')) + '</strong>'
+      + '<span class="wc-detail">' + (wc.compliance.violations === 0 ? 'Todos conformes' : 'Revisar antes de fechar') + '</span></div>';
+    if (data.adherence && data.adherence.summary) {
+      const ad = data.adherence.summary;
+      const adClass = ad.aderencia >= 90 ? 'wc-up' : ad.aderencia >= 70 ? 'wc-flat' : 'wc-down';
+      weekComparisonBox += '<div class="wc-card"><small>Aderência ponto</small><strong class="' + adClass + '">' + ad.aderencia + '%</strong>'
+        + '<span class="wc-detail">' + ad.totalWorkedHours + 'h real · ' + ad.totalPlannedHours + 'h plan.</span></div>';
+    }
+    weekComparisonBox += '</div>';
+  }
+
   document.getElementById('weeklySchedule').innerHTML = `
     ${periodoBox}
     ${complianceBox}
+    ${weekComparisonBox}
     ${setorChips}
     ${cargoChips}
+    ${weekNavBar}
     ${(() => {
       const cal = data.calendarioSemana;
       if (!cal || !cal.temFeriado) return '';
@@ -1979,6 +2042,20 @@ function renderWeeklySchedule(data) {
       const dataLabel = diaCal ? `<small class="head-date">${diaCal.label}${diaCal.feriado ? ' 🎉' : ''}</small>` : '';
       return `<span class="${di === todayIdx ? 'is-today' : ''}" title="${diaCal?.feriado || (di === todayIdx ? 'Hoje' : '')}">${day}${di === todayIdx ? ' <em class="today-tag">hoje</em>' : ''}${dataLabel}</span>`;
     }).join('')}<span>Auditoria</span></div>
+    ${(() => {
+      const fs = data.forecastSemana;
+      if (!fs || !fs.length) return `<div class="weekly-row weekly-forecast-row weekly-forecast-empty"><span class="weekly-person forecast-label"><strong>Previsão</strong><small>faturamento dia</small></span><span class="weekly-shift forecast-cell" style="grid-column: span 7; text-align:center; opacity:0.6; font-size:0.85em;">Importe faturamento diário para ver previsões aqui</span><span class="weekly-shift forecast-cell"></span></div>`;
+      const maxPrev = Math.max(...fs.map(f => f.previsao || 0));
+      return `<div class="weekly-row weekly-forecast-row"><span class="weekly-person forecast-label"><strong>Previsão</strong><small>faturamento dia</small></span>${fs.map((f, di) => {
+        if (f.lojaFechada) return '<span class="weekly-shift forecast-cell forecast-closed">Fechado</span>';
+        const pct = maxPrev > 0 ? Math.round((f.previsao / maxPrev) * 100) : 0;
+        const valK = f.previsao >= 1000 ? (f.previsao / 1000).toFixed(1).replace('.', ',') + 'k' : f.previsao;
+        const evBadge = f.evento ? '<span class="fc-ev-badge" title="' + (f.evento.nome || f.evento.tipo) + '">⚡</span>' : '';
+        const atv = f.atividadeSecundaria;
+        const atvBadge = atv ? '<span class="fc-atv-badge fc-atv-' + atv.atividade + '" title="' + atv.motivo + '">' + (atv.atividade === 'embalagem' ? '🛒 ' + atv.excedentes + ' emb' : '📦 ' + atv.excedentes + ' rep') + '</span>' : '';
+        return '<span class="weekly-shift forecast-cell ' + (di === todayIdx ? 'is-today' : '') + '" title="Fator: ' + f.fatorTotal + (f.evento ? ' | ' + (f.evento.nome || f.evento.tipo) : '') + '"><span class="fc-bar" style="width:' + pct + '%"></span><span class="fc-val">R$ ' + valK + '</span>' + evBadge + atvBadge + '</span>';
+      }).join('')}<span class="weekly-shift forecast-cell"></span></div>`;
+    })()}
     ${people.map(([nome, shifts]) => {
       const audit = audits.find((item) => item.nome === nome);
       const ok = Math.abs(audit.hours - source.targetHours) < 0.01 && audit.daysOff === source.targetDaysOff;
@@ -1986,6 +2063,8 @@ function renderWeeklySchedule(data) {
       const workedLabel = Math.abs(audit.hours - source.targetHours) < 0.01
         ? formatWorkedHours(source.targetHours)
         : `${formatWorkedHours(audit.hours)} prev.`;
+      const nominalRoles = source.nominal?.roles?.[nome] || [];
+      const nominalJustifications = source.nominal?.justifications?.[nome] || [];
       return `
         <div class="weekly-row">
           <span class="weekly-person"><strong>${nome}</strong><small>${setor} · ${workedLabel} trabalhadas · ${audit.daysOff} folga${audit.daysOff > 1 ? 's' : ''}</small></span>
@@ -1999,7 +2078,20 @@ function renderWeeklySchedule(data) {
               if (abre) badge += '<span class="shift-icon abre" title="Abre a loja">🔓</span>';
               if (fecha) badge += '<span class="shift-icon fecha" title="Fecha a loja">🔒</span>';
             }
-            return `<span class="weekly-shift ${shift === 'Folga' ? 'weekly-off' : shift.includes('08-12') ? 'weekly-sunday' : ''} ${dayIdx === todayIdx ? 'is-today' : ''}">${renderShiftWithInterval(shift, badge)}</span>`;
+            const role = nominalRoles[dayIdx];
+            const why = nominalJustifications[dayIdx] || '';
+            const roleLabel = role && role !== 'folga' ? `<small class="shift-role">${String(role).replace('-', ' / ')}</small>` : '';
+            const isOverride = !usarFechada && data.escalaOverrides && data.escalaOverrides[`${nome}::${dayIdx}::${currentCoverageScenario}`];
+            const editAttr = !usarFechada ? `data-edit-nome="${nome}" data-edit-day="${dayIdx}" data-edit-shift="${shift.replace(/"/g, '&quot;')}"` : '';
+            let adherenceBadge = '';
+            const adPerson = data.adherence?.byPerson?.[nome];
+            if (adPerson && adPerson[dayIdx]) {
+              const ad = adPerson[dayIdx];
+              const adIcons = { ok: '✓', 'desvio-leve': '~', 'desvio-alto': '!', falta: '✗', extra: '+' };
+              const adTitles = { ok: 'Ponto conforme', 'desvio-leve': 'Desvio leve (' + ad.desvioMin + 'min)', 'desvio-alto': 'Desvio alto (' + ad.desvioMin + 'min)', falta: 'Ausente (sem registro de ponto)', extra: 'Trabalhou em dia de folga' };
+              adherenceBadge = '<span class="adherence-badge adherence-' + ad.status + '" title="' + (adTitles[ad.status] || '') + ' · Real: ' + ad.actual + '">' + (adIcons[ad.status] || '') + '</span>';
+            }
+            return `<span class="weekly-shift ${shift === 'Folga' ? 'weekly-off' : shift.includes('08-12') ? 'weekly-sunday' : ''} ${dayIdx === todayIdx ? 'is-today' : ''} ${!usarFechada ? 'shift-editable' : ''} ${isOverride ? 'shift-edited' : ''}" title="${!usarFechada ? 'Clique para editar · ' : ''}${why.replace(/"/g, '&quot;')}" ${editAttr}>${renderShiftWithInterval(shift, badge)}${roleLabel}${adherenceBadge}</span>`;
           }).join('')}
           <span class="weekly-status ${ok ? 'valid' : 'invalid'}">${ok ? 'Conforme' : 'Revisar'}</span>
         </div>
@@ -2050,6 +2142,78 @@ function renderWeeklySchedule(data) {
   if (verRascunhoBtn) verRascunhoBtn.onclick = () => { window._verRascunho = true; renderWeeklySchedule(data); };
   const verFechadaBtn = document.getElementById('verFechadaBtn');
   if (verFechadaBtn) verFechadaBtn.onclick = () => { window._verRascunho = false; renderWeeklySchedule(data); };
+  const resetEditsBtn = document.getElementById('resetEditsBtn');
+  if (resetEditsBtn) resetEditsBtn.onclick = async () => {
+    if (!confirm('Desfazer todas as edições manuais? A escala volta ao cálculo automático.')) return;
+    resetEditsBtn.disabled = true; resetEditsBtn.textContent = 'Desfazendo...';
+    try {
+      const r = await fetch('/api/escala/reset-edits', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cenario: currentCoverageScenario })
+      });
+      const d = await r.json();
+      if (d.ok) {
+        showToast(`${d.cleared} edição(ões) desfeita(s).`);
+        const sr = await fetch(`/api/summary?weekOffset=${currentWeekOffset}`);
+        const sd = await sr.json();
+        if (!sd.error) { window.currentSummary = sd; renderWeeklySchedule(sd); }
+      } else showToast(d.error || 'Erro.');
+    } catch (e) { showToast('Erro de conexão.'); resetEditsBtn.disabled = false; resetEditsBtn.textContent = '↩ Desfazer edições'; }
+  };
+
+  // Week navigation
+  let _weekNavLoading = false;
+  const navigateWeek = async (offset) => {
+    if (_weekNavLoading) return;
+    _weekNavLoading = true;
+    const navLabel = document.querySelector('.week-nav-label');
+    const prevBtn = document.getElementById('weekPrevBtn');
+    const nextBtn = document.getElementById('weekNextBtn');
+    if (navLabel) navLabel.textContent = 'Carregando...';
+    if (prevBtn) prevBtn.disabled = true;
+    if (nextBtn) nextBtn.disabled = true;
+    try {
+      const r = await fetch(`/api/summary?weekOffset=${offset}`);
+      const d = await r.json();
+      if (d.error) { showToast(d.error); _weekNavLoading = false; return; }
+      window.currentSummary = d;
+      _weekNavLoading = false;
+      renderWeeklySchedule(d);
+    } catch (e) {
+      _weekNavLoading = false;
+      showToast('Erro ao carregar semana.');
+    }
+  };
+  const weekPrevBtn = document.getElementById('weekPrevBtn');
+  if (weekPrevBtn) weekPrevBtn.onclick = () => navigateWeek(currentWeekOffset - 1);
+  const weekNextBtn = document.getElementById('weekNextBtn');
+  if (weekNextBtn) weekNextBtn.onclick = () => navigateWeek(currentWeekOffset + 1);
+  const updateWorkflowStatus = async (status) => {
+    try {
+      const r = await fetch('/api/escala/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      const d = await r.json();
+      if (d.ok) {
+        showToast(`Status atualizado para ${status}.`);
+        window.location.reload();
+      } else {
+        showToast(d.error || 'Erro ao atualizar status.');
+      }
+    } catch (e) {
+      showToast('Erro de conexão ao atualizar status.');
+    }
+  };
+  const markReviewedBtn = document.getElementById('markReviewedBtn');
+  if (markReviewedBtn) markReviewedBtn.onclick = () => updateWorkflowStatus('revisado');
+  const markDraftBtn = document.getElementById('markDraftBtn');
+  if (markDraftBtn) markDraftBtn.onclick = () => updateWorkflowStatus('rascunho');
+  const markDoneBtn = document.getElementById('markDoneBtn');
+  if (markDoneBtn) markDoneBtn.onclick = () => updateWorkflowStatus('realizado');
+  const markPublishedBtn = document.getElementById('markPublishedBtn');
+  if (markPublishedBtn) markPublishedBtn.onclick = () => updateWorkflowStatus('publicado');
 
   // FASE 1: Exportar/imprimir escala
   const exportBtn = document.getElementById('exportSchedule');
@@ -2100,6 +2264,117 @@ function renderWeeklySchedule(data) {
       renderWeeklySchedule(data);
     };
   });
+
+  // Edição manual de turnos (apenas no rascunho)
+  if (!usarFechada) {
+    const profileHrs = profile.horarioSegSex || '07:00-19:00';
+    const hrParts = profileHrs.match(/(\d{2}:\d{2})-(\d{2}:\d{2})/);
+    const lojaOpen = hrParts ? hrParts[1] : '07:00';
+    const lojaClose = hrParts ? hrParts[2] : '19:00';
+    const presets = [
+      'Folga',
+      `${lojaOpen}-15:00`,
+      '08:00-16:00',
+      '10:00-18:00',
+      `10:00-${lojaClose}`,
+      '08:00-12:00',
+    ];
+
+    document.querySelectorAll('.shift-editable').forEach(cell => {
+      cell.style.cursor = 'pointer';
+      cell.onclick = (e) => {
+        e.stopPropagation();
+        const existing = document.querySelector('.shift-editor-popup');
+        if (existing) existing.remove();
+
+        const nome = cell.dataset.editNome;
+        const dayIdx = cell.dataset.editDay;
+        const currentShift = cell.dataset.editShift;
+
+        // Extract simple HH:MM-HH:MM from the full shift format
+        const extractSimpleRange = (s) => {
+          if (!s || s === 'Folga') return '';
+          const periodo = s.split('·')[0].trim();
+          const blocks = periodo.split('/');
+          const first = blocks[0].split('-')[0].trim();
+          const last = blocks[blocks.length - 1].split('-').pop().trim();
+          const pad = (v) => { const m = v.match(/^(\d{1,2})(?::(\d{2}))?$/); return m ? m[1].padStart(2,'0') + ':' + (m[2]||'00') : v; };
+          return pad(first) + '-' + pad(last);
+        };
+        const simpleRange = extractSimpleRange(currentShift);
+
+        const popup = document.createElement('div');
+        popup.className = 'shift-editor-popup';
+        popup.innerHTML = `
+          <div class="shift-editor-header">
+            <strong>${nome}</strong> · ${days[dayIdx]}
+            <button class="shift-editor-close" type="button">&times;</button>
+          </div>
+          <div class="shift-editor-presets">
+            ${presets.map(p => `<button class="shift-preset-btn ${p === simpleRange ? 'active' : ''}" data-turno="${p}" type="button">${p}</button>`).join('')}
+          </div>
+          <div class="shift-editor-custom">
+            <input type="text" class="shift-custom-input" placeholder="HH:MM-HH:MM" value="${simpleRange}" />
+            <button class="shift-apply-btn" type="button">Aplicar</button>
+          </div>
+          <div class="shift-editor-status"></div>
+        `;
+        cell.style.position = 'relative';
+        cell.appendChild(popup);
+
+        popup.querySelector('.shift-editor-close').onclick = (ev) => { ev.stopPropagation(); popup.remove(); };
+
+        const saveShift = async (turno) => {
+          const statusEl = popup.querySelector('.shift-editor-status');
+          statusEl.textContent = 'Salvando...';
+          try {
+            const r = await fetch('/api/escala/edit', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ nome, dayIndex: parseInt(dayIdx), cenario: currentCoverageScenario, turno })
+            });
+            const d = await r.json();
+            if (d.ok) {
+              popup.remove();
+              const sr = await fetch(`/api/summary?weekOffset=${currentWeekOffset}`);
+              const sd = await sr.json();
+              if (!sd.error) { window.currentSummary = sd; renderWeeklySchedule(sd); }
+              showToast(`Turno de ${nome} (${days[dayIdx]}) alterado para ${turno}.`);
+            } else {
+              statusEl.textContent = d.error || 'Erro ao salvar.';
+            }
+          } catch (err) {
+            statusEl.textContent = 'Erro de conexão.';
+          }
+        };
+
+        popup.querySelectorAll('.shift-preset-btn').forEach(btn => {
+          btn.onclick = (ev) => { ev.stopPropagation(); saveShift(btn.dataset.turno); };
+        });
+
+        popup.querySelector('.shift-apply-btn').onclick = (ev) => {
+          ev.stopPropagation();
+          const val = popup.querySelector('.shift-custom-input').value.trim();
+          if (/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(val) || val === 'Folga') {
+            saveShift(val);
+          } else {
+            popup.querySelector('.shift-editor-status').textContent = 'Formato: HH:MM-HH:MM ou Folga';
+          }
+        };
+
+        popup.querySelector('.shift-custom-input').onclick = (ev) => ev.stopPropagation();
+        popup.querySelector('.shift-custom-input').onkeydown = (ev) => {
+          if (ev.key === 'Enter') popup.querySelector('.shift-apply-btn').click();
+          if (ev.key === 'Escape') popup.remove();
+        };
+
+        document.addEventListener('click', function closePopup() {
+          popup.remove();
+          document.removeEventListener('click', closePopup);
+        }, { once: true });
+      };
+    });
+  }
 }
 
 function renderSunday(rotation) {
@@ -2157,6 +2432,106 @@ function renderAudit(audit) {
       <div class="meter slim"><i style="width:${percent(Number(person.horasMes), 176)}%"></i></div>
     </article>
   `).join('');
+}
+
+function renderForecast7(forecast7) {
+  const el = document.getElementById('forecast7Container');
+  if (!el || !forecast7 || !forecast7.length) { if (el) el.innerHTML = '<p style="color:#64748b;font-size:12px;">Importe faturamento diário para ativar a previsão.</p>'; return; }
+  const dayNames = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const maxPrev = Math.max(...forecast7.map(d => d.previsao));
+  el.innerHTML = forecast7.map(d => {
+    const isToday = d.data === todayStr;
+    const isPeak = d.previsao === maxPrev;
+    const cls = [isToday ? 'today' : '', isPeak ? 'peak' : ''].filter(Boolean).join(' ');
+    const evHtml = d.evento ? `<div class="fd-event ${d.evento.tipo}">${d.evento.nome} ×${d.evento.fator.toFixed(2)}</div>` : '';
+    return `<div class="forecast-day ${cls}">
+      <div class="fd-label">${dayNames[d.dow]}</div>
+      <div class="fd-date">${d.data.slice(5).replace('-','/')}</div>
+      <div class="fd-value">R$ ${(d.previsao/1000).toFixed(0)}k</div>
+      <div class="fd-factors">DOW ×${d.fatores.dow.toFixed(2)} · WOM ×${d.fatores.wom.toFixed(2)}${d.fatores.evento !== 1 ? ` · EV ×${d.fatores.evento.toFixed(2)}` : ''}</div>
+      ${evHtml}
+    </div>`;
+  }).join('');
+}
+
+function renderEventos(eventos, eventMap) {
+  const el = document.getElementById('eventosLista');
+  if (!el) return;
+  const allEvents = {};
+  if (eventMap) Object.entries(eventMap).forEach(([data, ev]) => { allEvents[data] = { ...ev, auto: true }; });
+  if (eventos) eventos.forEach(ev => { allEvents[ev.data] = { ...ev, auto: false }; });
+  const sorted = Object.entries(allEvents).sort((a, b) => a[0].localeCompare(b[0]));
+  const now = new Date().toISOString().slice(0, 10);
+  const futuro = sorted.filter(([d]) => d >= now).slice(0, 30);
+  if (!futuro.length) { el.innerHTML = '<p style="color:#64748b;font-size:12px;">Nenhum evento cadastrado. Feriados nacionais são gerados automaticamente.</p>'; return; }
+  const tipoColors = { feriado: 'rgba(239,68,68,.15)', vespera: 'rgba(251,191,36,.15)', promocao: 'rgba(168,85,247,.15)', data_comemorativa: 'rgba(236,72,153,.15)', pagamento: 'rgba(34,197,94,.15)' };
+  el.innerHTML = futuro.map(([data, ev]) => `<div class="evento-row">
+    <span class="ev-data">${data.slice(5).replace('-','/')}</span>
+    <span class="ev-tipo" style="background:${tipoColors[ev.tipo] || 'rgba(255,255,255,.05)'};">${ev.tipo}</span>
+    <span class="ev-nome">${ev.nome || '—'}</span>
+    <span class="ev-fator">×${(ev.fator || 1).toFixed(2)}</span>
+    ${ev.auto ? '<span class="ev-auto">auto</span>' : `<button class="ev-del" data-data="${data}" title="Remover">✕</button>`}
+  </div>`).join('');
+  el.querySelectorAll('.ev-del').forEach(btn => {
+    btn.onclick = async () => {
+      const r = await fetch('/api/eventos/delete', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ data: btn.dataset.data }) });
+      if (r.ok) window.location.reload();
+    };
+  });
+}
+
+function renderEscalaSugerida(esc) {
+  const el = document.getElementById('escalaSugeridaContainer');
+  if (!el || !esc) { if (el) el.innerHTML = '<p style="color:#64748b;font-size:12px;">Importe dados de faturamento e equipe para gerar a escala sugerida.</p>'; return; }
+  const dayNames = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const setorNames = esc.dias.filter(d => !d.lojaFechada && d.setores).flatMap(d => d.setores.map(s => s.setor));
+  const uniqueSetores = [...new Set(setorNames)];
+
+  let html = `<table><thead><tr>
+    <th>Dia</th><th>Horário</th><th>Fator</th><th>Caixa</th>`;
+  uniqueSetores.forEach(s => { html += `<th>${s}</th>`; });
+  html += `<th>Total</th><th>Folgas</th><th>Evento</th></tr></thead><tbody>`;
+
+  esc.dias.forEach(d => {
+    const isToday = d.data === todayStr;
+    const isPeak = !d.lojaFechada && d.fatorTotal > 1.5;
+    const cls = d.lojaFechada ? 'dia-fechado' : (isPeak ? 'dia-pico' : '');
+    html += `<tr class="${cls}" ${isToday ? 'style="font-weight:600;"' : ''}>`;
+    html += `<td>${dayNames[d.dow]} ${d.data.slice(5).replace('-','/')}</td>`;
+    if (d.lojaFechada) {
+      html += `<td colspan="${3 + uniqueSetores.length + 3}" style="text-align:center;">Fechado</td>`;
+    } else {
+      html += `<td>${d.horario}</td>`;
+      html += `<td class="es-fator">×${d.fatorTotal.toFixed(2)}</td>`;
+      html += `<td>${d.caixaNecessario}/${d.caixaTotal || '—'}</td>`;
+      uniqueSetores.forEach(sName => {
+        const s = (d.setores || []).find(x => x.setor === sName);
+        if (s) {
+          const cls2 = s.saldo > 0 ? 'es-surplus' : (s.saldo < 0 ? 'es-deficit' : '');
+          const fatorTip = s.fatorSetor ? ` title="fator ${sName}: ×${s.fatorSetor}"` : '';
+          html += `<td${fatorTip}>${s.pessoasAjustadas} <span class="es-setor-detail ${cls2}">(${s.saldo >= 0 ? '+' : ''}${s.saldo})</span></td>`;
+        } else {
+          html += `<td>—</td>`;
+        }
+      });
+      html += `<td><strong>${d.totalPessoas}</strong></td>`;
+      html += `<td>${d.folgas}</td>`;
+      html += `<td>${d.evento ? `<span style="font-size:10px;">${d.evento.nome}</span>` : '—'}</td>`;
+    }
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+
+  html += `<div class="es-resumo">
+    <span>Período: <b>${esc.periodo}</b></span>
+    <span>Total equipe: <b>${esc.resumo.totalColaboradores}</b></span>
+    <span>Caixa: <b>${esc.resumo.caixaOperadores}</b></span>
+    <span>Setores: <b>${esc.resumo.setorColaboradores}</b></span>
+    <span>Horas estimadas: <b>${esc.resumo.horasSemanaisEstimadas}h</b></span>
+  </div>`;
+  el.innerHTML = html;
 }
 
 function renderCommission(review) {
@@ -2730,23 +3105,40 @@ function parseEmployeesCsv(text) {
   if (lines.length < 2) return { rows: [], errors: ['Arquivo sem colaboradores.'] };
   const delimiter = (lines[0].match(/;/g) || []).length >= (lines[0].match(/,/g) || []).length ? ';' : ',';
   const headers = lines[0].split(delimiter).map(normalizeHeader);
-  const required = ['nome', 'sexo', 'cargo', 'setor', 'horas_semanais', 'salario'];
-  const positions = Object.fromEntries(required.map((key) => [key, headers.indexOf(key)]));
-  const missing = required.filter((key) => positions[key] < 0);
-  if (missing.length) return { rows: [], errors: [`Colunas ausentes: ${missing.join(', ')}.`] };
+  const _empAliases = {
+    nome: ['nome', 'colaborador', 'funcionario', 'empregado', 'nome_completo', 'nome_funcionario'],
+    sexo: ['sexo', 'genero'],
+    cargo: ['cargo', 'funcao', 'ocupacao'],
+    setor: ['setor', 'departamento', 'area', 'lotacao', 'secao'],
+    horas_semanais: ['horas_semanais', 'carga_horaria', 'ch', 'horas', 'jornada', 'carga_semanal', 'hs'],
+    salario: ['salario', 'remuneracao', 'vencimento', 'salario_base']
+  };
+  const positions = {};
+  Object.entries(_empAliases).forEach(([key, opts]) => { positions[key] = headers.findIndex(h => opts.includes(h)); });
+  if (positions.nome < 0) return { rows: [], errors: ['Coluna "nome" nao encontrada. Aceito: nome, colaborador, funcionario.'] };
+  function _parseH(v) {
+    const s = String(v || '').trim().replace(/h$/i, '');
+    const m = s.match(/^(\d+)[h:,.](\d*)$/i);
+    if (m) return Number(m[1]) + (m[2] ? Number(m[2]) / (m[2].length <= 2 ? 100 : 1) : 0);
+    const n = Number(s.replace(',', '.'));
+    return isNaN(n) ? 0 : n;
+  }
   const rows = [];
   const errors = [];
   lines.slice(1).forEach((line, index) => {
     const cells = line.split(delimiter).map((cell) => cell.trim().replace(/^"|"$/g, ''));
+    const nome = (cells[positions.nome] || '').trim();
+    let horas = positions.horas_semanais >= 0 ? _parseH(cells[positions.horas_semanais]) : 44;
+    if (horas <= 0) horas = 44;
     const row = {
-      nome: cells[positions.nome],
-      sexo: cells[positions.sexo],
-      cargo: cells[positions.cargo],
-      setor: cells[positions.setor],
-      horasSemanais: Number(String(cells[positions.horas_semanais] || '').replace(',', '.')),
-      salario: Number(String(cells[positions.salario] || '').replace(/\./g, '').replace(',', '.'))
+      nome,
+      sexo: positions.sexo >= 0 ? (cells[positions.sexo] || '') : '',
+      cargo: positions.cargo >= 0 ? (cells[positions.cargo] || '') : '',
+      setor: positions.setor >= 0 ? (cells[positions.setor] || '') : '',
+      horasSemanais: horas,
+      salario: positions.salario >= 0 ? Number(String(cells[positions.salario] || '0').replace(/\./g, '').replace(',', '.')) : 0
     };
-    if (!row.nome || !row.horasSemanais) errors.push(`Linha ${index + 2} inválida.`);
+    if (!nome || nome.length < 2) errors.push(`Linha ${index + 2}: nome ausente ou curto.`);
     else rows.push(row);
   });
   return { rows, errors };
@@ -2937,13 +3329,20 @@ function renderEmployeesManager(data) {
       horasSemanais: e.horasSemanais || 44,
       salario: e.salario || 0,
       turno: e.turno || 'flexivel',
+      preferenciaTurno: e.preferenciaTurno || e.turno || 'flexivel',
       podeDomingo: e.podeDomingo !== false,
-      folgaPreferencial: e.folgaPreferencial || ''
+      folgaPreferencial: e.folgaPreferencial || '',
+      setoresAptos: Array.isArray(e.setoresAptos) ? e.setoresAptos : [],
+      proficiencia: e.proficiencia || 'pleno',
+      restricoes: Array.isArray(e.restricoes) ? e.restricoes : [],
+      papelOperacional: e.papelOperacional || 'auto'
     }));
   }
 
   const turnoOpts = [['flexivel','Flexível'],['abertura','Abertura'],['intermediario','Intermediário'],['fechamento','Fechamento']];
   const folgaOpts = [['','Sem preferência'],['segunda','Segunda'],['terca','Terça'],['quarta','Quarta'],['quinta','Quinta'],['domingo','Domingo']];
+  const proficienciaOpts = [['iniciante','Iniciante'],['pleno','Pleno'],['senior','Sênior'],['lider','Líder']];
+  const papelOpts = [['auto','Auto'],['abertura','Abertura'],['sustentacao','Sustentação'],['fechamento','Fechamento'],['apoio','Apoio']];
 
   // Resumo e filtro por setor
   const setores = [...new Set(managedEmployees.map(e => (e.setor || 'Sem setor').trim() || 'Sem setor'))];
@@ -2966,7 +3365,7 @@ function renderEmployeesManager(data) {
     <div class="emp-table">
       <div class="emp-row emp-head">
         <span>Nome</span><span>Cargo</span><span>Setor</span><span>Horas</span><span>Salário</span>
-        <span>Turno preferencial</span><span>Folga pref.</span><span>Dom.</span><span></span>
+        <span>Turno</span><span>Papel</span><span>Proficiência</span><span>Setores aptos</span><span>Restrições</span><span>Folga pref.</span><span>Dom.</span><span></span>
       </div>
       ${filtered.map(({ e, originalIdx: i }) => {
         const temMerc = data.mercadologicosM2 && data.mercadologicosM2.length;
@@ -2986,6 +3385,14 @@ function renderEmployeesManager(data) {
           <select data-i="${i}" data-f="turno">
             ${turnoOpts.map(([v,l]) => `<option value="${v}" ${e.turno===v?'selected':''}>${l}</option>`).join('')}
           </select>
+          <select data-i="${i}" data-f="papelOperacional">
+            ${papelOpts.map(([v,l]) => `<option value="${v}" ${e.papelOperacional===v?'selected':''}>${l}</option>`).join('')}
+          </select>
+          <select data-i="${i}" data-f="proficiencia">
+            ${proficienciaOpts.map(([v,l]) => `<option value="${v}" ${e.proficiencia===v?'selected':''}>${l}</option>`).join('')}
+          </select>
+          <input data-i="${i}" data-f="setoresAptosText" value="${(Array.isArray(e.setoresAptos)?e.setoresAptos.join(', '):'').replace(/"/g,'&quot;')}" placeholder="Caixa, Padaria...">
+          <input data-i="${i}" data-f="restricoesText" value="${(Array.isArray(e.restricoes)?e.restricoes.join(', '):'').replace(/"/g,'&quot;')}" placeholder="Sem noite, sem domingo...">
           <select data-i="${i}" data-f="folgaPreferencial">
             ${folgaOpts.map(([v,l]) => `<option value="${v}" ${e.folgaPreferencial===v?'selected':''}>${l}</option>`).join('')}
           </select>
@@ -3016,8 +3423,13 @@ function renderEmployeesManager(data) {
         managedEmployees[i][f] = inp.checked;
       } else if (f === 'horasSemanais' || f === 'salario') {
         managedEmployees[i][f] = Number(inp.value);
+      } else if (f === 'setoresAptosText') {
+        managedEmployees[i].setoresAptos = inp.value.split(',').map(v => v.trim()).filter(Boolean);
+      } else if (f === 'restricoesText') {
+        managedEmployees[i].restricoes = inp.value.split(',').map(v => v.trim()).filter(Boolean);
       } else {
         managedEmployees[i][f] = inp.value;
+        if (f === 'turno') managedEmployees[i].preferenciaTurno = inp.value;
       }
     };
   });
@@ -3041,7 +3453,7 @@ function renderEmployeesManager(data) {
   });
   // Adicionar
   document.getElementById('empAddBtn').onclick = () => {
-    managedEmployees.push({ nome: '', sexo: 'feminino', cargo: 'Operador de Caixa', setor: 'Caixa', mercadologicos: [], horasSemanais: 44, salario: 0, turno: 'flexivel', podeDomingo: true, folgaPreferencial: '' });
+    managedEmployees.push({ nome: '', sexo: 'feminino', cargo: 'Operador de Caixa', setor: 'Caixa', mercadologicos: [], horasSemanais: 44, salario: 0, turno: 'flexivel', preferenciaTurno: 'flexivel', podeDomingo: true, folgaPreferencial: '', setoresAptos: [], proficiencia: 'pleno', restricoes: [], papelOperacional: 'auto' });
     renderEmployeesManager(data);
   };
   // Salvar
@@ -3238,6 +3650,57 @@ function renderOnboarding(data) {
   document.getElementById('setupSundayOperation').value = profile.domingoOperacao || (String(profile.horarioDomingo || '').toLowerCase() === 'fechado' ? 'fechado' : 'aberto');
   document.getElementById('setupClosedSundays').value = Number(profile.domingosFechadosMes || 0);
   document.getElementById('setupSundayHours').value = profile.horarioDomingo || '08:00-12:00';
+
+  const anyImported = onboarding.employeesImported || onboarding.salesImported || onboarding.mercRows > 0 || onboarding.dailyRevDays > 0 || onboarding.timecardRows > 0;
+  const dmPanel = document.getElementById('dataManagementPanel');
+  const dmGrid = document.getElementById('dataMgmtGrid');
+  if (dmPanel && dmGrid && anyImported) {
+    dmPanel.style.display = '';
+    const sources = [
+      { label: 'Equipe', ok: onboarding.employeesImported, detail: `${onboarding.employees} colaboradores`, inputId: 'employeesCsvInput' },
+      { label: 'Vendas VRSoft', ok: onboarding.salesImported, detail: `${onboarding.salesRows} faixas · ${onboarding.salesDays} dias`, inputId: 'salesCsvInput' },
+      { label: 'Mercadológico', ok: onboarding.mercRows > 0, detail: `${onboarding.mercRows} linhas · ${onboarding.mercDays} dias`, inputId: 'mercCsvInput' },
+      { label: 'Faturamento', ok: onboarding.dailyRevDays > 0, detail: `${onboarding.dailyRevDays} dias`, inputId: 'fatCsvInput' },
+      { label: 'Ponto', ok: onboarding.timecardRows > 0, detail: `${onboarding.timecardRows} registros`, inputId: 'timecardCsvInput' }
+    ];
+    dmGrid.innerHTML = sources.map(s => `
+      <div class="dm-card ${s.ok ? 'dm-ok' : 'dm-empty'}">
+        <strong>${s.label}</strong>
+        <span>${s.ok ? s.detail : 'Não importado'}</span>
+        <button type="button" class="dm-reimport" data-input="${s.inputId}">${s.ok ? 'Reimportar' : 'Importar'}</button>
+      </div>
+    `).join('');
+    dmGrid.querySelectorAll('.dm-reimport').forEach(btn => {
+      btn.onclick = () => {
+        const input = document.getElementById(btn.dataset.input);
+        if (input) { input.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => input.click(), 400); }
+      };
+    });
+  }
+
+  const updLabel = onboarding.updatedAt ? new Date(onboarding.updatedAt).toLocaleString('pt-BR') : null;
+  function importStatus(el, imported, label) {
+    if (!el) return;
+    let existing = el.querySelector('.import-status-banner');
+    if (!existing) { existing = document.createElement('div'); existing.className = 'import-status-banner'; el.querySelector('.panel-head').after(existing); }
+    if (imported) {
+      existing.className = 'import-status-banner import-status-ok';
+      existing.innerHTML = `<b>Importado</b><span>${label}</span>${updLabel ? `<small>Atualizado em ${updLabel}</small>` : ''}<em>Selecione um novo arquivo abaixo para reimportar e atualizar os dados.</em>`;
+    } else {
+      existing.className = 'import-status-banner import-status-pending';
+      existing.innerHTML = '<b>Pendente</b><span>Nenhum dado importado ainda.</span>';
+    }
+  }
+  document.querySelectorAll('.import-panel').forEach((panel, i) => {
+    const h3 = panel.querySelector('h3');
+    if (!h3) return;
+    const t = h3.textContent.toLowerCase();
+    if (t.includes('equipe')) importStatus(panel, onboarding.employeesImported, `${onboarding.employees} colaboradores`);
+    else if (t.includes('vrsoft')) importStatus(panel, onboarding.salesImported, `${onboarding.salesRows} faixas · ${onboarding.salesDays} dias`);
+    else if (t.includes('mercadol')) importStatus(panel, onboarding.mercRows > 0, `${onboarding.mercRows} linhas · ${onboarding.mercDays} dias`);
+    else if (t.includes('faturamento')) importStatus(panel, onboarding.dailyRevDays > 0, `${onboarding.dailyRevDays} dias`);
+    else if (t.includes('ponto')) importStatus(panel, onboarding.timecardRows > 0, `${onboarding.timecardRows} registros`);
+  });
 }
 
 function activityLabel(action) {
@@ -3657,6 +4120,9 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     safeRender('domingos', () => renderSunday(data.sundayRotation));
     safeRender('auditoria', () => renderAudit(data.audit));
     safeRender('acoes', () => renderActions(data.controllerActions));
+    safeRender('forecast7', () => renderForecast7(data.forecast7));
+    safeRender('eventos', () => renderEventos(data.eventos, data.eventMap));
+    safeRender('escalaSugerida', () => renderEscalaSugerida(data.escalaSugerida));
     safeRender('comissao', () => renderCommission(data.commissionReview));
     safeRender('premissas financeiras', () => {
       document.getElementById('taxRegimeInput').value = data.financial.assumptions.regimeTributario || 'Não informado';
@@ -3736,10 +4202,29 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     safeRender('calendario', () => renderCalendar(data));
 
     safeRender('cabecalho diagnostico', () => {
-      document.getElementById('conclusion').textContent = data.metadata.diasComVenda >= 7 ? 'A base atual indica cobertura de caixa suficiente nos cenarios simulados, mas ainda exige validacao de CCT, ponto e tarefas auxiliares.' : 'A amostra ainda e parcial. O sistema libera diagnostico inicial, mas recomenda importar os tipos de dia abertos antes de publicar escala.';
+      const ops = data.operationalDashboard;
+      const hc = ops?.headcount;
+      const setoresSem = ops?.alertas?.filter(a => a.texto.includes('setor')).length || 0;
+      const heroH2 = document.querySelector('.hero-panel h2');
+      if (heroH2 && ops) {
+        if (hc && hc.status === 'baixo') {
+          heroH2.textContent = `A operação está subdimensionada: ${hc.atual} colaboradores para ~${hc.ideal} necessários.`;
+        } else if (hc && hc.status === 'alto') {
+          heroH2.textContent = `A equipe atual (${hc.atual}) está acima do dimensionamento ideal (~${hc.ideal}).`;
+        } else if (setoresSem) {
+          heroH2.textContent = 'Há setores operacionais sem equipe atribuída — risco de ruptura e cobertura insuficiente.';
+        } else {
+          heroH2.textContent = 'O dimensionamento geral está equilibrado nos indicadores analisados.';
+        }
+      }
+      const diasOk = data.metadata.diasComVenda >= 7;
+      document.getElementById('conclusion').textContent = diasOk
+        ? 'A base atual cruza faturamento, equipe e fluxo de caixa em todos os setores operacionais. Ainda exige validação de CCT, ponto real e cobertura de tarefas auxiliares.'
+        : 'A amostra ainda é parcial. O sistema libera diagnóstico inicial, mas recomenda importar os tipos de dia abertos antes de publicar escala.';
       document.getElementById('lastImport').textContent = data.metadata.ultimaImportacao;
       document.getElementById('samplePeriod').textContent = `${data.metadata.periodoAmostra} · ${data.metadata.diasComVenda} dias`;
-      document.getElementById('confidenceValue').textContent = `${data.metadata.confianca}% - media`;
+      const confLabel = data.metadata.confianca >= 75 ? 'boa' : data.metadata.confianca >= 40 ? 'media' : 'inicial';
+      document.getElementById('confidenceValue').textContent = `${data.metadata.confianca}% - ${confLabel}`;
       document.getElementById('confidenceBar').style.width = `${data.metadata.confianca}%`;
     });
 
@@ -3835,6 +4320,27 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
         renderActions(data.controllerActions, button.dataset.priority);
       };
     });
+
+    // Evento form handler
+    const addEventoBtn = document.getElementById('addEvento');
+    if (addEventoBtn) {
+      addEventoBtn.onclick = async () => {
+        const dataVal = document.getElementById('eventoData').value;
+        const tipo = document.getElementById('eventoTipo').value;
+        const nome = document.getElementById('eventoNome').value.trim();
+        const fatorInput = document.getElementById('eventoFator').value;
+        if (!dataVal) { showToast('Informe a data do evento.'); return; }
+        const fator = fatorInput ? Number(fatorInput) : undefined;
+        const body = { data: dataVal, tipo, nome };
+        if (fator !== undefined) body.fator = fator;
+        try {
+          const r = await fetch('/api/eventos/upsert', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+          const result = await r.json();
+          if (result.ok) { showToast(`Evento "${nome || tipo}" adicionado.`); setTimeout(() => window.location.reload(), 600); }
+          else showToast(result.error || 'Erro ao salvar evento.');
+        } catch(e) { showToast('Erro de conexão.'); }
+      };
+    }
 
     document.getElementById('recalculateFinance').onclick = () => {
       data.financial.assumptions.salarioBaseMensal = Number(document.getElementById('salaryInput').value);
@@ -4045,6 +4551,66 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
           <div><small>Confiança forecast</small><strong>${r.dias >= 90 ? '✅ Boa' : r.dias >= 28 ? '📊 Média' : '⚠️ Inicial'}</strong></div>
         </div>
       `;
+    }
+
+    // === IMPORTAÇÃO DE PONTO (TIMECARD) ===
+    let pendingTimecardRows = [];
+    const tcInput = document.getElementById('timecardCsvInput');
+    if (tcInput) {
+      tcInput.onchange = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const text = await file.text();
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        const rows = []; const errors = [];
+        lines.forEach((line, i) => {
+          const cols = line.split(/[;,\t]/);
+          if (cols.length < 4) { if (i > 0) errors.push(`Linha ${i+1}: colunas insuficientes`); return; }
+          const nome = cols[0].trim();
+          const data = cols[1].trim();
+          const entrada = cols[2].trim();
+          const saida = cols[3].trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) { if (i > 0 || !/[a-zA-Z]/.test(nome)) errors.push(`Linha ${i+1}: data inválida`); return; }
+          if (!/^\d{2}:\d{2}$/.test(entrada) || !/^\d{2}:\d{2}$/.test(saida)) { errors.push(`Linha ${i+1}: hora inválida`); return; }
+          if (nome.length < 2) { errors.push(`Linha ${i+1}: nome curto`); return; }
+          rows.push({ nome, data, entrada, saida });
+        });
+        pendingTimecardRows = rows;
+        const pessoas = [...new Set(rows.map(r => r.nome))];
+        const dias = [...new Set(rows.map(r => r.data))];
+        document.getElementById('confirmTimecardImport').disabled = rows.length < 1;
+        document.getElementById('timecardImportPreview').innerHTML = `
+          <strong>${rows.length} registros válidos</strong>
+          <span>${pessoas.length} pessoas · ${dias.length} dias · ${errors.length} rejeições</span>
+          ${rows.length < 1 ? '<small>Verifique o formato: nome;data;entrada;saída</small>' : '<small>Pronto para importar.</small>'}
+        `;
+      };
+    }
+    const confirmTc = document.getElementById('confirmTimecardImport');
+    if (confirmTc) {
+      confirmTc.onclick = async () => {
+        confirmTc.disabled = true;
+        confirmTc.textContent = 'Importando...';
+        const res = await fetch('/api/import-timecard', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows: pendingTimecardRows })
+        });
+        const result = await res.json();
+        if (!res.ok) { showToast(result.error || 'Erro ao importar ponto.'); confirmTc.disabled = false; confirmTc.textContent = 'Importar ponto'; return; }
+        showToast(`${result.imported} registros de ponto importados (${result.pessoas} pessoas · ${result.dias} dias). Atualizando...`);
+        setTimeout(() => window.location.reload(), 1000);
+      };
+    }
+    const downloadTc = document.getElementById('downloadTimecardTemplate');
+    if (downloadTc) {
+      downloadTc.onclick = () => {
+        const csv = 'nome;data;entrada;saida\nLucila;2026-06-09;07:02;15:05\nLucila;2026-06-10;06:58;15:01\nEdvania;2026-06-09;08:03;16:10\nEdvania;2026-06-10;07:55;16:02\nSamara;2026-06-09;10:05;19:03\nJane;2026-06-09;10:01;18:58\n';
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+        link.download = 'modelo-ponto.csv';
+        link.click();
+        URL.revokeObjectURL(link.href);
+      };
     }
 
     const closeDrawer = () => {
