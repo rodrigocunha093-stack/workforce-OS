@@ -4564,8 +4564,52 @@ async function applyClientState(summary, user, weekFilter = null) {
     summary.metadata.demandaMediaSemana = filtradas.length ? `${filtradas.length} faixas analisadas` : 'Sem dados nesta semana';
   }
   // Aplicar vendas do cliente ao dailyCoverage (ICOC por dia da semana)
+  // NÃO usar applySalesRowsToSummary pois ela sobrescreve metadata/scenarios
   if (state.salesRows.length) {
-    applySalesRowsToSummary(summary, state.salesRows, 'VRSoft importado');
+    const _covGrouped = {};
+    state.salesRows.forEach(row => {
+      const dk = dayKeys[new Date(`${row.data}T12:00:00`).getDay()];
+      const hr = `${row.horaInicio.slice(0, 2)}-${row.horaFim.slice(0, 2)}`;
+      _covGrouped[dk] ||= {};
+      _covGrouped[dk][hr] ||= [];
+      _covGrouped[dk][hr].push({
+        cupons: Number(row.cupons || 0),
+        vendaLiquida: Number(row.vendaLiquida || 0),
+        qtdItens: Number(row.qtdItens || 0),
+        itensMedios: Number(row.itensMedios || 0),
+        minutosAtendimento: Number(row.minutosAtendimento || 0)
+      });
+    });
+    // Limpar dados antigos
+    Object.values(summary.dailyCoverage || {}).forEach(day => {
+      (day.rows || []).forEach(row => {
+        row.demanda = null; row.cupons = undefined; row.vendaLiquida = undefined;
+        row.qtdItens = undefined; row.itensMedios = undefined; row.minutosAtendimento = undefined;
+      });
+    });
+    // Preencher com médias por dia da semana
+    const _salesDates = state.salesRows.map(r => r.data);
+    Object.entries(_covGrouped).forEach(([dk, hours]) => {
+      if (!summary.dailyCoverage[dk]) return;
+      const datesForDay = new Set(_salesDates.filter(d => dayKeys[new Date(`${d}T12:00:00`).getDay()] === dk));
+      const numDates = Math.max(1, datesForDay.size);
+      summary.dailyCoverage[dk].rows.forEach(row => {
+        if (!hours[row.hora]) return;
+        const vals = hours[row.hora];
+        const totalCupons = vals.reduce((s, v) => s + v.cupons, 0);
+        const totalVenda = vals.reduce((s, v) => s + v.vendaLiquida, 0);
+        const totalItens = vals.reduce((s, v) => s + v.qtdItens, 0);
+        const totalMinutos = vals.reduce((s, v) => s + v.minutosAtendimento, 0);
+        const avgCupons = totalCupons / numDates;
+        row.cupons = Number(avgCupons.toFixed(1));
+        row.demanda = demandFromCoupons(Math.round(avgCupons));
+        row.vendaLiquida = Number((totalVenda / numDates).toFixed(2));
+        row.itensMedios = totalCupons ? Number((totalItens / totalCupons).toFixed(2)) : 0;
+        row.minutosAtendimento = Number((totalMinutos / numDates).toFixed(2));
+      });
+      summary.dailyCoverage[dk].source = `VRSoft · ${numDates} dia(s) de ${dk === 'saturday' ? 'sábado' : dk === 'sunday' ? 'domingo' : 'semana'}`;
+      summary.dailyCoverage[dk].confidence = numDates >= 4 ? 'alta' : numDates >= 2 ? 'média' : 'baixa';
+    });
   }
   const requiredDayKeys = requiredOperationalDayKeys(profile);
   const importedDayKeys = new Set(state.salesRows.map((row) => dayKeys[new Date(`${row.data}T12:00:00`).getDay()]));
