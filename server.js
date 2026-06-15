@@ -3036,7 +3036,7 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
   });
 }
 
-function generateScheduleByProfile(profile, employees, targetHours = 44, targetDaysOff = 1, pesosDia = null) {
+function generateScheduleByProfile(profile, employees, targetHours = 44, targetDaysOff = 1, pesosDia = null, demandCurve = null) {
   const segSex = parseStoreHours(profile.horarioSegSex);
   const sabado = parseStoreHours(profile.horarioSabado);
   const sundayClosed = sundayIsClosed(profile);
@@ -3057,19 +3057,64 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
   const folgaDiaMap = { segunda: 0, terca: 1, quarta: 2, quinta: 3, domingo: 6 };
   const N = employees.length; // tamanho do grupo (setor + cargo)
 
-  // Calcula início do turno conforme preferência + distribuição uniforme pelo grupo.
-  // jornada = duração do turno naquele dia (pode variar por demanda).
-  function startForTurno(turno, open, close, idx, jornada = shiftHours) {
-    const span = Math.max(0, close - jornada - open); // janela de início (abertura até turno que fecha)
-    const lateStart = open + span; // turno que fecha a loja
+  // --- Demanda horária por dia (dailyCoverage) ---
+  const _dkMap = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+  const demandByDay = {};
+  if (demandCurve) {
+    _dkMap.forEach((dk, di) => {
+      const dayData = demandCurve[dk];
+      if (!dayData || !Array.isArray(dayData.rows)) return;
+      demandByDay[di] = {};
+      dayData.rows.forEach(row => {
+        demandByDay[di][row.hora] = Number(row.demanda || 0);
+      });
+    });
+  }
+  const placedByDayHour = {};
+
+  function recordPlacement(dayIndex, startH, endH) {
+    if (!placedByDayHour[dayIndex]) placedByDayHour[dayIndex] = {};
+    for (let h = Math.floor(startH); h < Math.ceil(endH); h++) {
+      const bucket = `${String(h).padStart(2,'0')}-${String(h+1).padStart(2,'0')}`;
+      placedByDayHour[dayIndex][bucket] = (placedByDayHour[dayIndex][bucket] || 0) + 1;
+    }
+  }
+
+  function bestDemandStart(dayIndex, open, close, jornada) {
+    const demand = demandByDay[dayIndex];
+    if (!demand) return null;
+    const placed = placedByDayHour[dayIndex] || {};
+    let bestStart = null;
+    let bestScore = -1;
+    for (let s = open; s <= close - jornada + 0.01; s += 0.5) {
+      let score = 0;
+      for (let h = Math.floor(s); h < Math.ceil(s + jornada); h++) {
+        const bucket = `${String(h).padStart(2,'0')}-${String(h+1).padStart(2,'0')}`;
+        const d = demand[bucket] || 0;
+        const p = placed[bucket] || 0;
+        if (p < d) score += (d - p);
+      }
+      if (score > bestScore) { bestScore = score; bestStart = s; }
+    }
+    return bestStart;
+  }
+
+  // Calcula início do turno conforme preferência + curva de demanda.
+  function startForTurno(turno, open, close, idx, jornada = shiftHours, dayIndex = -1) {
+    const span = Math.max(0, close - jornada - open);
+    const lateStart = open + span;
     switch (turno) {
       case 'abertura': return open;
       case 'fechamento': return lateStart;
       case 'central':
       case 'intermediario': return open + Math.round(span / 2);
-      default:
-        // flexível — espalha o grupo uniformemente da abertura ao fechamento
+      default: {
+        if (dayIndex >= 0) {
+          const ds = bestDemandStart(dayIndex, open, close, jornada);
+          if (ds !== null) return ds;
+        }
         return open + Math.round((N > 1 ? idx / (N - 1) : 0) * span);
+      }
     }
   }
 
@@ -3148,6 +3193,17 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
     // espalharem uniformemente. Abridor e fechador fixos continuam garantidos.
     const isPeakDay = (day) => day === 4 || day === 5;
 
+    // CLT Art.71: jornada > 6h → intervalo obrigatório de 1h.
+    // breakForShift calcula o horário do intervalo escalonado por idx.
+    function breakForShift(start, end, jd) {
+      if (jd <= 6) return undefined;
+      const maxCont = 5 + 40 / 60; // 5h40 (buffer de 20min antes do limite CLT de 6h)
+      const earliest = start + 3; // mínimo 3h trabalhadas antes do intervalo
+      const latest = start + maxCont; // máximo 5h40 antes do intervalo
+      const slot = earliest + ((idx % Math.max(1, N)) / Math.max(1, N)) * (latest - earliest);
+      return Math.round(slot * 4) / 4; // arredonda p/ 15min
+    }
+
     function gerarTurnoDia(day) {
       const loja = lojaDoDia(day);
       const jd = jornadaPorDia[day] || shiftHours;
@@ -3156,47 +3212,63 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
       }
       if (comercial) return generateComercialShift(loja.open, loja.close, jd);
       // Pico: calcular entrada e intervalo juntos. Regras:
-      // (1) max 4h40 contínuas antes do intervalo (5h CLT - 20min buffer)
+      // (1) max 5h40 contínuas antes do intervalo (6h CLT - 20min buffer)
       // (2) no máximo 1 pessoa em intervalo por vez
       // (3) intervalos só começam após a fechadora chegar
-      // Estratégia: escalonar entradas (1h entre cada) para que intervalos
-      // fiquem naturalmente espaçados de 1h, todos dentro do limite de 4h40.
       function peakShift() {
         const mi = peakMorningWorkers.indexOf(idx);
         if (mi < 0) return null;
         const closerStart = Math.max(loja.open, loja.close - jd);
-        const maxCont = 5 + 40 / 60; // 6h CLT art.71 - 20min buffer = 5h40
-        // Intervalo do slot mi: closerStart + mi horas (espaçados de 1h)
+        const maxCont = 5 + 40 / 60;
         const breakAt = closerStart + mi;
-        // Entrada = breakAt - maxCont (ou loja.open, o que for mais tarde)
         const start = Math.max(loja.open, Math.round((breakAt - maxCont) * 2) / 2);
         const end = Math.min(loja.close, start + jd);
         return { start, end, breakAt: Math.round(breakAt * 4) / 4 };
+      }
+
+      // generateOperatorShift com break estende o shiftEnd em +1h (intervalo).
+      // Para garantir que o trabalhador saia no horário correto, o endHour
+      // passado deve ser (fim desejado - 1h) quando há intervalo.
+      function shiftWithBreak(start, desiredEnd, jdLocal) {
+        const brk = breakForShift(start, desiredEnd, jdLocal);
+        if (brk !== undefined) {
+          const workEnd = desiredEnd - 1;
+          return generateOperatorShift(start, workEnd, brk);
+        }
+        return generateOperatorShift(start, desiredEnd);
       }
 
       if (ehFechador) {
         if (isPeakDay(day) && idxFechadores.length > 1 && idx !== idxFechadorPrimario) {
           const ps = peakShift();
           if (ps) return generateOperatorShift(ps.start, ps.end, ps.breakAt);
-          return generateOperatorShift(loja.open, Math.min(loja.close, loja.open + jd));
+          return shiftWithBreak(loja.open, Math.min(loja.close, loja.open + jd + (jd > 6 ? 1 : 0)), jd);
         }
-        return generateOperatorShift(Math.max(loja.open, loja.close - jd), loja.close);
+        const totalPresence = jd + (jd > 6 ? 1 : 0);
+        const fStart = Math.max(loja.open, loja.close - totalPresence);
+        return shiftWithBreak(fStart, loja.close, jd);
       }
       if (ehAbridor) {
         if (isPeakDay(day)) {
           const ps = peakShift();
           if (ps) return generateOperatorShift(ps.start, ps.end, ps.breakAt);
         }
-        return generateOperatorShift(loja.open, Math.min(loja.close, loja.open + jd));
+        const totalPresence = jd + (jd > 6 ? 1 : 0);
+        const aEnd = Math.min(loja.close, loja.open + totalPresence);
+        return shiftWithBreak(loja.open, aEnd, jd);
       }
       if (isPeakDay(day)) {
         const ps = peakShift();
         if (ps) return generateOperatorShift(ps.start, ps.end, ps.breakAt);
         const start = loja.open;
-        return generateOperatorShift(start, Math.min(loja.close, start + jd));
+        const totalPresence = jd + (jd > 6 ? 1 : 0);
+        const end = Math.min(loja.close, start + totalPresence);
+        return shiftWithBreak(start, end, jd);
       }
-      const start = startForTurno(turno, loja.open, loja.close, idx, jd);
-      return generateOperatorShift(start, Math.min(loja.close, start + jd));
+      const start = startForTurno(turno, loja.open, loja.close, idx, jd, day);
+      const totalPresence = jd + (jd > 6 ? 1 : 0);
+      const end = Math.min(loja.close, start + totalPresence);
+      return shiftWithBreak(start, end, jd);
     }
 
     // Monta a semana priorizando sáb (5) > sex (4) > restante,
@@ -3206,6 +3278,12 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
     for (const day of ordemPrioridade) {
       shifts[day] = diasTrabalho.includes(day) ? gerarTurnoDia(day) : 'Folga';
     }
+    // Registrar horas alocadas para que o próximo colaborador veja a demanda atualizada
+    shifts.forEach((shift, di) => {
+      if (!shift || shift === 'Folga') return;
+      const blocks = parseWorkedBlocks(shift);
+      blocks.forEach(b => recordPlacement(di, b.start / 60, b.end / 60));
+    });
     result[emp.nome] = shifts;
   });
   return result;
@@ -3217,7 +3295,7 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
 // - metade fixa no fechamento
 // - sobra (ímpar) no intermediário
 // - setor com 1 pessoa fica centralizado para cobrir o miolo do dia
-function generateGroupedSchedule(profile, employees, targetHours = 44, targetDaysOff = 1, pesosDia = null) {
+function generateGroupedSchedule(profile, employees, targetHours = 44, targetDaysOff = 1, pesosDia = null, demandCurve = null) {
   const groups = {};
   (employees || []).forEach((emp) => {
     const key = scheduleGroupKey(emp);
@@ -3229,7 +3307,9 @@ function generateGroupedSchedule(profile, employees, targetHours = 44, targetDay
   const merged = {};
   Object.values(groups).forEach((grupo) => {
     const grupoComCobertura = assignCoverageRolesBySector(grupo);
-    const escalaGrupo = generateScheduleByProfile(profile, grupoComCobertura, targetHours, targetDaysOff, pesosDia);
+    const groupKey = scheduleGroupKey(grupo[0]);
+    const curve = (groupKey === 'frente de caixa') ? demandCurve : null;
+    const escalaGrupo = generateScheduleByProfile(profile, grupoComCobertura, targetHours, targetDaysOff, pesosDia, curve);
     Object.assign(merged, escalaGrupo);
   });
   return merged;
@@ -3778,7 +3858,8 @@ function buildPeoplePresentation(peopleMap, employees, lojas) {
 }
 
 function buildEscalaNominal(profile, employees, targetHours = 44, targetDaysOff = 1, pesosDia = null, basePeople = null, coverageSummary = null, mode = 'hybrid') {
-  const baselinePeople = basePeople || generateGroupedSchedule(profile, employees, targetHours, targetDaysOff, pesosDia);
+  const demandCurve = coverageSummary?.dailyCoverage || null;
+  const baselinePeople = basePeople || generateGroupedSchedule(profile, employees, targetHours, targetDaysOff, pesosDia, demandCurve);
   const lojaSegSex = parseStoreHours(profile.horarioSegSex);
   const lojaSabado = parseStoreHours(profile.horarioSabado);
   const lojaDomingo = sundayIsClosed(profile) ? null : parseStoreHours(profile.horarioDomingo);
@@ -3819,7 +3900,8 @@ function buildEscalaNominal(profile, employees, targetHours = 44, targetDaysOff 
       const validRestrictions = variantEmployees.every((emp) => canEmployeeWorkRole(emp, emp._coverageRole || 'intermediario'));
       if (!validSectorFit || !validRestrictions) return;
 
-      const variantSeedPeople = generateScheduleByProfile(profile, variantEmployees, targetHours, targetDaysOff, pesosDia);
+      const variantCurve = (groupKey === 'frente de caixa') ? demandCurve : null;
+      const variantSeedPeople = generateScheduleByProfile(profile, variantEmployees, targetHours, targetDaysOff, pesosDia, variantCurve);
       const variantCandidatePeople = optimizeCoverageConstrainedAssignments(groupKey, variantEmployees, variantSeedPeople, lojas);
       const variantMetrics = buildGroupMetrics(variantCandidatePeople, variantEmployees, groupKey, lojas);
       if (!isBetterGroupCandidate(variantMetrics, baselineMetrics)) return;
@@ -4906,7 +4988,7 @@ async function applyClientState(summary, user, weekFilter = null) {
     Object.entries(summary.weeklyScenarioSchedule).forEach(([scenarioKey, scenario]) => {
       const targetHours = scenario.targetHours || 44;
       const targetDaysOff = scenario.targetDaysOff || 1;
-      scenario.people = generateGroupedSchedule(profile, caixaEmployees, targetHours, targetDaysOff, pesosDia);
+      scenario.people = generateGroupedSchedule(profile, caixaEmployees, targetHours, targetDaysOff, pesosDia, summary.dailyCoverage);
       scenario.nominal = buildEscalaNominal(profile, caixaEmployees, targetHours, targetDaysOff, pesosDia, scenario.people, summary);
       reconcileNominalScenario(summary, profile, caixaEmployees, scenario, pesosDia);
     });
@@ -4932,7 +5014,7 @@ async function applyClientState(summary, user, weekFilter = null) {
     const pesosFull = pesosDiaSemanaDeVendas(state.salesRows, mercRows);
     summary.fullSchedule = {};
     Object.entries(summary.weeklyScenarioSchedule).forEach(([key, sc]) => {
-      const people = generateGroupedSchedule(profile, state.employees, sc.targetHours || 44, sc.targetDaysOff || 1, pesosFull);
+      const people = generateGroupedSchedule(profile, state.employees, sc.targetHours || 44, sc.targetDaysOff || 1, pesosFull, summary.dailyCoverage);
       summary.fullSchedule[key] = {
         label: sc.label,
         targetHours: sc.targetHours,
