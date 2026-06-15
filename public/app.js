@@ -1522,7 +1522,11 @@ function renderStoreFloorMap(data) {
 
     const checkoutWorkers = byZone.checkout || [];
     // Limitar PDVs ativos pela demanda da hora atual
-    const _curRow = (cfg && cfg.rows || []).find(r => r.hora === hourBucket);
+    const _dayKeys = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+    const _floorCfg = data.dailyCoverage?.[_dayKeys[_floorDay]];
+    const _hh = Math.floor(_floorHour);
+    const _floorBucket = `${String(_hh).padStart(2,'0')}-${String(_hh+1).padStart(2,'0')}`;
+    const _curRow = (_floorCfg && _floorCfg.rows || []).find(r => r.hora === _floorBucket);
     const hourDemand = _curRow ? Math.max(1, Number(_curRow.demanda || 0)) : checkoutWorkers.length;
     const activePdvs = Math.min(checkoutWorkers.length, pdvs, hourDemand);
     const pdvSp = Math.min(2.5, 10 / pdvs), pdvSt = (12 - pdvs * pdvSp) / 2;
