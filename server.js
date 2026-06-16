@@ -143,6 +143,9 @@ async function enforceRateLimit(req, action, maxAttempts = 8, windowMs = 15 * 60
   //    tabela rate_limits não existir, countRecentRateHits retorna null e seguimos
   //    apenas com o limitador em memória.
   const sinceIso = new Date(now - windowMs).toISOString();
+  if (typeof dbSupabase.countRecentRateHits !== 'function' || typeof dbSupabase.recordRateHit !== 'function') {
+    return;
+  }
   const shared = await dbSupabase.countRecentRateHits(key, sinceIso);
   if (shared !== null) {
     dbSupabase.recordRateHit(key);
@@ -4645,6 +4648,10 @@ async function applyClientState(summary, user, weekFilter = null) {
     summary.metadata.semanaLabel = semanaLabels[Number(weekFilter)] || `Semana ${weekFilter}`;
     summary.metadata.demandaMediaSemana = filtradas.length ? `${filtradas.length} faixas analisadas` : 'Sem dados nesta semana';
   }
+  // Reconstruir faixas horárias do dailyCoverage ANTES de aplicar salesRows,
+  // para que as faixas correspondam ao horário real da loja (não do demo).
+  regenerateCoverageHours(summary, profile);
+
   // Aplicar vendas do cliente ao dailyCoverage (ICOC por dia da semana)
   // NÃO usar applySalesRowsToSummary pois ela sobrescreve metadata/scenarios
   if (state.salesRows.length) {
@@ -4659,7 +4666,8 @@ async function applyClientState(summary, user, weekFilter = null) {
         vendaLiquida: Number(row.vendaLiquida || 0),
         qtdItens: Number(row.qtdItens || 0),
         itensMedios: Number(row.itensMedios || 0),
-        minutosAtendimento: Number(row.minutosAtendimento || 0)
+        minutosAtendimento: Number(row.minutosAtendimento || 0),
+        _data: row.data
       });
     });
     // Limpar dados antigos
@@ -4667,14 +4675,16 @@ async function applyClientState(summary, user, weekFilter = null) {
       (day.rows || []).forEach(row => {
         row.demanda = null; row.cupons = undefined; row.vendaLiquida = undefined;
         row.qtdItens = undefined; row.itensMedios = undefined; row.minutosAtendimento = undefined;
+        row._audit = undefined;
       });
     });
-    // Preencher com médias por dia da semana
+    // Preencher com médias por dia da semana + auditoria
     const _salesDates = state.salesRows.map(r => r.data);
     Object.entries(_covGrouped).forEach(([dk, hours]) => {
       if (!summary.dailyCoverage[dk]) return;
       const datesForDay = new Set(_salesDates.filter(d => dayKeys[new Date(`${d}T12:00:00`).getDay()] === dk));
       const numDates = Math.max(1, datesForDay.size);
+      const sortedDates = [...datesForDay].sort();
       summary.dailyCoverage[dk].rows.forEach(row => {
         if (!hours[row.hora]) return;
         const vals = hours[row.hora];
@@ -4688,9 +4698,23 @@ async function applyClientState(summary, user, weekFilter = null) {
         row.vendaLiquida = Number((totalVenda / numDates).toFixed(2));
         row.itensMedios = totalCupons ? Number((totalItens / totalCupons).toFixed(2)) : 0;
         row.minutosAtendimento = Number((totalMinutos / numDates).toFixed(2));
+        row._audit = {
+          datas: sortedDates,
+          numDatas: numDates,
+          totalCupons,
+          totalVendaLiquida: Number(totalVenda.toFixed(2)),
+          totalItens,
+          totalMinutos: Number(totalMinutos.toFixed(2)),
+          formula: `cupons=${totalCupons}/${numDates}=${row.cupons} | itens/cupom=${totalItens}/${totalCupons}=${row.itensMedios} | min/cupom=${totalMinutos.toFixed(0)}/${totalCupons}=${totalCupons ? (totalMinutos/totalCupons).toFixed(2) : 0}`,
+          porData: sortedDates.map(d => {
+            const dv = vals.filter(v => v._data === d);
+            return { data: d, cupons: dv.reduce((s,v) => s + v.cupons, 0), venda: Number(dv.reduce((s,v) => s + v.vendaLiquida, 0).toFixed(2)) };
+          })
+        };
       });
       summary.dailyCoverage[dk].source = `VRSoft · ${numDates} dia(s) de ${dk === 'saturday' ? 'sábado' : dk === 'sunday' ? 'domingo' : 'semana'}`;
       summary.dailyCoverage[dk].confidence = numDates >= 4 ? 'alta' : numDates >= 2 ? 'média' : 'baixa';
+      summary.dailyCoverage[dk]._auditDates = sortedDates;
     });
   }
   const requiredDayKeys = requiredOperationalDayKeys(profile);
@@ -4974,8 +4998,7 @@ async function applyClientState(summary, user, weekFilter = null) {
     // ATUALIZAR TODAS as abas com dados importados/configurados
     updateAllTabsWithImportedData(summary, profile, caixaEmployees, state.skillMatrix);
 
-    // REGENERAR faixas horárias do dailyCoverage com base no horário da loja
-    regenerateCoverageHours(summary, profile);
+    // regenerateCoverageHours já rodou ANTES do salesRows (início do applyClientState)
 
     // Peso de demanda por dia da semana (jornada variável: mais horas nos dias de pico)
     const pesosDia = pesosDiaSemanaDeVendas(state.salesRows, mercRows);
@@ -5086,6 +5109,7 @@ async function applyClientState(summary, user, weekFilter = null) {
   Object.entries(grouped).forEach(([dayKey, hours]) => {
     if (!summary.dailyCoverage[dayKey]) return;
     summary.dailyCoverage[dayKey].rows.forEach((row) => {
+      if (row._audit) return;
       if (hours[row.hora]) {
         const values = hours[row.hora];
         row.demanda = Math.ceil(values.reduce((sum, value) => sum + value.demanda, 0) / values.length);
@@ -5099,7 +5123,10 @@ async function applyClientState(summary, user, weekFilter = null) {
         row.minutosAtendimento = Number((values.reduce((sum, value) => sum + value.minutosAtendimento, 0) / values.length).toFixed(2));
       }
     });
-    summary.dailyCoverage[dayKey].source = `Importação guiada · ${Object.values(hours).reduce((sum, rows) => sum + rows.length, 0)} faixas`;
+    const hasAuditedRows = summary.dailyCoverage[dayKey].rows.some((row) => row._audit);
+    if (!hasAuditedRows) {
+      summary.dailyCoverage[dayKey].source = `Importação guiada · ${Object.values(hours).reduce((sum, rows) => sum + rows.length, 0)} faixas`;
+    }
   });
   // RECALCULAR caixas ativos depois da demanda ter sido aplicada
   if (caixaEmployees.length >= 1) {

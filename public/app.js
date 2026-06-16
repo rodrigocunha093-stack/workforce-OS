@@ -908,6 +908,49 @@ function renderCashierLoadPanel(rows, scenario) {
         `;
       }).join('')}
     </div>
+    ${(() => {
+      const auditRows = known.filter(r => r._audit);
+      if (!auditRows.length) return '';
+      const dayDates = auditRows[0]._audit?.datas || [];
+      return `
+        <details class="icoc-audit" style="margin-top:8px">
+          <summary style="cursor:pointer;font-size:12px;color:var(--fx-muted,#8899aa);padding:4px 0">
+            Auditoria ICOC · ${dayDates.length} data(s): ${dayDates.join(', ')}
+          </summary>
+          <div style="font-size:11px;overflow-x:auto;margin-top:6px">
+            <table style="width:100%;border-collapse:collapse;font-family:monospace;font-size:11px">
+              <tr style="border-bottom:1px solid var(--fx-border,#1a3a4a)">
+                <th style="text-align:left;padding:2px 6px">Hora</th>
+                <th style="text-align:right;padding:2px 6px">Σ Cupons</th>
+                <th style="text-align:right;padding:2px 6px">÷ Datas</th>
+                <th style="text-align:right;padding:2px 6px">= Média</th>
+                <th style="text-align:right;padding:2px 6px">Σ Itens</th>
+                <th style="text-align:right;padding:2px 6px">Itens/cup</th>
+                <th style="text-align:right;padding:2px 6px">Σ Min</th>
+                <th style="text-align:right;padding:2px 6px">Min/cup</th>
+                <th style="text-align:left;padding:2px 6px">Por data</th>
+              </tr>
+              ${auditRows.map(r => {
+                const a = r._audit;
+                const minPerCup = a.totalCupons ? (a.totalMinutos / a.totalCupons).toFixed(1) : '—';
+                const perDate = (a.porData || []).map(d => d.data.slice(5) + ':' + d.cupons + 'c').join(' ');
+                return `<tr style="border-bottom:1px solid var(--fx-border,#1a3a4a)22">
+                  <td style="padding:2px 6px">${r.hora}</td>
+                  <td style="text-align:right;padding:2px 6px">${a.totalCupons}</td>
+                  <td style="text-align:right;padding:2px 6px">${a.numDatas}</td>
+                  <td style="text-align:right;padding:2px 6px"><strong>${r.cargaCaixa?.clientes || r.cupons || '—'}</strong></td>
+                  <td style="text-align:right;padding:2px 6px">${a.totalItens}</td>
+                  <td style="text-align:right;padding:2px 6px">${r.cargaCaixa?.itensMedios || r.itensMedios || '—'}</td>
+                  <td style="text-align:right;padding:2px 6px">${a.totalMinutos}</td>
+                  <td style="text-align:right;padding:2px 6px">${minPerCup}</td>
+                  <td style="padding:2px 6px;font-size:10px;color:var(--fx-muted,#8899aa)">${perDate}</td>
+                </tr>`;
+              }).join('')}
+            </table>
+          </div>
+        </details>
+      `;
+    })()}
   `;
 }
 
