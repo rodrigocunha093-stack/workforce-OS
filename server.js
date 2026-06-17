@@ -4937,7 +4937,6 @@ async function applyClientState(summary, user, weekFilter = null) {
 
   computeWeekComparison(summary);
   summary.blocks15min = build15MinBlocks(state.salesRows);
-  summary.controllerRecommendations = buildControllerRecommendations(summary);
   computeAdherence(summary, state.timecardRows || []);
 
   // Resumo do faturamento diário para o frontend
@@ -5279,6 +5278,7 @@ async function applyClientState(summary, user, weekFilter = null) {
     ? `${dateLabel(dates[0])} · ${representedDays} dias agregados`
     : `${dateLabel(dates[0])} a ${dateLabel(dates[dates.length - 1])}`;
   summary.metadata.ultimaImportacao = state.updatedAt ? new Date(state.updatedAt).toLocaleString('pt-BR') : summary.metadata.ultimaImportacao;
+  summary.controllerRecommendations = buildControllerRecommendations(summary);
   return summary;
 }
 
