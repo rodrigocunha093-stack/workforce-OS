@@ -1548,7 +1548,7 @@ function empSetorOperacional(emp) {
 
 // Benchmarks operacionais de supermercado (calibráveis)
 const BENCH = {
-  fatPorFuncionario: 36500,    // R$/mês por colaborador total (faixa 33k-40k)
+  fatPorFuncionario: 40000,    // R$/mês por colaborador total (faixa 35k-45k)
   fatPorCheckoutHora: 1500,    // R$/hora de checkout ativo
   clientesPorHoraCaixa: 20,    // 18-22 clientes/hora por caixa
   tmaMin: 2.5,                 // tempo médio de atendimento (min)
@@ -1906,8 +1906,8 @@ function buildOperationalDashboard(state, caixaSalesRows) {
 
   // --- DIMENSIONAMENTO GLOBAL (1 func / R$33-40k/mês) ---
   const headcountIdeal = fatMes ? Math.round(fatMes / BENCH.fatPorFuncionario) : 0;
-  const headcountIdealMin = fatMes ? Math.round(fatMes / 40000) : 0;
-  const headcountIdealMax = fatMes ? Math.round(fatMes / 33000) : 0;
+  const headcountIdealMin = fatMes ? Math.round(fatMes / 45000) : 0;
+  const headcountIdealMax = fatMes ? Math.round(fatMes / 35000) : 0;
   const headcountAtual = employees.length;
   let headcountStatus = 'ok';
   if (headcountAtual && headcountIdeal) {
@@ -5552,7 +5552,7 @@ const requestHandler = async (req, res) => {
         const deltaFatPct = Number(body.deltaFatPct || 0);   // % variação faturamento
         const equipeSim = Math.max(0, equipeBase + deltaEquipe);
         const fatMesSim = Math.round(fatMesBase * (1 + deltaFatPct / 100));
-        const idealSim = Math.round(fatMesSim / 36500);
+        const idealSim = Math.round(fatMesSim / 40000);
         const custoFolhaSim = equipeSim * custoColab;
         const custoFolhaBase = equipeBase * custoColab;
         // Ruptura estimada conforme gap equipe vs ideal
