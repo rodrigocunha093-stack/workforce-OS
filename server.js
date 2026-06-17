@@ -2913,7 +2913,7 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
           if (!shift || shift === 'Folga') return null;
           const workedHours = shiftWorkedHours(shift) || 0;
           const intervalMin = getLegalIntervalMinutes(workedHours);
-          if (intervalMin !== 60) return null;
+          const hasBreak = intervalMin === 60;
 
           const [periodoRaw] = String(shift).split('·').map(p => p.trim());
           let shiftStart, shiftEnd, explicitBreak = null;
@@ -2921,7 +2921,7 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
             const blocks = periodoRaw.split('/');
             shiftStart = hmTextToMinutes(blocks[0].split('-')[0]);
             shiftEnd = hmTextToMinutes(blocks[blocks.length - 1].split('-')[1]);
-            explicitBreak = hmTextToMinutes(blocks[0].split('-')[1]); // pausa real do turno
+            explicitBreak = hmTextToMinutes(blocks[0].split('-')[1]);
           } else {
             const [ini, fim] = periodoRaw.split('-').map(p => p.trim());
             shiftStart = hmTextToMinutes(ini);
@@ -2930,18 +2930,21 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
           if (shiftStart === null || shiftEnd === null) return null;
 
           const workedMin = Math.round(workedHours * 60);
-          let breakStart = explicitBreak;
-          if (breakStart === null) {
-            // Mesma inferência do parseWorkedBlocks (turnos corridos sem pausa explícita)
-            const beforeBase = Math.round((workedMin / 2) / 5) * 5;
-            const minAntes = workedHours > 6 ? 180 : 120;
-            const maxAntes = workedHours > 6 ? 340 : workedMin;
-            const minDepois = 120;
-            breakStart = shiftStart + Math.min(maxAntes, Math.max(minAntes, Math.min(beforeBase, workedMin - minDepois)));
+          if (hasBreak) {
+            let breakStart = explicitBreak;
+            if (breakStart === null) {
+              const beforeBase = Math.round((workedMin / 2) / 5) * 5;
+              const minAntes = workedHours > 6 ? 180 : 120;
+              const maxAntes = workedHours > 6 ? 340 : workedMin;
+              const minDepois = 120;
+              breakStart = shiftStart + Math.min(maxAntes, Math.max(minAntes, Math.min(beforeBase, workedMin - minDepois)));
+            }
+            const spanMin = workedMin + 60;
+            return { nome, shifts, dayIndex, shiftStart, breakStart, workedMin, spanMin, workedHours, origStart: shiftStart, origBreak: breakStart, hasBreak: true };
           }
-          const spanMin = workedMin + 60; // jornada + 1h de intervalo
-
-          return { nome, shifts, dayIndex, shiftStart, breakStart, workedMin, spanMin, workedHours, origStart: shiftStart, origBreak: breakStart };
+          // Turno curto sem intervalo: só pode mover o horário de entrada
+          const spanMin = workedMin;
+          return { nome, shifts, dayIndex, shiftStart, breakStart: null, workedMin, spanMin, workedHours, origStart: shiftStart, origBreak: null, hasBreak: false };
         })
         .filter(Boolean);
 
@@ -2962,7 +2965,11 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
       // Presença na hora h (mesma regra do countWorkersAtHour: qualquer sobreposição)
       const presence = (start, breakStart, spanMin, h) => {
         const fs = h * 60, fe = fs + 60;
-        const b1e = breakStart, b2s = breakStart + 60, end = start + spanMin;
+        const end = start + spanMin;
+        if (breakStart === null) {
+          return (start < fe && end > fs);
+        }
+        const b1e = breakStart, b2s = breakStart + 60;
         return (start < fe && b1e > fs) || (b2s < fe && end > fs);
       };
 
@@ -2983,8 +2990,8 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
           cost += deficit * 100;
         });
         workers.forEach(w => {
-          cost += Math.abs(w.shiftStart - w.origStart) / 60       // mexer na entrada custa
-                + Math.abs(w.breakStart - w.origBreak) / 600;     // mexer na pausa custa menos
+          cost += Math.abs(w.shiftStart - w.origStart) / 60;
+          if (w.hasBreak) cost += Math.abs(w.breakStart - w.origBreak) / 600;
         });
         return cost;
       };
@@ -2994,14 +3001,16 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
         for (let ds = -240; ds <= 240; ds += 30) {
           const start = w.origStart + ds;
           if (start < openMin || start + w.spanMin > closeMin) continue;
-          // Janela legal da pausa p/ esta entrada (blocos ≤340min, ≥120min em cada ponta)
+          if (!w.hasBreak) {
+            list.push({ start, bs: null });
+            continue;
+          }
           const lo = start + Math.max(120, w.workedMin - 340);
           const hi = start + Math.min(340, w.workedMin - 120);
           if (lo > hi) continue;
           for (let bs = Math.ceil(lo / 60) * 60; bs <= hi; bs += 60) {
             list.push({ start, bs });
           }
-          // fallback: pausa não alinhada à hora, se nenhuma alinhada coube
           if (Math.ceil(lo / 60) * 60 > hi) list.push({ start, bs: Math.round(((lo + hi) / 2) / 5) * 5 });
         }
         return list;
@@ -3029,7 +3038,11 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
       // Grava os turnos otimizados de volta na escala
       workers.forEach(w => {
         const end = w.shiftStart + w.spanMin;
-        w.shifts[w.dayIndex] = `${formatHM(w.shiftStart / 60)}-${formatHM(w.breakStart / 60)}/${formatHM((w.breakStart + 60) / 60)}-${formatHM(end / 60)} · ${formatDur(w.workedHours)}`;
+        if (w.hasBreak) {
+          w.shifts[w.dayIndex] = `${formatHM(w.shiftStart / 60)}-${formatHM(w.breakStart / 60)}/${formatHM((w.breakStart + 60) / 60)}-${formatHM(end / 60)} · ${formatDur(w.workedHours)}`;
+        } else {
+          w.shifts[w.dayIndex] = `${formatHM(w.shiftStart / 60)}-${formatHM(end / 60)} · ${formatDur(w.workedHours)}`;
+        }
       });
     });
   });
