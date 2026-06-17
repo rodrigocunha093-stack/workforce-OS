@@ -1884,14 +1884,13 @@ function buildOperationalDashboard(state, caixaSalesRows) {
   }
   const _fatDates = Object.keys(_fatByDate).sort();
   if (_fatDates.length) {
-    const _lastDate = _fatDates[_fatDates.length - 1];
-    const _lastMonth = _lastDate.slice(0, 7);
-    const _prevMonth = new Date(_lastDate + 'T12:00:00');
-    _prevMonth.setMonth(_prevMonth.getMonth() - 1);
-    const _prevMonthStr = _prevMonth.toISOString().slice(0, 7);
-    const _targetMonth = _lastDate.slice(8, 10) <= '06' ? _prevMonthStr : _lastMonth;
-    const _monthDates = _fatDates.filter(d => d.slice(0, 7) === _targetMonth);
-    if (_monthDates.length >= 1) {
+    const _months = [...new Set(_fatDates.map(d => d.slice(0, 7)))].sort();
+    const _today = new Date();
+    const _currentMonth = `${_today.getFullYear()}-${String(_today.getMonth() + 1).padStart(2, '0')}`;
+    const _completeMonths = _months.filter(m => m < _currentMonth);
+    const _targetMonth = _completeMonths.length ? _completeMonths[_completeMonths.length - 1] : null;
+    if (_targetMonth) {
+      const _monthDates = _fatDates.filter(d => d.slice(0, 7) === _targetMonth);
       fatMes = _monthDates.reduce((s, d) => s + _fatByDate[d], 0);
       const _daysInMonth = new Date(Number(_targetMonth.slice(0, 4)), Number(_targetMonth.slice(5, 7)), 0).getDate();
       fatDia = fatMes / _daysInMonth;
@@ -1899,7 +1898,7 @@ function buildOperationalDashboard(state, caixaSalesRows) {
     } else {
       fatMes = _fatDates.reduce((s, d) => s + _fatByDate[d], 0);
       fatDia = fatMes / Math.max(1, _fatDates.length);
-      fonteFat += ` (${_fatDates.length}d importados)`;
+      fonteFat += ` (${_fatDates.length}d · mês em andamento)`;
     }
     fatSemana = fatDia * 7;
   }
