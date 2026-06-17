@@ -2600,6 +2600,81 @@ function renderCommission(review) {
   `;
 }
 
+function renderControllerCaixa(data) {
+  const container = document.getElementById('controllerCaixaContainer');
+  if (!container) return;
+  const recs = data.controllerRecommendations;
+  const blocks = data.blocks15min;
+  if (!recs || !recs.length) {
+    container.innerHTML = '<p class="note">Sem dados de vendas importados para gerar análise de caixa.</p>';
+    return;
+  }
+  const corClass = { verde: 'green-bg', amarelo: 'yellow-bg', vermelho: 'red-bg', azul: 'blue-bg' };
+  const corLabel = { verde: 'Adequado', amarelo: 'Leve excesso', vermelho: 'Déficit', azul: 'Excesso' };
+  const days = [...new Set(recs.map(r => r.dayKey))];
+  const dkLabel = { monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', thursday: 'Quinta', friday: 'Sexta', saturday: 'Sábado', sunday: 'Domingo' };
+  let html = '<div class="controller-caixa-tabs">';
+  days.forEach((dk, i) => {
+    html += `<button class="ctrl-day-tab${i === 0 ? ' active' : ''}" data-dk="${dk}">${dkLabel[dk] || dk}</button>`;
+  });
+  html += '</div>';
+  days.forEach((dk, i) => {
+    const dayRecs = recs.filter(r => r.dayKey === dk).sort((a, b) => a.hStart - b.hStart);
+    html += `<div class="ctrl-day-panel${i === 0 ? ' active' : ''}" data-dk="${dk}">`;
+    html += '<table class="ctrl-table"><thead><tr><th>Hora</th><th>Clientes</th><th>Min reais</th><th>Min/cup</th><th>Necessários</th><th>Escalados</th><th>Status</th><th>Recomendação</th></tr></thead><tbody>';
+    dayRecs.forEach(r => {
+      const cls = corClass[r.cor] || '';
+      const dayBlocks = blocks && blocks[dk] ? blocks[dk].filter(b => b.hora === r.hora) : [];
+      const hasBlocks = dayBlocks.length > 0;
+      html += `<tr class="ctrl-row ${cls}" data-hora="${r.hora}" data-dk="${dk}">`;
+      html += `<td>${r.hora}${hasBlocks ? ' <span class="drill-icon">▶</span>' : ''}</td>`;
+      html += `<td>${r.clientes}</td>`;
+      html += `<td>${r.minutosReais}</td>`;
+      html += `<td>${r.tempoMedio}</td>`;
+      html += `<td>${r.necessarios}</td>`;
+      html += `<td>${r.escalados}</td>`;
+      html += `<td><span class="soft-pill ${cls}">${corLabel[r.cor] || r.status}</span></td>`;
+      html += `<td class="rec-cell">${r.recomendacao}</td>`;
+      html += '</tr>';
+      if (hasBlocks) {
+        html += `<tr class="ctrl-blocks-row hidden" data-blocks-for="${dk}|${r.hora}"><td colspan="8"><table class="ctrl-blocks-table"><thead><tr><th>Bloco 15min</th><th>Cupons</th><th>Minutos</th><th>Caixas nec.</th></tr></thead><tbody>`;
+        dayBlocks.forEach(b => {
+          html += `<tr><td>${b.bloco}</td><td>${b.cupons}</td><td>${b.minutos}</td><td>${b.caixasNecessarios}</td></tr>`;
+        });
+        html += '</tbody></table></td></tr>';
+      }
+    });
+    html += '</tbody></table>';
+    const totals = dayRecs.reduce((acc, r) => {
+      acc.clientes += r.clientes; acc.minutos += r.minutosReais; acc.deficit += r.cor === 'vermelho' ? 1 : 0; acc.excesso += (r.cor === 'azul' || r.cor === 'amarelo') ? 1 : 0;
+      return acc;
+    }, { clientes: 0, minutos: 0, deficit: 0, excesso: 0 });
+    html += `<div class="ctrl-summary"><span>Total clientes: <strong>${totals.clientes}</strong></span><span>Total minutos: <strong>${totals.minutos.toFixed(0)}</strong></span><span class="red-bg soft-pill">${totals.deficit} horário(s) com déficit</span><span class="blue-bg soft-pill">${totals.excesso} horário(s) com excesso</span></div>`;
+    html += '</div>';
+  });
+  container.innerHTML = html;
+  container.querySelectorAll('.ctrl-day-tab').forEach(tab => {
+    tab.onclick = () => {
+      container.querySelectorAll('.ctrl-day-tab').forEach(t => t.classList.remove('active'));
+      container.querySelectorAll('.ctrl-day-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      container.querySelector(`.ctrl-day-panel[data-dk="${tab.dataset.dk}"]`)?.classList.add('active');
+    };
+  });
+  container.querySelectorAll('.ctrl-row').forEach(row => {
+    if (!row.querySelector('.drill-icon')) return;
+    row.style.cursor = 'pointer';
+    row.onclick = () => {
+      const key = `${row.dataset.dk}|${row.dataset.hora}`;
+      const blocksRow = container.querySelector(`tr[data-blocks-for="${key}"]`);
+      if (blocksRow) {
+        blocksRow.classList.toggle('hidden');
+        row.querySelector('.drill-icon').textContent = blocksRow.classList.contains('hidden') ? '▶' : '▼';
+      }
+    };
+  });
+}
+
 function renderActions(actions, priority = 'all') {
   const visible = priority === 'all' ? actions : actions.filter((action) => action.prioridade === priority);
   document.getElementById('actions').innerHTML = visible.map((action, index) => `
@@ -4166,6 +4241,7 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     safeRender('semana colaboradora', () => renderWeeklySchedule(data));
     safeRender('domingos', () => renderSunday(data.sundayRotation));
     safeRender('auditoria', () => renderAudit(data.audit));
+    safeRender('controller caixa', () => renderControllerCaixa(data));
     safeRender('acoes', () => renderActions(data.controllerActions));
     safeRender('forecast7', () => renderForecast7(data.forecast7));
     safeRender('eventos', () => renderEventos(data.eventos, data.eventMap));

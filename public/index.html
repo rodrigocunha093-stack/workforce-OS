@@ -63,7 +63,7 @@
         <div class="hero-panel">
           <div>
             <p class="eyebrow">Diagnóstico executivo</p>
-            <h2>A amostra atual não indica contratação para caixa.</h2>
+            <h2>Carregando diagnóstico operacional...</h2>
             <p id="conclusion"></p>
           </div>
           <div class="decision-card">
@@ -280,6 +280,43 @@
           </div>
           <span class="soft-pill red-bg">Revisão multidisciplinar</span>
         </div>
+        <!-- Forecast 7 dias -->
+        <article class="panel forecast-panel">
+          <div class="panel-head"><div><h3>Previsão de demanda — 7 dias <span class="new-badge">NOVO</span></h3><p class="note">Decomposição multiplicativa: dia-da-semana × semana-do-mês × evento</p></div></div>
+          <div id="forecast7Container" class="forecast7-grid"></div>
+        </article>
+
+        <!-- Calendário de eventos -->
+        <article class="panel eventos-panel">
+          <div class="panel-head"><div><h3>Calendário de eventos <span class="new-badge">NOVO</span></h3><p class="note">Feriados, promoções e datas especiais que ajustam a previsão de demanda.</p></div></div>
+          <div class="evento-form">
+            <input id="eventoData" type="date">
+            <select id="eventoTipo">
+              <option value="feriado">Feriado (×0.30)</option>
+              <option value="vespera">Véspera (×1.40)</option>
+              <option value="promocao">Promoção (×1.35)</option>
+              <option value="data_comemorativa">Data comemorativa (×1.25)</option>
+              <option value="pagamento">Dia de pagamento (×1.15)</option>
+            </select>
+            <input id="eventoNome" type="text" placeholder="Nome do evento" maxlength="80">
+            <input id="eventoFator" type="number" step="0.05" min="0" max="5" placeholder="Fator">
+            <button id="addEvento" type="button">Adicionar</button>
+          </div>
+          <div id="eventosLista" class="eventos-lista"></div>
+        </article>
+
+        <!-- Escala sugerida -->
+        <article class="panel escala-sugerida-panel">
+          <div class="panel-head"><div><h3>Escala sugerida — próximos 7 dias <span class="new-badge">NOVO</span></h3><p class="note">Quantas pessoas por dia e por setor, baseado no forecast e na necessidade operacional.</p></div></div>
+          <div id="escalaSugeridaContainer" class="escala-sugerida-grid"></div>
+        </article>
+
+        <!-- Controller de Frente de Caixa -->
+        <article class="panel controller-caixa-panel">
+          <div class="panel-head"><div><h3>Controller de Frente de Caixa <span class="new-badge">NOVO</span></h3><p class="note">Comparação realizado × ideal por hora — orientação para abrir, manter ou realocar caixas.</p></div></div>
+          <div id="controllerCaixaContainer"></div>
+        </article>
+
         <div id="commissionSummary" class="commission-summary"></div>
         <div class="controller-toolbar">
           <button class="action-filter active" data-priority="all">Todas</button>
@@ -443,6 +480,12 @@
 
         <div id="onboardingProgress" class="onboarding-progress"></div>
 
+        <div id="dataManagementPanel" class="data-management-panel" style="display:none">
+          <h3>Dados importados</h3>
+          <p class="note">Clique em "Reimportar" para atualizar qualquer fonte. Os dados anteriores serão substituídos.</p>
+          <div class="data-mgmt-grid" id="dataMgmtGrid"></div>
+        </div>
+
         <article class="panel company-panel">
           <div class="panel-head">
             <div>
@@ -556,6 +599,21 @@
               <button id="confirmFatImport" type="button" disabled>Importar faturamento</button>
             </div>
             <div id="fatResumo" class="fat-resumo"></div>
+          </article>
+
+          <article class="panel import-panel timecard-import-panel">
+            <div class="panel-head"><div><h3>6. Importar registros de ponto <span class="new-badge">NOVO</span></h3><p class="note">Registros reais de entrada e saída para comparar planejado × realizado na escala semanal.</p></div></div>
+            <div class="import-instructions">
+              <strong>Colunas aceitas (4 obrigatórias)</strong>
+              <code>nome;data;entrada;saida</code>
+              <span>Ex.: Lucila;2026-06-09;07:02;15:05 — uma linha por batida de ponto. O nome deve corresponder exatamente ao cadastrado na equipe. Formato de hora: HH:MM.</span>
+            </div>
+            <input id="timecardCsvInput" type="file" accept=".csv,.txt,text/csv">
+            <div id="timecardImportPreview" class="import-preview"><span>Nenhum arquivo selecionado.</span></div>
+            <div class="import-actions">
+              <button id="downloadTimecardTemplate" type="button" class="secondary-button">Baixar modelo</button>
+              <button id="confirmTimecardImport" type="button" disabled>Importar ponto</button>
+            </div>
           </article>
         </div>
 

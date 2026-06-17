@@ -4477,6 +4477,93 @@ function applySalesRowsToSummary(summary, salesRows, sourceLabel) {
   return summary;
 }
 
+function build15MinBlocks(salesRows) {
+  if (!salesRows || !salesRows.length) return {};
+  const grouped = {};
+  salesRows.forEach(row => {
+    const dk = dayKeys[new Date(`${row.data}T12:00:00`).getDay()];
+    const h = Number(String(row.horaInicio || '').slice(0, 2));
+    if (Number.isNaN(h)) return;
+    const avgMinPerCoupon = row.cupons > 0 ? (row.minutosAtendimento || 0) / row.cupons : 2;
+    for (let q = 0; q < 4; q++) {
+      const m0 = q * 15;
+      const m1 = (q + 1) * 15;
+      const bloco = `${String(h).padStart(2,'0')}:${String(m0).padStart(2,'0')}`;
+      const key = `${row.data}|${dk}|${bloco}`;
+      const fraction = 0.25;
+      const cuponsBloco = Math.round((row.cupons || 0) * fraction);
+      grouped[key] ||= { dk, bloco, hora: `${String(h).padStart(2,'0')}-${String(h+1).padStart(2,'0')}`, cupons: 0, minutos: 0, venda: 0, itens: 0, _datas: new Set() };
+      grouped[key].cupons += cuponsBloco;
+      grouped[key].minutos += (row.minutosAtendimento || 0) * fraction;
+      grouped[key].venda += (row.vendaLiquida || 0) * fraction;
+      grouped[key].itens += (row.qtdItens || 0) * fraction;
+      grouped[key]._datas.add(row.data);
+    }
+  });
+  const byDay = {};
+  Object.values(grouped).forEach(g => {
+    byDay[g.dk] ||= {};
+    byDay[g.dk][g.bloco] ||= { cupons: 0, minutos: 0, venda: 0, itens: 0, numDatas: 0, hora: g.hora };
+    byDay[g.dk][g.bloco].cupons += g.cupons;
+    byDay[g.dk][g.bloco].minutos += g.minutos;
+    byDay[g.dk][g.bloco].venda += g.venda;
+    byDay[g.dk][g.bloco].itens += g.itens;
+    byDay[g.dk][g.bloco].numDatas = Math.max(byDay[g.dk][g.bloco].numDatas, g._datas.size);
+  });
+  const result = {};
+  Object.entries(byDay).forEach(([dk, blocos]) => {
+    result[dk] = Object.entries(blocos).sort((a,b) => a[0].localeCompare(b[0])).map(([bloco, v]) => {
+      const nd = Math.max(1, v.numDatas);
+      const avgCupons = v.cupons / nd;
+      const avgMinutos = v.minutos / nd;
+      const necessarios15 = Math.ceil((avgMinutos * 1.10) / 15);
+      return { bloco, hora: v.hora, cupons: Number(avgCupons.toFixed(1)), minutos: Number(avgMinutos.toFixed(1)), caixasNecessarios: Math.max(1, necessarios15), numDatas: nd };
+    });
+  });
+  return result;
+}
+
+function buildControllerRecommendations(summary) {
+  const recs = [];
+  const dkLabels = { monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', thursday: 'Quinta', friday: 'Sexta', saturday: 'Sábado', sunday: 'Domingo' };
+  Object.entries(summary.dailyCoverage || {}).forEach(([dk, day]) => {
+    if (day.closed) return;
+    (day.rows || []).forEach(row => {
+      if (!row.cargaCaixa) return;
+      const hora = row.hora;
+      const [hStart] = hora.split('-');
+      const clientes = row.cargaCaixa.clientes;
+      const minutosReais = row.cargaCaixa.minutosNecessarios;
+      const necessarios = row.cargaCaixa.operadoresRecomendados;
+      const calculados = row.cargaCaixa.operadoresCalculados || necessarios;
+      const escalados = Number(row.atual || row.final || row.transicao || row.demanda || 0);
+      const minPerCup = row.cargaCaixa.tempoMedioMin;
+      let status, cor, recomendacao;
+      if (necessarios === escalados) {
+        status = 'adequado';
+        cor = 'verde';
+        recomendacao = `Cobertura adequada. ${clientes} clientes, ${minutosReais} min de atendimento, ${necessarios} caixa(s) necessário(s) e ${escalados} escalado(s).`;
+      } else if (escalados > necessarios + 1) {
+        status = 'excesso';
+        cor = 'azul';
+        const excesso = escalados - necessarios;
+        recomendacao = `Possível excesso de ${excesso} caixa(s). ${clientes} clientes, ${minutosReais} min reais e necessidade calculada de ${necessarios}. Recomenda-se realocar ${excesso} operador(es) para reposição, apoio de frente ou intervalo.`;
+      } else if (escalados > necessarios) {
+        status = 'leve_excesso';
+        cor = 'amarelo';
+        recomendacao = `Escalado 1 caixa acima do necessário. Pode ser ajustado sem perda de qualidade.`;
+      } else {
+        status = 'deficit';
+        cor = 'vermelho';
+        const deficit = necessarios - escalados;
+        recomendacao = `Risco de fila. ${clientes} clientes, ${minutosReais} min reais de atendimento e necessidade calculada de ${necessarios} caixa(s). Apenas ${escalados} escalado(s). Recomenda-se abrir mais ${deficit} caixa(s) ou antecipar operador do próximo turno.`;
+      }
+      recs.push({ dia: dkLabels[dk] || dk, dayKey: dk, hora, hStart: Number(hStart), clientes, minutosReais, tempoMedio: minPerCup, necessarios, calculados, escalados, status, cor, recomendacao });
+    });
+  });
+  return recs;
+}
+
 function refreshCoverageLoads(summary, pdvLimit) {
   Object.entries(summary.dailyCoverage || {}).forEach(([dayKey, day]) => {
     const dayType = dayKey === 'saturday' ? 'saturday' : dayKey === 'sunday' ? 'sunday' : 'weekday';
@@ -4849,6 +4936,8 @@ async function applyClientState(summary, user, weekFilter = null) {
   }
 
   computeWeekComparison(summary);
+  summary.blocks15min = build15MinBlocks(state.salesRows);
+  summary.controllerRecommendations = buildControllerRecommendations(summary);
   computeAdherence(summary, state.timecardRows || []);
 
   // Resumo do faturamento diário para o frontend
