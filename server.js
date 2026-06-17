@@ -5507,6 +5507,46 @@ const requestHandler = async (req, res) => {
   if (req.url === '/api/db-status') return json(res, await db.status());
   if (req.url === '/api/persistence-status') return json(res, await db.appPersistenceStatus());
   if (req.url === '/api/auth/status') return json(res, { authenticated: Boolean(user), user: user ? { name: user.name, email: user.email, orgCode: user.orgCode, role: user.role } : null });
+  if (req.url === '/api/audit/schedules' && canUseSupportOrgLookup(req, user)) {
+    try {
+      const admins = await dbSupabase.listAllOrgAdmins();
+      const results = [];
+      for (const adm of admins) {
+        try {
+          const summary = await summaryFromDatabase(adm);
+          const wss = summary.weeklyScenarioSchedule || {};
+          const scheduleResults = {};
+          for (const [scenarioKey, scenario] of Object.entries(wss)) {
+            if (!scenario.people) continue;
+            const peopleAudit = {};
+            for (const [nome, shifts] of Object.entries(scenario.people)) {
+              const daily = shifts.map((s, i) => {
+                if (!s || s === 'Folga') return { day: i, hours: 0 };
+                const m = String(s).match(/·\s*(\d+)h(\d{2})?/);
+                return { day: i, hours: m ? Number(m[1]) + (m[2] ? Number(m[2]) / 60 : 0) : -1, shift: String(s).substring(0, 50) };
+              });
+              const total = daily.reduce((s, d) => s + d.hours, 0);
+              const folgas = shifts.filter(s => s === 'Folga').length;
+              const target = scenario.targetHours || 44;
+              peopleAudit[nome] = { daily, total, folgas, target, ok: Math.abs(total - target) < 0.5 };
+            }
+            scheduleResults[scenarioKey] = peopleAudit;
+          }
+          const recs = summary.controllerRecommendations || [];
+          const blocks = summary.blocks15min || {};
+          results.push({
+            orgCode: adm.orgCode,
+            email: adm.adminEmail,
+            schedules: scheduleResults,
+            controllerRecs: recs.length,
+            blocks15minDays: Object.keys(blocks).length,
+            faturamento: summary.opsDashboard?.faturamento || null
+          });
+        } catch (e) { results.push({ orgCode: adm.orgCode, error: e.message }); }
+      }
+      return json(res, { ok: true, count: results.length, results });
+    } catch (e) { return json(res, { ok: false, error: e.message }, 500); }
+  }
   const supportSummaryMatch = req.url.match(/^\/api\/support\/summary\/([A-Z0-9-]+)$/i);
   if (supportSummaryMatch) {
     try {
