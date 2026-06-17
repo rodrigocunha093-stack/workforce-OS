@@ -3056,6 +3056,18 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
   const folgaDiaMap = { segunda: 0, terca: 1, quarta: 2, quinta: 3, domingo: 6 };
   const N = employees.length; // tamanho do grupo (setor + cargo)
 
+  // Dias bloqueados para folga: até 3 dias cuja média de faturamento supera a média geral.
+  // Garante equipe completa nos dias de maior movimento.
+  const diasBloqueadosFolga = new Set();
+  if (pesosDia && Array.isArray(pesosDia)) {
+    const ranked = pesosDia
+      .map((peso, di) => ({ di, peso }))
+      .filter(d => d.peso > 1.0)
+      .sort((a, b) => b.peso - a.peso)
+      .slice(0, 3);
+    ranked.forEach(d => diasBloqueadosFolga.add(d.di));
+  }
+
   // --- Demanda horária por dia (dailyCoverage) ---
   const _dkMap = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
   const demandByDay = {};
@@ -3165,7 +3177,8 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
     // Folgas adicionais por colaborador(a): se o domingo já é folga (loja fechada,
     // rodízio ou indisponibilidade), ele conta como DSR e reduz as folgas de seg-qui.
     const folgasAdicionaisEmp = domingoTrabalha ? targetDaysOff : Math.max(0, targetDaysOff - 1);
-    const folgaDaysAllowed = [0, 1, 2, 3];
+    const folgaDaysBase = [0, 1, 2, 3].filter(d => !diasBloqueadosFolga.has(d));
+    const folgaDaysAllowed = folgaDaysBase.length > 0 ? folgaDaysBase : [0, 1, 2, 3];
     const additionalFolgaDays = [];
     const prefDay = folgaDiaMap[folgaPref];
     if (prefDay !== undefined && folgaDaysAllowed.includes(prefDay) && folgasAdicionaisEmp > 0) {
@@ -5090,6 +5103,14 @@ async function applyClientState(summary, user, weekFilter = null) {
       ativa: true,
       pesos: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((d, i) => ({ dia: d, peso: Number((pesosDia[i] || 1).toFixed(2)) }))
     } : { ativa: false };
+    if (pesosDia) {
+      const diasNomes = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+      summary.diasBloqueadosFolga = pesosDia
+        .map((peso, di) => ({ di, dia: diasNomes[di], peso: Number(peso.toFixed(2)) }))
+        .filter(d => d.peso > 1.0)
+        .sort((a, b) => b.peso - a.peso)
+        .slice(0, 3);
+    }
 
     // GERAR ESCALAS DINÂMICAS baseadas no horário da loja
     Object.entries(summary.weeklyScenarioSchedule).forEach(([scenarioKey, scenario]) => {
@@ -6019,6 +6040,29 @@ const requestHandler = async (req, res) => {
         await saveClientState(user.orgId, state);
         await audit(user.id, 'OPTIMIZATION_SAVED', { scenario, ip: requestIp(req) });
         return json(res, { ok: true, savedAt: state.optimizedCoverage.savedAt });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
+    })();
+    return;
+  }
+  if (req.url === '/api/clear-optimization' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login.');
+        const body = await readJsonBody(req);
+        const scenario = String(body.scenario || 'atual');
+        const state = await loadClientState(user.orgId);
+        if (state.optimizedCoverage) {
+          delete state.optimizedCoverage[scenario];
+          if (!Object.keys(state.optimizedCoverage).filter(k => k !== 'savedAt').length) {
+            delete state.optimizedCoverage;
+          }
+          state.updatedAt = new Date().toISOString();
+          await saveClientState(user.orgId, state);
+        }
+        await audit(user.id, 'OPTIMIZATION_CLEARED', { scenario, ip: requestIp(req) });
+        return json(res, { ok: true });
       } catch (error) {
         return json(res, { ok: false, error: error.message }, 400);
       }

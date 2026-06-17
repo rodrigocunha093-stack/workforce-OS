@@ -1947,7 +1947,11 @@ function renderWeeklySchedule(data) {
   const jvTxt = (jv && jv.ativa)
     ? ` &nbsp;<span style="color:#5eead4">📊 jornada otimizada por demanda (${jv.pesos.filter(p => p.peso >= 1.15).map(p => p.dia).join('/') || 'sex/sáb'} reforçados)</span>`
     : '';
-  document.getElementById('weeklyScheduleNote').innerHTML = `${source.label}: meta de ${source.targetHours}h e ${source.targetDaysOff} folga${source.targetDaysOff > 1 ? 's' : ''} a cada 7 dias.${source.optimized ? ' &nbsp;<span style="color:#f59e0b">⚡ semana individual ajustada pela rotina Tá Ótimo</span>' : ''} &nbsp;<span style="opacity:.8">🔓 abre · 🔒 fecha</span>${jvTxt}`;
+  const dbf = data.diasBloqueadosFolga;
+  const dbfTxt = (dbf && dbf.length)
+    ? ` &nbsp;<span style="color:#f87171">🚫 folga bloqueada: ${dbf.map(d => d.dia).join('/')} (faturamento acima da média)</span>`
+    : '';
+  document.getElementById('weeklyScheduleNote').innerHTML = `${source.label}: meta de ${source.targetHours}h e ${source.targetDaysOff} folga${source.targetDaysOff > 1 ? 's' : ''} a cada 7 dias.${source.optimized ? ' &nbsp;<span style="color:#f59e0b">⚡ semana individual ajustada pela rotina Tá Ótimo</span>' : ''} &nbsp;<span style="opacity:.8">🔓 abre · 🔒 fecha</span>${jvTxt}${dbfTxt}`;
   document.getElementById('weeklyAuditSummary').innerHTML = `
     <span class="${valid === audits.length ? 'weekly-ok' : 'weekly-bad'}">${valid}/${audits.length} conformes</span>
   `;
@@ -4373,16 +4377,62 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     const optimizeButton = document.getElementById('optimizeCoverage');
     const saveOptimizationButton = document.getElementById('saveOptimization');
     if (optimizeButton) {
-      optimizeButton.onclick = () => {
+      optimizeButton.onclick = async () => {
         coverageAdjustmentMode = !coverageAdjustmentMode;
         optimizeButton.classList.toggle('active', coverageAdjustmentMode);
         optimizeButton.textContent = coverageAdjustmentMode ? 'Voltar à escala original' : 'Otimização IA · TáÓtimo!';
         if (saveOptimizationButton) saveOptimizationButton.hidden = !coverageAdjustmentMode;
         renderCoverage(data);
         renderWeeklySchedule(data);
-        showToast(coverageAdjustmentMode
-          ? 'Otimização IA aplicada: déficits cobertos respeitando PDVs e equipe disponível.'
-          : 'Escala original restaurada.');
+        if (coverageAdjustmentMode) {
+          showToast('Salvando otimização e recalculando escalas individuais…');
+          const optimizedCoverage = {};
+          Object.keys(data.dailyCoverage).forEach((dayKey) => {
+            const cfg = data.dailyCoverage[dayKey];
+            if (cfg.closed) return;
+            const dayIndex = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].indexOf(dayKey);
+            const weeklyPeople = data.weeklyScenarioSchedule[currentCoverageScenario].people;
+            const availableWorkers = Object.values(weeklyPeople).filter((shifts) => shifts[dayIndex] !== 'Folga').length;
+            const baseRows = cfg.rows.map((row) => ({
+              ...row,
+              [currentCoverageScenario]: Math.min(Number(row[currentCoverageScenario]), availableWorkers)
+            }));
+            const adjustedRows = applyCoverageAdjustment(baseRows, currentCoverageScenario, availableWorkers);
+            optimizedCoverage[dayKey] = adjustedRows.map((row) => ({
+              hora: row.hora,
+              atual: row[currentCoverageScenario],
+              ajusteAutomatico: row.ajusteAutomatico
+            }));
+          });
+          try {
+            const response = await fetch('/api/save-optimization', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ scenario: currentCoverageScenario, optimizedCoverage })
+            });
+            const result = await response.json();
+            if (result.ok) {
+              showToast('Otimização salva! Recarregando…');
+              setTimeout(() => window.location.reload(), 800);
+            } else {
+              showToast('Cobertura otimizada localmente. Salve para sincronizar escalas individuais.');
+            }
+          } catch (e) {
+            showToast('Cobertura otimizada localmente. Salve para sincronizar escalas individuais.');
+          }
+        } else {
+          showToast('Restaurando escala original…');
+          try {
+            await fetch('/api/clear-optimization', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ scenario: currentCoverageScenario })
+            });
+            setTimeout(() => window.location.reload(), 800);
+          } catch (e) {
+            showToast('Escala original restaurada (local).');
+          }
+        }
       };
     }
     if (saveOptimizationButton) {
