@@ -5112,6 +5112,26 @@ async function applyClientState(summary, user, weekFilter = null) {
         .slice(0, 3);
     }
 
+    // APLICAR otimização salva na demanda ANTES de gerar escalas
+    // Eleva row.demanda para o máximo entre demanda natural e cobertura otimizada,
+    // para que o gerador posicione turnos cobrindo os déficits.
+    if (state.optimizedCoverage) {
+      ['atual', 'transicao', 'final'].forEach(sc => {
+        const dayMap = state.optimizedCoverage[sc];
+        if (!dayMap) return;
+        Object.entries(dayMap).forEach(([dayKey, optimizedRows]) => {
+          if (!summary.dailyCoverage[dayKey] || !Array.isArray(optimizedRows)) return;
+          summary.dailyCoverage[dayKey].rows.forEach(row => {
+            const opt = optimizedRows.find(o => o.hora === row.hora);
+            if (opt) {
+              row.demanda = Math.max(Number(row.demanda || 0), Number(opt.atual || 0));
+            }
+          });
+        });
+      });
+      summary.optimizationSavedAt = state.optimizedCoverage.savedAt;
+    }
+
     // GERAR ESCALAS DINÂMICAS baseadas no horário da loja
     Object.entries(summary.weeklyScenarioSchedule).forEach(([scenarioKey, scenario]) => {
       const targetHours = scenario.targetHours || 44;
@@ -5119,6 +5139,7 @@ async function applyClientState(summary, user, weekFilter = null) {
       scenario.people = generateGroupedSchedule(profile, caixaEmployees, targetHours, targetDaysOff, pesosDia, summary.dailyCoverage);
       scenario.nominal = buildEscalaNominal(profile, caixaEmployees, targetHours, targetDaysOff, pesosDia, scenario.people, summary);
       reconcileNominalScenario(summary, profile, caixaEmployees, scenario, pesosDia);
+      if (state.optimizedCoverage) scenario.optimized = true;
     });
 
     summary.sundayRotation.forEach((item) => {
@@ -5238,10 +5259,8 @@ async function applyClientState(summary, user, weekFilter = null) {
     recalculateCoverageFromSchedules(summary, Number(profile.quantidadePdvs || 3));
   }
 
-  // APLICAR otimização salva (se houver)
+  // APLICAR otimização salva — fase 2: redistribuir intervalos e aplicar targets na cobertura
   if (state.optimizedCoverage) {
-    summary.optimizationSavedAt = state.optimizedCoverage.savedAt;
-    // 1. Redistribuir intervalos na escala de caixa para bater com a cobertura otimizada
     applyOptimizationToSchedule(summary, state.optimizedCoverage);
     // 2. Recalcular cobertura a partir dos turnos agora otimizados
     if (caixaEmployees.length >= 1) {
