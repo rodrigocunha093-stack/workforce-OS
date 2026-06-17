@@ -1885,24 +1885,21 @@ function buildOperationalDashboard(state, caixaSalesRows) {
   const _fatDates = Object.keys(_fatByDate).sort();
   if (_fatDates.length) {
     const _lastDate = _fatDates[_fatDates.length - 1];
+    const _lastMonth = _lastDate.slice(0, 7);
     const _prevMonth = new Date(_lastDate + 'T12:00:00');
     _prevMonth.setMonth(_prevMonth.getMonth() - 1);
     const _prevMonthStr = _prevMonth.toISOString().slice(0, 7);
-    const _lastCompleteDates = _fatDates.filter(d => d.slice(0, 7) === (_lastDate.slice(8, 10) <= '06' ? _prevMonthStr : _lastDate.slice(0, 7)));
-    if (_lastCompleteDates.length >= 20) {
-      fatMes = _lastCompleteDates.reduce((s, d) => s + _fatByDate[d], 0);
-      fatDia = fatMes / _lastCompleteDates.length;
-      fonteFat += ` (${_lastCompleteDates[0].slice(5,7)}/${_lastCompleteDates[0].slice(0,4)})`;
+    const _targetMonth = _lastDate.slice(8, 10) <= '06' ? _prevMonthStr : _lastMonth;
+    const _monthDates = _fatDates.filter(d => d.slice(0, 7) === _targetMonth);
+    if (_monthDates.length >= 1) {
+      fatMes = _monthDates.reduce((s, d) => s + _fatByDate[d], 0);
+      const _daysInMonth = new Date(Number(_targetMonth.slice(0, 4)), Number(_targetMonth.slice(5, 7)), 0).getDate();
+      fatDia = fatMes / _daysInMonth;
+      fonteFat += ` (${_targetMonth.slice(5,7)}/${_targetMonth.slice(0,4)} · ${_monthDates.length}d de ${_daysInMonth})`;
     } else {
-      const _cutoff = new Date(_lastDate + 'T12:00:00');
-      _cutoff.setDate(_cutoff.getDate() - 29);
-      const _cutoffStr = _cutoff.toISOString().slice(0, 10);
-      const _rolling = _fatDates.filter(d => d >= _cutoffStr);
-      const _rollingTotal = _rolling.reduce((s, d) => s + _fatByDate[d], 0);
-      const _rollingDays = _rolling.length || 1;
-      fatDia = _rollingTotal / _rollingDays;
-      fatMes = fatDia * 30;
-      fonteFat += ` (últ. ${_rollingDays}d)`;
+      fatMes = _fatDates.reduce((s, d) => s + _fatByDate[d], 0);
+      fatDia = fatMes / Math.max(1, _fatDates.length);
+      fonteFat += ` (${_fatDates.length}d importados)`;
     }
     fatSemana = fatDia * 7;
   }
