@@ -1,6 +1,22 @@
 # HANDOFF
 
-> Última sessão: 2026-06-11 (Claude). Leia antes de agir.
+> Última sessão: 2026-06-18 (Opus). Leia antes de agir.
+
+## 🧩 Motor de regras CLT/CCT data-driven (2026-06-18, Opus) — Passo 1
+
+**Feito:** trazido o motor de regras do projeto-irmão **EscalaDP** para cá, substituindo o `checkComplianceCLT` heurístico (6 verificações chumbadas) por um motor configurável por dados.
+- **Novo `motor-regras.js`** (CommonJS, sem build): PARTE A = motor puro portado de `@escaladp/rules` (helpers de tempo, `diasTrabalhadosPorFuncionario`, 9 regras + `limite_jornada_diaria`, `registry`, `validar`, `validarEscala`, `defaultCctRules`). PARTE B = adaptador workforce-OS (`parseWorkedBlocks` replicado p/ paridade de pausa, `turnoParaMotor`, `semanaPadrao`, `contextoDeEscala`, `checkComplianceCLT`).
+- **`server.js`**: `require('./motor-regras')`; `checkComplianceCLT(people, opts)` virou **chamador fino**; o call-site de exibição (em `applyClientState`) passa `{ employees, cctRules, calendarWeek }`; novo campo `cctRules: []` em `defaultClientState` (vazio = catálogo federal; editável no Passo 2).
+- **Testes (NOVOS, `node --test`)**: `test/motor-regras.test.js`, `test/adaptador.test.js`, `test/fixtures.js`; script `npm test`. **19/19 verdes**. Antes o projeto não tinha NENHUM teste.
+- **Paridade confirmada**: contagem de colaboradores com alerta idêntica à lógica antiga em 5 escalas (6×1 normal, sem folga, 12h, turno partido, 2 colaboradores) → otimizador inalterado.
+
+**Decisões:** motor + adaptador no MESMO arquivo (autossuficiente, testável sem subir o servidor); o adaptador REPLICA `parseWorkedBlocks` do server para a pausa legal bater (turno contínuo >6h não vira falso art. 71); catálogo federal default = 5 regras bloqueantes (44h/sem, interjornada 11h, intra 60min, DSR, 10h/dia); regras de domingo/PEC ficam no `registry`, ativáveis por CCT.
+
+**Limitação conhecida:** o motor opera sobre a "semana padrão" (7 dias). Regras mensais (`limite_domingos_mes`, `rodizio_domingo_feminino`, `folga_compensatoria_domingo`, `ajuda_custo_domingo`) entram **registradas mas inertes** até a escala ser datada por mês (item de roadmap).
+
+**Próximo passo:** Passo 2 — UI para o gestor editar `cctRules` por empresa (params + severidade). Passo 3 — trava de publicação (escala oficial só publica sem violação `bloqueante`), casando com a Fase 1 (publicar/versionar).
+
+**Arquivos:** `motor-regras.js` (novo), `server.js`, `package.json`, `test/*` (novos). `public/app.js` **NÃO** mudou (mesmo contrato `{nome, violacoes}`).
 
 ## 🔎 Auditoria de consistência de dados (2026-06-13, Opus) — planta + motores
 

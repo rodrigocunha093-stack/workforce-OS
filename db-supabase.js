@@ -1,6 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 
-const supabaseUrl = 'https://megimevuyjaevilogepe.supabase.co';
+const supabaseUrl = process.env.SUPABASE_URL || 'https://megimevuyjaevilogepe.supabase.co';
 const supabaseKey = process.env.SUPABASE_KEY || 'sb_publishable_xFO7xF4gyy3VVQFLfGos-w_X2j9eBlv';
 
 const supabase = createClient(supabaseUrl, supabaseKey, {

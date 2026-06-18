@@ -72,7 +72,7 @@
 
 ### FASE 1 — Solidez da escala (0-30 dias) · *prioridade máxima*
 - **Escala publicada vs rascunho** — versionar, publicar, histórico de quem aprovou
-- **Compliance CLT** — validar interjornada 11h, DSR semanal, máx 44h/2h extras, alertas de violação antes de publicar
+- **Compliance CLT** — ✅ *motor de regras data-driven (Passo 1, 2026-06-18)*: `motor-regras.js` portado do EscalaDP, regras configuráveis por CCT (params + severidade), testado. Falta a UI de edição de CCT (Passo 2) e a trava de publicação por violação `bloqueante` (Passo 3).
 - **Exportar escala** — PDF/Excel para imprimir e afixar
 - **Resumo diário** — "Hoje: João abre, Severino fecha" por setor
 

@@ -1,9 +1,13 @@
-﻿const http = require('http');
+﻿// Carrega variáveis do arquivo .env quando rodando localmente.
+// Em produção (Vercel) as variáveis vêm do painel; se o dotenv não existir, segue sem erro.
+try { require('dotenv').config(); } catch (_) {}
+const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const db = require('./db');
 const dbSupabase = require('./db-supabase');
+const motorRegras = require('./motor-regras');
 
 const PORT = process.env.PORT || 4173;
 const PUBLIC = path.join(__dirname, 'public');
@@ -349,6 +353,7 @@ function defaultClientState() {
     escalaFechada: null,      // período vigente fechado (snapshot imutável)
     escalaHistorico: [],      // períodos fechados anteriores
     escalaWorkflow: defaultEscalaWorkflow(),
+    cctRules: [],             // regras CLT/CCT ativas (vazio = catálogo federal padrão; editável no Passo 2)
     updatedAt: null
   };
 }
@@ -2292,52 +2297,13 @@ function shiftWorkedHours(shift) {
   return 0;
 }
 
-// Analisa a escala de um cenário e retorna violações CLT por colaborador
-function checkComplianceCLT(people) {
-  const violacoes = [];
-  Object.entries(people).forEach(([nome, shifts]) => {
-    const v = [];
-    // 1) Horas semanais > 44h
-    const totalHoras = shifts.reduce((s, sh) => s + shiftWorkedHours(sh), 0);
-    if (totalHoras > 44) v.push(`Jornada ${totalHoras}h/sem excede 44h`);
-    // 2) DSR — pelo menos 1 folga na semana
-    const folgas = shifts.filter(sh => sh === 'Folga').length;
-    if (folgas < 1) v.push('Sem descanso semanal (DSR)');
-    // 3) Dias consecutivos > 6
-    let consec = 0, maxConsec = 0;
-    [...shifts, ...shifts].forEach(sh => { // duplica p/ pegar virada de semana
-      if (sh !== 'Folga') { consec++; maxConsec = Math.max(maxConsec, consec); } else consec = 0;
-    });
-    if (maxConsec > 6) v.push(`${maxConsec} dias consecutivos sem folga (máx 6)`);
-    // 4) Interjornada < 11h (fim de um dia ao início do próximo)
-    for (let d = 0; d < 7; d++) {
-      const hoje = shiftStartEnd(shifts[d]);
-      const amanha = shiftStartEnd(shifts[(d + 1) % 7]);
-      if (hoje && amanha) {
-        const descanso = (24 - hoje.end) + amanha.start;
-        if (descanso < 11) { v.push(`Interjornada de ${descanso}h (mín 11h)`); break; }
-      }
-    }
-    // 5) Art. 71 — bloco contínuo de trabalho > 6h sem intervalo
-    for (let d = 0; d < 7; d++) {
-      const blocks = parseWorkedBlocks(shifts[d]);
-      const longo = blocks.find(b => (b.end - b.start) > 360);
-      if (longo) {
-        v.push(`Bloco contínuo de ${formatDur((longo.end - longo.start) / 60)} sem intervalo (máx 6h — art. 71)`);
-        break;
-      }
-    }
-    // 6) Art. 59 — jornada diária > 10h (8h + 2h extras)
-    for (let d = 0; d < 7; d++) {
-      const horasDia = shiftWorkedHours(shifts[d]);
-      if (horasDia > 10) {
-        v.push(`Jornada diária de ${formatDur(horasDia)} excede 10h (art. 59)`);
-        break;
-      }
-    }
-    if (v.length) violacoes.push({ nome, violacoes: v });
-  });
-  return violacoes;
+// Analisa a escala de um cenário e retorna violações CLT por colaborador.
+// Agora é um chamador fino do motor de regras data-driven (motor-regras.js):
+// adapta a "semana padrão" para o RuleContext e roda o catálogo de regras.
+// Mantém o formato de saída [{ nome, violacoes: [...] }] usado pela tela e pelo otimizador.
+// opts (opcional, retrocompatível): { employees, cctRules, calendarWeek }.
+function checkComplianceCLT(people, opts) {
+  return motorRegras.checkComplianceCLT(people, opts || {});
 }
 
 // Cargos de apoio/administrativo com horário comercial (cobrem o miolo do dia)
@@ -5200,7 +5166,7 @@ async function applyClientState(summary, user, weekFilter = null) {
     summary.escalaOverrides = overrides;
     summary.complianceCLT = {};
     Object.entries(summary.fullSchedule).forEach(([key, sc]) => {
-      summary.complianceCLT[key] = checkComplianceCLT(sc.people);
+      summary.complianceCLT[key] = checkComplianceCLT(sc.people, { employees: state.employees, cctRules: state.cctRules, calendarWeek: summary.calendarioSemana });
     });
     summary.bancoHoras = buildBancoHoras(summary.fullSchedule, state.employees);
   }

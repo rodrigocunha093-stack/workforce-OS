@@ -44,7 +44,7 @@ Browser → `public/index.html` + `app.js` (SPA vanilla) chamam `GET /api/summar
 - `buildOperationalDashboard` — painel da home (faturamento, headcount, pico, perdas, multifuncionalidade, tendência).
 - `buildSetorDashboard` — **ICOS por mercadológico m2** (venda × equipe fracionada, curva por dia da semana).
 - `buildOptimizationSavings` — operação real vs otimizada (economia).
-- `checkComplianceCLT(people)` — interjornada/DSR/44h/consecutivos.
+- `checkComplianceCLT(people, opts)` — **chamador fino** de `motor-regras.js` (motor data-driven). `opts = { employees, cctRules, calendarWeek }`. Mantém o formato de saída `[{nome, violacoes}]`.
 
 ### Montagem do summary (linhas ~2042–2560) — o pipeline
 - `loadModelSalesRows` / `applySalesRowsToSummary` — **dados-modelo (DEMO, só sem login)**.
@@ -98,6 +98,8 @@ CRUD via `@supabase/supabase-js`. **Colunas em minúsculo** (`passwordhash`, `or
 ## Arquivos-chave do repo
 
 - `server.js` — backend inteiro.
+- `motor-regras.js` — **motor de regras CLT/CCT** (data-driven). PARTE A: motor puro portado de `@escaladp/rules` (`registry`, `validar`, `validarEscala`, `defaultCctRules`, 10 regras). PARTE B: adaptador workforce-OS (`contextoDeEscala`, `checkComplianceCLT`, `turnoParaMotor`, `parseWorkedBlocks`, `semanaPadrao`). Sem build; testado em `test/`.
+- `test/` — suíte `node --test` (`npm test`): `motor-regras.test.js`, `adaptador.test.js`, `fixtures.js`.
 - `public/index.html` `app.js` `styles.css` `futuristic.css` — frontend.
 - `public/colaborador.html` — self-service.
 - `db-supabase.js` — persistência (real). `db.js` — stub.
