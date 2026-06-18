@@ -2907,6 +2907,13 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
       const targets = {};
       optimizedRows.forEach(o => { targets[o.hora] = Number(o.atual || 0); });
 
+      // Horário da loja para este dia (para detectar papel ABERTURA/FECHAMENTO)
+      const lojaForDay = dayIndex === 6
+        ? (summary._profile ? parseStoreHours(summary._profile.horarioDomingo) : null)
+        : dayIndex === 5
+          ? (summary._profile ? parseStoreHours(summary._profile.horarioSabado) : null)
+          : (summary._profile ? parseStoreHours(summary._profile.horarioSegSex) : null);
+
       const workers = Object.entries(people)
         .map(([nome, shifts]) => {
           const shift = shifts[dayIndex];
@@ -2929,6 +2936,16 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
           }
           if (shiftStart === null || shiftEnd === null) return null;
 
+          // Detectar papel: ABERTURA começa na abertura da loja, FECHAMENTO termina no fechamento
+          let role = 'flexivel';
+          if (lojaForDay) {
+            const openMin = lojaForDay.open * 60;
+            const closeMin = lojaForDay.close * 60;
+            if (shiftStart <= openMin + 15 && shiftEnd >= closeMin - 15) role = 'abertura-fechamento';
+            else if (shiftStart <= openMin + 15) role = 'abertura';
+            else if (shiftEnd >= closeMin - 15) role = 'fechamento';
+          }
+
           const workedMin = Math.round(workedHours * 60);
           if (hasBreak) {
             let breakStart = explicitBreak;
@@ -2940,11 +2957,10 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
               breakStart = shiftStart + Math.min(maxAntes, Math.max(minAntes, Math.min(beforeBase, workedMin - minDepois)));
             }
             const spanMin = workedMin + 60;
-            return { nome, shifts, dayIndex, shiftStart, breakStart, workedMin, spanMin, workedHours, origStart: shiftStart, origBreak: breakStart, hasBreak: true };
+            return { nome, shifts, dayIndex, shiftStart, breakStart, workedMin, spanMin, workedHours, origStart: shiftStart, origBreak: breakStart, hasBreak: true, role };
           }
-          // Turno curto sem intervalo: só pode mover o horário de entrada
           const spanMin = workedMin;
-          return { nome, shifts, dayIndex, shiftStart, breakStart: null, workedMin, spanMin, workedHours, origStart: shiftStart, origBreak: null, hasBreak: false };
+          return { nome, shifts, dayIndex, shiftStart, breakStart: null, workedMin, spanMin, workedHours, origStart: shiftStart, origBreak: null, hasBreak: false, role };
         })
         .filter(Boolean);
 
@@ -2998,9 +3014,14 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
 
       const candidatesFor = (w) => {
         const list = [];
+        // ABERTURA: início fixo na abertura da loja. FECHAMENTO: fim fixo no fechamento.
+        // ABERTURA-FECHAMENTO: totalmente fixo, não pode mover.
+        if (w.role === 'abertura-fechamento') return [{ start: w.origStart, bs: w.origBreak }];
         for (let ds = -240; ds <= 240; ds += 30) {
           const start = w.origStart + ds;
           if (start < openMin || start + w.spanMin > closeMin) continue;
+          if (w.role === 'abertura' && start !== openMin) continue;
+          if (w.role === 'fechamento' && start + w.spanMin !== closeMin) continue;
           if (!w.hasBreak) {
             list.push({ start, bs: null });
             continue;
@@ -3035,8 +3056,9 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
         if (!improved) break;
       }
 
-      // Grava os turnos otimizados de volta na escala
+      // Grava os turnos otimizados de volta na escala (só se houve mudança)
       workers.forEach(w => {
+        if (w.shiftStart === w.origStart && w.breakStart === w.origBreak) return;
         const end = w.shiftStart + w.spanMin;
         if (w.hasBreak) {
           w.shifts[w.dayIndex] = `${formatHM(w.shiftStart / 60)}-${formatHM(w.breakStart / 60)}/${formatHM((w.breakStart + 60) / 60)}-${formatHM(end / 60)} · ${formatDur(w.workedHours)}`;
@@ -5078,6 +5100,7 @@ async function applyClientState(summary, user, weekFilter = null) {
     pdvs: Number(profile.quantidadePdvs || 3),
     operadores: operators
   };
+  summary._profile = profile;
   refreshCoverageLoads(summary, summary.storeConfig.pdvs);
 
   if (caixaEmployees.length >= 1) {
@@ -5328,6 +5351,7 @@ async function applyClientState(summary, user, weekFilter = null) {
     : `${dateLabel(dates[0])} a ${dateLabel(dates[dates.length - 1])}`;
   summary.metadata.ultimaImportacao = state.updatedAt ? new Date(state.updatedAt).toLocaleString('pt-BR') : summary.metadata.ultimaImportacao;
   summary.controllerRecommendations = buildControllerRecommendations(summary);
+  delete summary._profile;
   return summary;
 }
 
