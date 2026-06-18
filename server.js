@@ -3043,6 +3043,13 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
         if (!improved) break;
       }
 
+      // Debug: marcar versão do solver e roles usados
+      if (!scenario._solverDebug) scenario._solverDebug = {};
+      scenario._solverDebug[dayKey] = {
+        version: 'v3-nominal-roles',
+        workers: workers.map(w => ({nome: w.nome, role: w.role, origStart: w.origStart, finalStart: w.shiftStart}))
+      };
+
       // Grava os turnos otimizados de volta na escala (só se houve mudança)
       workers.forEach(w => {
         if (w.shiftStart === w.origStart && w.breakStart === w.origBreak) return;
