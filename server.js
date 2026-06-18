@@ -2954,15 +2954,30 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
       if (!workers.length) return;
 
       // ===== SOLVER (busca local / coordinate descent) =====
-      // Variáveis por operadora: (entrada, início do intervalo).
-      // Custo: déficit de cobertura (alto) + deslocamento da escala original (baixo).
-      // Restrições embutidas nos candidatos: blocos contínuos ≤ 5h40 (art. 71 c/ margem),
-      // ≥2h trabalhadas antes e depois da pausa, turno dentro do expediente.
       const pdvs = Number(summary.storeConfig && summary.storeConfig.pdvs) || 99;
       const hourStarts = Object.keys(targets).map(h => Number(h.split('-')[0])).sort((a, b) => a - b);
       if (!hourStarts.length) return;
       const openMin = hourStarts[0] * 60;
       const closeMin = (hourStarts[hourStarts.length - 1] + 1) * 60;
+
+      // Forçar posição de ABERTURA/FECHAMENTO antes do solver
+      workers.forEach(w => {
+        if (w.role === 'abertura') {
+          w.shiftStart = openMin;
+          if (w.hasBreak) {
+            const lo = w.shiftStart + Math.max(120, w.workedMin - 340);
+            const hi = w.shiftStart + Math.min(340, w.workedMin - 120);
+            if (w.breakStart < lo || w.breakStart > hi) w.breakStart = Math.round(((lo + hi) / 2) / 5) * 5;
+          }
+        } else if (w.role === 'fechamento') {
+          w.shiftStart = closeMin - w.spanMin;
+          if (w.hasBreak) {
+            const lo = w.shiftStart + Math.max(120, w.workedMin - 340);
+            const hi = w.shiftStart + Math.min(340, w.workedMin - 120);
+            if (w.breakStart < lo || w.breakStart > hi) w.breakStart = Math.round(((lo + hi) / 2) / 5) * 5;
+          }
+        }
+      });
       const labelOf = (h) => `${String(h).padStart(2, '0')}-${String(h + 1).padStart(2, '0')}`;
 
       // Presença na hora h (mesma regra do countWorkersAtHour: qualquer sobreposição)
@@ -3068,7 +3083,7 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
       // Debug: marcar versão do solver e roles usados
       if (!scenario._solverDebug) scenario._solverDebug = {};
       scenario._solverDebug[dayKey] = {
-        version: 'v4-direct-position',
+        version: 'v5-force-position',
         workers: workers.map(w => ({nome: w.nome, role: w.role, origStart: w.origStart, finalStart: w.shiftStart}))
       };
 
