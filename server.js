@@ -5873,6 +5873,25 @@ const requestHandler = async (req, res) => {
         const caixa = summary.weeklyScenarioSchedule && summary.weeklyScenarioSchedule[cenario];
         if (!full || !Object.keys(full.people || {}).length) throw new Error('Não há escala para fechar. Cadastre a equipe primeiro.');
 
+        const state = await loadClientState(user.orgId);
+
+        // Passo 3 — Trava de conformidade CLT/CCT: não publica escala com violação
+        // BLOQUEANTE, salvo override explícito do administrador (forcar=true), auditado.
+        const ctxRegras = motorRegras.contextoDeEscala(full.people, { employees: state.employees, cctRules: state.cctRules, calendarWeek: summary.calendarioSemana });
+        const validacao = motorRegras.validarEscala(ctxRegras);
+        const violacoesBloqueantes = validacao.violacoes
+          .filter((v) => v.severidade === 'bloqueante')
+          .map((v) => ({ funcionario: v.funcionarioId, data: v.data || null, mensagem: v.mensagem }));
+        if (validacao.bloqueada && body.forcar !== true) {
+          return json(res, {
+            ok: false,
+            bloqueada: true,
+            error: `Escala com ${violacoesBloqueantes.length} violação(ões) trabalhista(s) que impedem a publicação.`,
+            violacoes: violacoesBloqueantes,
+          }, 422);
+        }
+        const publicadoComRessalva = validacao.bloqueada === true; // publicado mesmo com violações (forçado)
+
         const snapshot = {
           id: `${user.orgId}-${dataInicio}`,
           label: `${dataInicio.split('-').reverse().join('/')} a ${dataFim.split('-').reverse().join('/')}`,
@@ -5881,6 +5900,8 @@ const requestHandler = async (req, res) => {
           fechadoEm: new Date().toISOString(),
           fechadoPor: user.email,
           workflowStatus: 'publicado',
+          publicadoComRessalva,
+          violacoesBloqueantes,
           people: full.people,
           caixaPeople: caixa?.people || {},
           nominal: full.nominal || null,
@@ -5889,7 +5910,6 @@ const requestHandler = async (req, res) => {
           compliance: (summary.complianceCLT && summary.complianceCLT[cenario]) || []
         };
 
-        const state = await loadClientState(user.orgId);
         // Move a vigente anterior (se houver) para o histórico
         if (state.escalaFechada) {
           state.escalaHistorico = [state.escalaFechada, ...(state.escalaHistorico || [])].slice(0, 12);
@@ -5898,7 +5918,7 @@ const requestHandler = async (req, res) => {
         state.escalaWorkflow = applyWorkflowStatus(state.escalaWorkflow, 'publicado', user, snapshot.fechadoEm);
         state.updatedAt = new Date().toISOString();
         await saveClientState(user.orgId, state);
-        await audit(user.id, 'ESCALA_FECHADA', { periodo: snapshot.label, cenario, ip: requestIp(req) });
+        await audit(user.id, 'ESCALA_FECHADA', { periodo: snapshot.label, cenario, comRessalva: publicadoComRessalva, violacoes: violacoesBloqueantes.length, ip: requestIp(req) });
         return json(res, { ok: true, escalaFechada: snapshot });
       } catch (error) {
         return json(res, { ok: false, error: error.message }, 400);

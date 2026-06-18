@@ -16,7 +16,17 @@
 
 **Próximo passo:** Passo 2 — UI para o gestor editar `cctRules` por empresa (params + severidade). Passo 3 — trava de publicação (escala oficial só publica sem violação `bloqueante`), casando com a Fase 1 (publicar/versionar).
 
-**Arquivos:** `motor-regras.js` (novo), `server.js`, `package.json`, `test/*` (novos). `public/app.js` **NÃO** mudou (mesmo contrato `{nome, violacoes}`).
+**Arquivos:** `motor-regras.js` (novo), `server.js`, `package.json`, `test/*` (novos). No Passo 1, `public/app.js` não mudou (mesmo contrato `{nome, violacoes}`).
+
+## 🔒 Trava de publicação CLT (2026-06-18, Opus) — Passo 3
+
+**Feito:** o fechamento/publicação da escala (`POST /api/escala/fechar`) agora roda o motor (`validarEscala`) antes de congelar o snapshot. Havendo violação **bloqueante**, devolve **422** com a lista de violações e NÃO publica — a menos que o admin reenvie com `forcar: true` (override consciente), publicando **com ressalva** (`snapshot.publicadoComRessalva = true` + `violacoesBloqueantes[]`); o `audit` registra `comRessalva` e a contagem.
+- `server.js`: trava no handler `escala/fechar` (carrega `state` antes; `contextoDeEscala` + `validarEscala`; 422 ou ressalva).
+- `public/app.js`: handler do botão "🔒 Fechar período" trata `bloqueada` — lista as violações num `confirm()` e oferece "publicar mesmo assim" (reenvia `forcar:true`); toast "COM RESSALVA".
+- Teste novo em `test/adaptador.test.js` (escala ilegal bloqueia, normal não). **20/20 verdes**.
+
+**Decisão:** bloqueio com override auditado (não rígido), porque a auditoria é CLT-federal e CCTs locais variam. Avisos (`severidade:'aviso'`) não bloqueiam.
+**Próximo passo:** Passo 2 — UI de edição de CCT por empresa (grava `state.cctRules`).
 
 ## 🔎 Auditoria de consistência de dados (2026-06-13, Opus) — planta + motores
 

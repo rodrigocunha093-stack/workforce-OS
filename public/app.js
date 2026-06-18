@@ -2166,15 +2166,30 @@ function renderWeeklySchedule(data) {
       const fim = prompt('Data FIM do período (AAAA-MM-DD):', fmt(dom));
       if (!fim) return;
       fecharBtn.disabled = true; fecharBtn.textContent = 'Fechando...';
-      try {
+      const restaurarBotao = () => { fecharBtn.disabled = false; fecharBtn.textContent = '🔒 Fechar período'; };
+      const enviarFechamento = async (forcar) => {
         const r = await fetch('/api/escala/fechar', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cenario: currentCoverageScenario, dataInicio: ini, dataFim: fim })
+          body: JSON.stringify({ cenario: currentCoverageScenario, dataInicio: ini, dataFim: fim, forcar })
         });
-        const d = await r.json();
-        if (d.ok) { showToast('Período fechado! Escala oficial congelada.'); window._verRascunho = false; window.location.reload(); }
-        else { showToast(d.error || 'Erro ao fechar período.'); fecharBtn.disabled = false; fecharBtn.textContent = '🔒 Fechar período'; }
-      } catch (e) { showToast('Erro de conexão.'); fecharBtn.disabled = false; fecharBtn.textContent = '🔒 Fechar período'; }
+        return r.json();
+      };
+      try {
+        let d = await enviarFechamento(false);
+        // Trava de conformidade: se houver violação bloqueante, lista e pergunta antes de forçar.
+        if (!d.ok && d.bloqueada) {
+          const viols = d.violacoes || [];
+          const lista = viols.slice(0, 10).map(v => '• ' + (v.funcionario ? v.funcionario + ': ' : '') + v.mensagem).join('\n');
+          const extra = viols.length > 10 ? '\n(+' + (viols.length - 10) + ' outras)' : '';
+          const confirmar = confirm('⚠️ Esta escala tem violações trabalhistas que impedem a publicação:\n\n' + lista + extra + '\n\nPublicar mesmo assim, sob sua responsabilidade? Ficará registrado COM RESSALVA.');
+          if (!confirmar) { restaurarBotao(); return; }
+          d = await enviarFechamento(true);
+        }
+        if (d.ok) {
+          showToast(d.escalaFechada && d.escalaFechada.publicadoComRessalva ? 'Período fechado COM RESSALVA (violações registradas).' : 'Período fechado! Escala oficial congelada.');
+          window._verRascunho = false; window.location.reload();
+        } else { showToast(d.error || 'Erro ao fechar período.'); restaurarBotao(); }
+      } catch (e) { showToast('Erro de conexão.'); restaurarBotao(); }
     };
   }
   const reabrirBtn = document.getElementById('reabrirBtn');

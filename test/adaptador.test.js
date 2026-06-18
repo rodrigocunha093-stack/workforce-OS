@@ -52,3 +52,11 @@ test('checkComplianceCLT: funciona sem opts (caminho do otimizador)', () => {
   const normal = [NORMAL, NORMAL, NORMAL, NORMAL, NORMAL, NORMAL, 'Folga'];
   assert.deepEqual(m.checkComplianceCLT({ Maria: normal }), []);
 });
+
+// Passo 3 — trava de publicação: validarEscala sobre o contexto da escala.
+test('validarEscala: escala ilegal (12h) BLOQUEIA, escala normal NÃO', () => {
+  const ilegal = m.contextoDeEscala({ Ana: ['06:00-18:00 · 12h', 'Folga', NORMAL, NORMAL, NORMAL, NORMAL, NORMAL] }, { calendarWeek: SEMANA });
+  assert.equal(m.validarEscala(ilegal).bloqueada, true);
+  const ok = m.contextoDeEscala({ Ana: [NORMAL, NORMAL, NORMAL, NORMAL, NORMAL, NORMAL, 'Folga'] }, { calendarWeek: SEMANA });
+  assert.equal(m.validarEscala(ok).bloqueada, false);
+});
