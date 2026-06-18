@@ -2899,6 +2899,8 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
     if (!scenario || !scenario.people) return;
     const people = scenario.people;
 
+    const nominalRoles = scenario.nominal && scenario.nominal.roles ? scenario.nominal.roles : {};
+
     Object.entries(dayMap).forEach(([dayKey, optimizedRows]) => {
       if (!Array.isArray(optimizedRows)) return;
       const dayIndex = dayKeyMap[dayKey];
@@ -2906,13 +2908,6 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
 
       const targets = {};
       optimizedRows.forEach(o => { targets[o.hora] = Number(o.atual || 0); });
-
-      // Horário da loja para este dia (para detectar papel ABERTURA/FECHAMENTO)
-      const lojaForDay = dayIndex === 6
-        ? (summary._profile ? parseStoreHours(summary._profile.horarioDomingo) : null)
-        : dayIndex === 5
-          ? (summary._profile ? parseStoreHours(summary._profile.horarioSabado) : null)
-          : (summary._profile ? parseStoreHours(summary._profile.horarioSegSex) : null);
 
       const workers = Object.entries(people)
         .map(([nome, shifts]) => {
@@ -2936,15 +2931,7 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
           }
           if (shiftStart === null || shiftEnd === null) return null;
 
-          // Detectar papel: ABERTURA começa na abertura da loja, FECHAMENTO termina no fechamento
-          let role = 'flexivel';
-          if (lojaForDay) {
-            const openMin = lojaForDay.open * 60;
-            const closeMin = lojaForDay.close * 60;
-            if (shiftStart <= openMin + 15 && shiftEnd >= closeMin - 15) role = 'abertura-fechamento';
-            else if (shiftStart <= openMin + 15) role = 'abertura';
-            else if (shiftEnd >= closeMin - 15) role = 'fechamento';
-          }
+          const role = (nominalRoles[nome] && nominalRoles[nome][dayIndex]) || 'flexivel';
 
           const workedMin = Math.round(workedHours * 60);
           if (hasBreak) {
