@@ -3000,15 +3000,37 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
       };
 
       const candidatesFor = (w) => {
-        const list = [];
-        // ABERTURA: início fixo na abertura da loja. FECHAMENTO: fim fixo no fechamento.
-        // ABERTURA-FECHAMENTO: totalmente fixo, não pode mover.
         if (w.role === 'abertura-fechamento') return [{ start: w.origStart, bs: w.origBreak }];
+        // ABERTURA/FECHAMENTO: posição fixa — calcular diretamente
+        if (w.role === 'abertura') {
+          const start = openMin;
+          if (start + w.spanMin > closeMin) return [{ start: w.origStart, bs: w.origBreak }];
+          if (!w.hasBreak) return [{ start, bs: null }];
+          const lo = start + Math.max(120, w.workedMin - 340);
+          const hi = start + Math.min(340, w.workedMin - 120);
+          if (lo > hi) return [{ start, bs: w.origBreak }];
+          const candidates = [];
+          for (let bs = Math.ceil(lo / 60) * 60; bs <= hi; bs += 60) candidates.push({ start, bs });
+          if (!candidates.length) candidates.push({ start, bs: Math.round(((lo + hi) / 2) / 5) * 5 });
+          return candidates;
+        }
+        if (w.role === 'fechamento') {
+          const start = closeMin - w.spanMin;
+          if (start < openMin) return [{ start: w.origStart, bs: w.origBreak }];
+          if (!w.hasBreak) return [{ start, bs: null }];
+          const lo = start + Math.max(120, w.workedMin - 340);
+          const hi = start + Math.min(340, w.workedMin - 120);
+          if (lo > hi) return [{ start, bs: w.origBreak }];
+          const candidates = [];
+          for (let bs = Math.ceil(lo / 60) * 60; bs <= hi; bs += 60) candidates.push({ start, bs });
+          if (!candidates.length) candidates.push({ start, bs: Math.round(((lo + hi) / 2) / 5) * 5 });
+          return candidates;
+        }
+        // Flexível: busca normal ±240min
+        const list = [];
         for (let ds = -240; ds <= 240; ds += 30) {
           const start = w.origStart + ds;
           if (start < openMin || start + w.spanMin > closeMin) continue;
-          if (w.role === 'abertura' && start !== openMin) continue;
-          if (w.role === 'fechamento' && start + w.spanMin !== closeMin) continue;
           if (!w.hasBreak) {
             list.push({ start, bs: null });
             continue;
