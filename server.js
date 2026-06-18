@@ -3068,7 +3068,7 @@ function applyOptimizationToSchedule(summary, optimizedCoverage) {
       // Debug: marcar versão do solver e roles usados
       if (!scenario._solverDebug) scenario._solverDebug = {};
       scenario._solverDebug[dayKey] = {
-        version: 'v3-nominal-roles',
+        version: 'v4-direct-position',
         workers: workers.map(w => ({nome: w.nome, role: w.role, origStart: w.origStart, finalStart: w.shiftStart}))
       };
 
