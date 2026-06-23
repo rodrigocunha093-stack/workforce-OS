@@ -47,7 +47,7 @@ export default function App() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '100%' }}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <h1 style={{ margin: '0', fontSize: '18px', fontWeight: '700', color: '#e8eef5' }}>
-              <span style={{ color: '#2dd4bf' }}>Escala</span> Ágil <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '400', marginLeft: '8px' }}>uma solução Contagil</span>
+              <span style={{ color: '#2dd4bf' }}>Escal</span>ágil <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '400', marginLeft: '8px' }}>uma solução Contagil</span>
             </h1>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
