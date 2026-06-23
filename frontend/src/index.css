@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #0a0e1a;
+  color: #e8eef5;
+  font-family: Inter, 'Segoe UI', Arial, sans-serif;
+}
+
+html {
+  background: #0a0e1a;
+}
+
+#root {
+  background: #0a0e1a;
+  min-height: 100vh;
+}
+
+.btn-primary {
+  @apply px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 bg-gray-300 text-gray-900 rounded hover:bg-gray-400 transition;
+}
+
+.card {
+  @apply bg-white rounded shadow p-4;
+}
+
+.input {
+  @apply w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-600;
+}
