@@ -26,7 +26,18 @@
 - Teste novo em `test/adaptador.test.js` (escala ilegal bloqueia, normal não). **20/20 verdes**.
 
 **Decisão:** bloqueio com override auditado (não rígido), porque a auditoria é CLT-federal e CCTs locais variam. Avisos (`severidade:'aviso'`) não bloqueiam.
-**Próximo passo:** Passo 2 — UI de edição de CCT por empresa (grava `state.cctRules`).
+
+## ⚙️ Editor de regras CLT/CCT por empresa (2026-06-18, Opus) — Passo 2
+
+**Feito:** o admin/dono da empresa agora **edita as regras** (valores e severidade) por uma tela, sem código. `clientState.cctRules` deixa de ser sempre vazio.
+- `motor-regras.js`: `catalogoRegras()` (10 tipos com label/baseLegal/escopo/params/`ativaPadrao`) + `sanitizarRegras()` (coage/valida a entrada contra o catálogo).
+- `server.js`: `summary.cctConfig = { catalogo, regras, usandoPadrao, podeEditar }` (em `applyClientState`); novo `POST /api/cct/save` (admin/dono; `{reset:true}` volta ao federal, senão `sanitizarRegras`; audit `CCT_SAVED`).
+- `public/app.js`: botão `⚙️ Regras CLT/CCT` na caixa de conformidade (só se `podeEditar`) + `renderCctEditor()` (modal: ativa/params/severidade por regra; Salvar / Restaurar padrão / Cancelar) → `POST /api/cct/save` + reload.
+- `public/futuristic.css`: estilos `.cct-modal-*`/`.clt-config-row` (tema escuro + override claro).
+- Testes novos (catálogo, saneamento, comportamento data-driven). **24/24 verdes**.
+
+**Decisões:** edita o **admin da empresa** (mesma permissão de fechar período). `ativaPadrao` deixa só as 5 regras federais ativas por default (as de domingo/PEC entram desligadas, pra não mudar o comportamento atual nem poluir com avisos). Regras inativas seguem salvas (params preservados) e são filtradas por `normalizarRegras` em runtime.
+**Próximo passo:** presets de CCT por região (clonar); regras por loja; escala mensal datada (ativa as regras `escopo:'mes'`).
 
 ## 🔎 Auditoria de consistência de dados (2026-06-13, Opus) — planta + motores
 

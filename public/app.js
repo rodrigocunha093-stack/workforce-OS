@@ -1907,6 +1907,121 @@ function renderStoreFloorMap(data) {
   render();
 }
 
+// PASSO 2 — Editor de regras CLT/CCT da empresa (modal). Lê o catálogo e as regras
+// salvas de data.cctConfig, deixa o admin ajustar valores/severidade e salva via API.
+function renderCctEditor(cctConfig) {
+  if (!cctConfig) return;
+  const catalogo = cctConfig.catalogo || [];
+  const salvasPorId = {};
+  (cctConfig.regras || []).forEach(r => { salvasPorId[r.ruleTypeId] = r; });
+
+  const antigo = document.getElementById('cctModalOverlay');
+  if (antigo) antigo.remove();
+
+  const valorParam = (rt, p) => {
+    const s = salvasPorId[rt.ruleTypeId];
+    return (s && s.params && s.params[p.chave] != null) ? s.params[p.chave] : p.default;
+  };
+  const regraAtiva = (rt) => {
+    const s = salvasPorId[rt.ruleTypeId];
+    return s ? s.ativa !== false : rt.ativaPadrao === true;
+  };
+  const regraSeveridade = (rt) => {
+    const s = salvasPorId[rt.ruleTypeId];
+    return (s && s.severidade) ? s.severidade : rt.severidadePadrao;
+  };
+
+  const inputParam = (rt, p) => {
+    const id = `cct-${rt.ruleTypeId}-${p.chave}`;
+    const v = valorParam(rt, p);
+    if (p.tipo === 'numero') {
+      return `<label class="cct-param"><span>${p.label}</span><span class="cct-num"><input type="number" id="${id}" value="${v}" min="${p.min != null ? p.min : ''}" max="${p.max != null ? p.max : ''}" step="any">${p.sufixo ? `<em>${p.sufixo}</em>` : ''}</span></label>`;
+    }
+    if (p.tipo === 'booleano') {
+      return `<label class="cct-param cct-param-bool"><input type="checkbox" id="${id}" ${v ? 'checked' : ''}><span>${p.label}</span></label>`;
+    }
+    if (p.tipo === 'opcao') {
+      const opts = (p.opcoes || []).map(o => `<option value="${o.valor}" ${o.valor === v ? 'selected' : ''}>${o.rotulo}</option>`).join('');
+      return `<label class="cct-param"><span>${p.label}</span><select id="${id}">${opts}</select></label>`;
+    }
+    return '';
+  };
+
+  const linha = (rt) => `
+    <div class="cct-rule">
+      <div class="cct-rule-head">
+        <label class="cct-rule-toggle"><input type="checkbox" class="cct-ativa" data-rt="${rt.ruleTypeId}" ${regraAtiva(rt) ? 'checked' : ''}><strong>${rt.nome}</strong></label>
+        <span class="cct-base">${rt.baseLegal}${rt.escopo === 'mes' ? ' · <em>ativa com escala mensal</em>' : ''}</span>
+      </div>
+      <div class="cct-rule-desc">${rt.descricao}</div>
+      <div class="cct-rule-body">
+        ${rt.params.map(p => inputParam(rt, p)).join('')}
+        <label class="cct-param"><span>Quando violada</span>
+          <select class="cct-sev" data-rt="${rt.ruleTypeId}">
+            <option value="bloqueante" ${regraSeveridade(rt) === 'bloqueante' ? 'selected' : ''}>Bloqueia publicação</option>
+            <option value="aviso" ${regraSeveridade(rt) === 'aviso' ? 'selected' : ''}>Só avisa</option>
+          </select>
+        </label>
+      </div>
+    </div>`;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'cctModalOverlay';
+  overlay.className = 'cct-modal-overlay';
+  overlay.innerHTML = `
+    <div class="cct-modal">
+      <div class="cct-modal-header">
+        <strong>⚙️ Regras CLT/CCT da empresa</strong>
+        <button class="cct-modal-close" type="button">&times;</button>
+      </div>
+      <div class="cct-modal-intro">Ajuste os valores e se cada regra <b>bloqueia</b> a publicação ou <b>só avisa</b>. Desmarcar = regra desligada. "Restaurar padrão" volta à CLT federal.</div>
+      <div class="cct-modal-body">${catalogo.map(linha).join('')}</div>
+      <div class="cct-modal-status"></div>
+      <div class="cct-modal-actions">
+        <button class="cct-reset" type="button">Restaurar padrão CLT federal</button>
+        <span class="cct-spacer"></span>
+        <button class="cct-cancel" type="button">Cancelar</button>
+        <button class="cct-save optimize-button save-optimization" type="button">Salvar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const fechar = () => overlay.remove();
+  overlay.querySelector('.cct-modal-close').onclick = fechar;
+  overlay.querySelector('.cct-cancel').onclick = fechar;
+  overlay.onclick = (e) => { if (e.target === overlay) fechar(); };
+  const statusEl = overlay.querySelector('.cct-modal-status');
+
+  const coletarRegras = () => catalogo.map(rt => {
+    const ativa = overlay.querySelector(`.cct-ativa[data-rt="${rt.ruleTypeId}"]`).checked;
+    const severidade = overlay.querySelector(`.cct-sev[data-rt="${rt.ruleTypeId}"]`).value;
+    const params = {};
+    rt.params.forEach(p => {
+      const el = document.getElementById(`cct-${rt.ruleTypeId}-${p.chave}`);
+      if (!el) return;
+      if (p.tipo === 'numero') params[p.chave] = Number(el.value);
+      else if (p.tipo === 'booleano') params[p.chave] = el.checked;
+      else params[p.chave] = el.value;
+    });
+    return { ruleTypeId: rt.ruleTypeId, params, severidade, ativa };
+  });
+
+  const enviar = async (payload, msg) => {
+    statusEl.textContent = 'Salvando...';
+    try {
+      const r = await fetch('/api/cct/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const d = await r.json();
+      if (d.ok) { showToast(msg); window.location.reload(); }
+      else { statusEl.textContent = d.error || 'Erro ao salvar.'; }
+    } catch (e) { statusEl.textContent = 'Erro de conexão.'; }
+  };
+
+  overlay.querySelector('.cct-save').onclick = () => enviar({ regras: coletarRegras() }, 'Regras CLT/CCT salvas.');
+  overlay.querySelector('.cct-reset').onclick = () => {
+    if (confirm('Restaurar as regras para o padrão CLT federal? Isso descarta as personalizações da empresa.')) enviar({ reset: true }, 'Regras restauradas para o padrão CLT federal.');
+  };
+}
+
 function renderWeeklySchedule(data) {
   const profile = (data.client && data.client.profile) || {};
   const lojaSegSex = parseLojaHora(profile.horarioSegSex);
@@ -2020,6 +2135,7 @@ function renderWeeklySchedule(data) {
       <strong>${compliance.length ? '⚠️ ' + compliance.length + ' colaborador(es) com alerta CLT' : '✅ Escala em conformidade CLT'}</strong>
       ${compliance.length ? `<div class="clt-list">${compliance.slice(0, 8).map(c => `<div><b>${c.nome}:</b> ${c.violacoes.join(' · ')}</div>`).join('')}${compliance.length > 8 ? `<div>+${compliance.length - 8} outros</div>` : ''}</div>` : '<span>Validados: interjornada 11h · DSR · máx 44h/sem · máx 10h/dia · máx 6h contínuas (art. 71) · 6 dias consecutivos.</span>'}
       <small style="display:block;margin-top:6px;opacity:.65">Auditoria baseada na CLT federal. Convenções coletivas locais (CCT dos comerciários) podem ter regras adicionais — valide com seu contador/sindicato.</small>
+      ${data.cctConfig && data.cctConfig.podeEditar ? `<div class="clt-config-row"><button id="cctEditorBtn" class="optimize-button" type="button">⚙️ Regras CLT/CCT</button><small class="clt-config-note">${data.cctConfig.usandoPadrao ? 'Usando o padrão CLT federal.' : 'Usando regras personalizadas da empresa.'}</small></div>` : ''}
     </div>`;
 
   // Índice do dia de HOJE na semana exibida (p/ destaque visual)
@@ -2192,6 +2308,8 @@ function renderWeeklySchedule(data) {
       } catch (e) { showToast('Erro de conexão.'); restaurarBotao(); }
     };
   }
+  const cctBtn = document.getElementById('cctEditorBtn');
+  if (cctBtn) cctBtn.onclick = () => renderCctEditor(data.cctConfig);
   const reabrirBtn = document.getElementById('reabrirBtn');
   if (reabrirBtn) {
     reabrirBtn.onclick = async () => {

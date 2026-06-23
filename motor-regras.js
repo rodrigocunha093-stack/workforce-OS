@@ -492,10 +492,89 @@ function checkComplianceCLT(people, opts) {
   return resultado;
 }
 
+// ======================= PARTE C — CATÁLOGO PARA A UI =======================
+// Descreve cada tipo de regra para a tela de edição de CCT (Passo 2). `ativaPadrao`
+// marca as que entram no catálogo federal default (mantém o comportamento atual).
+
+function catalogoRegras() {
+  return [
+    { ruleTypeId: 'limite_jornada_semanal', nome: 'Limite de jornada semanal', baseLegal: 'CLT art. 58 / PEC', escopo: 'semana', severidadePadrao: 'bloqueante', ativaPadrao: true,
+      descricao: 'Soma das horas trabalhadas na semana (descontado o intervalo) não pode passar do limite.',
+      params: [{ chave: 'max_horas', label: 'Máx. horas por semana', tipo: 'numero', default: 44, min: 1, max: 60, sufixo: 'h' }] },
+    { ruleTypeId: 'interjornada_min', nome: 'Interjornada (descanso entre turnos)', baseLegal: 'CLT art. 66', escopo: 'semana', severidadePadrao: 'bloqueante', ativaPadrao: true,
+      descricao: 'Descanso mínimo entre o fim de uma jornada e o início da próxima.',
+      params: [{ chave: 'min_horas', label: 'Mín. horas de descanso', tipo: 'numero', default: 11, min: 1, max: 24, sufixo: 'h' }] },
+    { ruleTypeId: 'intrajornada_min', nome: 'Intervalo dentro da jornada', baseLegal: 'CLT art. 71', escopo: 'semana', severidadePadrao: 'bloqueante', ativaPadrao: true,
+      descricao: 'Jornada acima de X horas exige um intervalo mínimo (almoço/descanso).',
+      params: [
+        { chave: 'min_minutos', label: 'Intervalo mínimo', tipo: 'numero', default: 60, min: 0, max: 240, sufixo: 'min' },
+        { chave: 'acima_de_horas', label: 'Exigido acima de', tipo: 'numero', default: 6, min: 1, max: 12, sufixo: 'h' }] },
+    { ruleTypeId: 'dsr_semanal', nome: 'Descanso semanal (DSR)', baseLegal: 'CLT art. 67', escopo: 'semana', severidadePadrao: 'bloqueante', ativaPadrao: true,
+      descricao: 'Em toda janela de 7 dias deve haver ao menos N folgas.',
+      params: [{ chave: 'dias_descanso', label: 'Folgas por semana', tipo: 'numero', default: 1, min: 1, max: 3 }] },
+    { ruleTypeId: 'limite_jornada_diaria', nome: 'Limite de jornada diária', baseLegal: 'CLT art. 59', escopo: 'semana', severidadePadrao: 'bloqueante', ativaPadrao: true,
+      descricao: 'Horas trabalhadas por dia não podem passar do limite (8h + extras).',
+      params: [{ chave: 'max_horas', label: 'Máx. horas por dia', tipo: 'numero', default: 10, min: 1, max: 16, sufixo: 'h' }] },
+    { ruleTypeId: 'rodizio_domingo_feminino', nome: 'Rodízio de domingos (mulheres)', baseLegal: 'CCT', escopo: 'mes', severidadePadrao: 'bloqueante', ativaPadrao: false,
+      descricao: 'Mulheres não podem trabalhar dois domingos seguidos.', params: [] },
+    { ruleTypeId: 'limite_domingos_mes', nome: 'Limite de domingos no mês', baseLegal: 'CCT', escopo: 'mes', severidadePadrao: 'bloqueante', ativaPadrao: false,
+      descricao: 'Máximo de domingos trabalhados por mês, opcionalmente só para um grupo.',
+      params: [
+        { chave: 'max', label: 'Máx. domingos por mês', tipo: 'numero', default: 2, min: 0, max: 5 },
+        { chave: 'aplica_a', label: 'Aplica a', tipo: 'opcao', default: '', opcoes: [{ valor: '', rotulo: 'Todos' }, { valor: 'masculino', rotulo: 'Homens' }, { valor: 'feminino', rotulo: 'Mulheres' }] }] },
+    { ruleTypeId: 'ajuda_custo_domingo', nome: 'Ajuda de custo por domingo', baseLegal: 'CCT', escopo: 'mes', severidadePadrao: 'aviso', ativaPadrao: false,
+      descricao: 'Valor devido por domingo trabalhado (aviso — não bloqueia a publicação).',
+      params: [{ chave: 'valor', label: 'Valor por domingo', tipo: 'numero', default: 0, min: 0, max: 1000, sufixo: 'R$' }] },
+    { ruleTypeId: 'folga_compensatoria_domingo', nome: 'Folga compensatória de domingo', baseLegal: 'CCT', escopo: 'mes', severidadePadrao: 'bloqueante', ativaPadrao: false,
+      descricao: 'Após um domingo trabalhado, deve haver folga dentro de uma janela de dias.',
+      params: [{ chave: 'janela_dias', label: 'Janela (dias)', tipo: 'numero', default: 7, min: 1, max: 30 }] },
+    { ruleTypeId: 'dois_descansos_semanais', nome: 'Dois descansos semanais', baseLegal: 'PEC (fase 42h+)', escopo: 'mes', severidadePadrao: 'bloqueante', ativaPadrao: false,
+      descricao: 'Exige 2 folgas por semana (avaliado pela média mensal).',
+      params: [{ chave: 'media_mensal', label: 'Avaliar pela média mensal', tipo: 'booleano', default: true }] },
+  ];
+}
+
+// Coage/valida regras vindas da UI contra o catálogo, blindando o backend.
+function sanitizarRegras(regras, catalogo) {
+  const cat = catalogo || catalogoRegras();
+  const porId = new Map(cat.map((c) => [c.ruleTypeId, c]));
+  if (!Array.isArray(regras)) return [];
+  const out = [];
+  for (const r of regras) {
+    if (!r || typeof r !== 'object') continue;
+    const def = porId.get(r.ruleTypeId);
+    if (!def) continue; // ruleTypeId desconhecido é descartado
+    const params = {};
+    for (const p of def.params) {
+      const v = r.params ? r.params[p.chave] : undefined;
+      if (p.tipo === 'numero') {
+        let n = Number(v);
+        if (!isFinite(n)) n = p.default;
+        if (p.min != null) n = Math.max(p.min, n);
+        if (p.max != null) n = Math.min(p.max, n);
+        params[p.chave] = n;
+      } else if (p.tipo === 'booleano') {
+        params[p.chave] = v === true || v === 'true';
+      } else if (p.tipo === 'opcao') {
+        params[p.chave] = (p.opcoes || []).some((o) => o.valor === v) ? v : p.default;
+      }
+    }
+    out.push({
+      ruleTypeId: r.ruleTypeId,
+      params,
+      severidade: r.severidade === 'aviso' ? 'aviso' : 'bloqueante',
+      ativa: r.ativa !== false,
+    });
+  }
+  return out;
+}
+
 module.exports = {
   // motor puro
   dataHora, fimTurno, duracaoHoras, somaDias, diaSemana, ehDomingo, segundaFeiraDaSemana, diasEntre,
   diasTrabalhadosPorFuncionario, registry, validar, validarEscala, defaultCctRules,
   // adaptador workforce-OS
   parseWorkedBlocks, turnoParaMotor, semanaPadrao, normalizarRegras, contextoDeEscala, checkComplianceCLT,
+  // catálogo / edição (Passo 2)
+  catalogoRegras, sanitizarRegras,
 };

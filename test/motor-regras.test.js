@@ -94,3 +94,40 @@ test('validarEscala: aviso não bloqueia, bloqueante bloqueia', () => {
   ctx.regras[0].severidade = 'bloqueante';
   assert.equal(m.validarEscala(ctx).bloqueada, true);
 });
+
+// Passo 2 — catálogo + saneamento + comportamento data-driven
+test('catalogoRegras: 10 tipos, cada um conhecido pelo registry e com params array', () => {
+  const cat = m.catalogoRegras();
+  assert.equal(cat.length, 10);
+  for (const c of cat) {
+    assert.ok(c.ruleTypeId && c.nome && Array.isArray(c.params));
+    assert.ok(m.registry[c.ruleTypeId], `registry deve conhecer ${c.ruleTypeId}`);
+  }
+});
+
+test('sanitizarRegras: descarta id desconhecido, coage número e valida severidade', () => {
+  const out = m.sanitizarRegras([
+    { ruleTypeId: 'inexistente', params: {}, severidade: 'bloqueante' },
+    { ruleTypeId: 'limite_jornada_semanal', params: { max_horas: '42' }, severidade: 'xpto', ativa: true },
+  ], m.catalogoRegras());
+  assert.equal(out.length, 1);
+  assert.equal(out[0].ruleTypeId, 'limite_jornada_semanal');
+  assert.strictEqual(out[0].params.max_horas, 42);
+  assert.equal(out[0].severidade, 'bloqueante');
+});
+
+test('sanitizarRegras: limita número à faixa do catálogo', () => {
+  const out = m.sanitizarRegras([{ ruleTypeId: 'limite_jornada_semanal', params: { max_horas: 999 } }], m.catalogoRegras());
+  assert.equal(out[0].params.max_horas, 60);
+});
+
+test('config data-driven: max_horas 40 acusa escala de 44h; como aviso não bloqueia', () => {
+  const SEMANA = { dias: ['2026-06-15', '2026-06-16', '2026-06-17', '2026-06-18', '2026-06-19', '2026-06-20', '2026-06-21'].map(d => ({ data: d })) };
+  const N = '06:00-13:20 · 7h20';
+  const people = { Maria: [N, N, N, N, N, N, 'Folga'] };
+  assert.deepEqual(m.checkComplianceCLT(people, { calendarWeek: SEMANA }), []); // padrão federal: conforme
+  const regras40 = [{ ruleTypeId: 'limite_jornada_semanal', params: { max_horas: 40 }, severidade: 'bloqueante', ativa: true }];
+  assert.equal(m.checkComplianceCLT(people, { calendarWeek: SEMANA, cctRules: regras40 }).length, 1);
+  const ctxAviso = m.contextoDeEscala(people, { calendarWeek: SEMANA, cctRules: [{ ruleTypeId: 'limite_jornada_semanal', params: { max_horas: 40 }, severidade: 'aviso', ativa: true }] });
+  assert.equal(m.validarEscala(ctxAviso).bloqueada, false);
+});

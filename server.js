@@ -5172,6 +5172,13 @@ async function applyClientState(summary, user, weekFilter = null) {
   }
   summary.escalaFechada = state.escalaFechada || null;
   summary.escalaWorkflow = normalizeEscalaWorkflow(state.escalaWorkflow);
+  // Passo 2 — config de regras CLT/CCT para a tela de edição (catálogo + regras salvas da empresa).
+  summary.cctConfig = {
+    catalogo: motorRegras.catalogoRegras(),
+    regras: state.cctRules || [],
+    usandoPadrao: !(Array.isArray(state.cctRules) && state.cctRules.length),
+    podeEditar: !!(user && (user.role === 'admin' || user.role === 'gestor' || user.orgId === user.id))
+  };
   if (summary.escalaFechada && (!summary.escalaFechada.caixaPeople || !Object.keys(summary.escalaFechada.caixaPeople).length)) {
     const people = summary.escalaFechada.people || {};
     summary.escalaFechada.caixaPeople = Object.fromEntries(
@@ -5848,6 +5855,29 @@ const requestHandler = async (req, res) => {
         await saveClientState(user.orgId, state);
         await audit(user.id, 'SKILLS_SAVED', { count: people.length, ip: requestIp(req) });
         return json(res, { ok: true });
+      } catch (error) {
+        return json(res, { ok: false, error: error.message }, 400);
+      }
+    })();
+    return;
+  }
+  // PASSO 2: SALVAR REGRAS CLT/CCT DA EMPRESA (editor data-driven)
+  if (req.url === '/api/cct/save' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!user) throw new Error('Faça login.');
+        if (user.role !== 'admin' && user.role !== 'gestor' && user.orgId !== user.id) throw new Error('Apenas o administrador pode editar as regras CLT/CCT.');
+        const body = await readJsonBody(req);
+        const state = await loadClientState(user.orgId);
+        if (body.reset === true) {
+          state.cctRules = []; // volta ao catálogo federal padrão
+        } else {
+          state.cctRules = motorRegras.sanitizarRegras(body.regras, motorRegras.catalogoRegras());
+        }
+        state.updatedAt = new Date().toISOString();
+        await saveClientState(user.orgId, state);
+        await audit(user.id, 'CCT_SAVED', { qtd: state.cctRules.length, reset: body.reset === true, ip: requestIp(req) });
+        return json(res, { ok: true, regras: state.cctRules });
       } catch (error) {
         return json(res, { ok: false, error: error.message }, 400);
       }

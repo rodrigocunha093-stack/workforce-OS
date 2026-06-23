@@ -98,7 +98,7 @@ CRUD via `@supabase/supabase-js`. **Colunas em minúsculo** (`passwordhash`, `or
 ## Arquivos-chave do repo
 
 - `server.js` — backend inteiro.
-- `motor-regras.js` — **motor de regras CLT/CCT** (data-driven). PARTE A: motor puro portado de `@escaladp/rules` (`registry`, `validar`, `validarEscala`, `defaultCctRules`, 10 regras). PARTE B: adaptador workforce-OS (`contextoDeEscala`, `checkComplianceCLT`, `turnoParaMotor`, `parseWorkedBlocks`, `semanaPadrao`). Sem build; testado em `test/`.
+- `motor-regras.js` — **motor de regras CLT/CCT** (data-driven). PARTE A: motor puro portado de `@escaladp/rules` (`registry`, `validar`, `validarEscala`, `defaultCctRules`, 10 regras). PARTE B: adaptador workforce-OS (`contextoDeEscala`, `checkComplianceCLT`, `turnoParaMotor`, `parseWorkedBlocks`, `semanaPadrao`). PARTE C: catálogo para a UI (`catalogoRegras`) + saneamento (`sanitizarRegras`). Sem build; testado em `test/`. Editor no frontend: `renderCctEditor` (app.js); endpoint `POST /api/cct/save`; trava de publicação usa `validarEscala` no handler `escala/fechar`.
 - `test/` — suíte `node --test` (`npm test`): `motor-regras.test.js`, `adaptador.test.js`, `fixtures.js`.
 - `public/index.html` `app.js` `styles.css` `futuristic.css` — frontend.
 - `public/colaborador.html` — self-service.
