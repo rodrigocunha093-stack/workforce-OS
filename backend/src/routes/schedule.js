@@ -10,7 +10,7 @@ router.get('/', async (req, res) => {
     const userId = req.user?.id;
 
     if (!userId) {
-      return res.json(getDemoSchedule());
+      return res.status(401).json({ error: 'Não autenticado' });
     }
 
     try {
@@ -125,8 +125,8 @@ router.get('/demand', async (req, res) => {
 
       res.json(coverage);
     } catch (dbErr) {
-      console.log('Database unavailable for demand, returning demo data:', dbErr.code);
-      res.json(getDemoDemand());
+      console.error('Database error:', dbErr.code);
+      res.status(500).json({ error: 'Não foi possível calcular demanda' });
     }
   } catch (err) {
     console.error(err);
@@ -163,53 +163,6 @@ function getPeriodLabel() {
   return `Semana ${week} do mês`;
 }
 
-function getDemoSchedule() {
-  return {
-    schedule: {
-      'Maria': [
-        '08:00-16:00',
-        '08:00-16:00',
-        'Folga',
-        '08:00-16:00',
-        '08:00-16:00',
-        '10:00-18:00',
-        'Folga'
-      ],
-      'João': [
-        '12:00-20:00',
-        '12:00-20:00',
-        '12:00-20:00',
-        'Folga',
-        '12:00-20:00',
-        '12:00-20:00',
-        'Folga'
-      ]
-    },
-    demand: {
-      '06:00': 10,
-      '10:00': 85,
-      '14:00': 45,
-      '18:00': 60
-    },
-    periodo: 'Demonstração'
-  };
-}
 
-function getDemoDemand() {
-  return [
-    { hora: '08:00', clientes: 5, tempoMedioMin: 2.5, filaMin: 0.5, utilizacao: 25 },
-    { hora: '09:00', clientes: 15, tempoMedioMin: 3.2, filaMin: 1.2, utilizacao: 45 },
-    { hora: '10:00', clientes: 25, tempoMedioMin: 4.1, filaMin: 2.1, utilizacao: 65 },
-    { hora: '11:00', clientes: 35, tempoMedioMin: 5.8, filaMin: 3.5, utilizacao: 85 },
-    { hora: '12:00', clientes: 40, tempoMedioMin: 7.2, filaMin: 4.8, utilizacao: 95 },
-    { hora: '13:00', clientes: 30, tempoMedioMin: 5.5, filaMin: 3.2, utilizacao: 75 },
-    { hora: '14:00', clientes: 20, tempoMedioMin: 4.0, filaMin: 2.0, utilizacao: 55 },
-    { hora: '15:00', clientes: 25, tempoMedioMin: 4.5, filaMin: 2.5, utilizacao: 65 },
-    { hora: '16:00', clientes: 35, tempoMedioMin: 6.0, filaMin: 3.8, utilizacao: 85 },
-    { hora: '17:00', clientes: 45, tempoMedioMin: 8.0, filaMin: 5.2, utilizacao: 95 },
-    { hora: '18:00', clientes: 40, tempoMedioMin: 7.0, filaMin: 4.5, utilizacao: 90 },
-    { hora: '19:00', clientes: 30, tempoMedioMin: 5.2, filaMin: 3.0, utilizacao: 75 }
-  ];
-}
 
 module.exports = router;

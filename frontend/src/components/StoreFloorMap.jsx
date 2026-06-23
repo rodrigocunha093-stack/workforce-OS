@@ -8,7 +8,8 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
 
   const DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab', 'Dom'];
   const DAY_LABELS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
-  const pdvs = 4;
+  const checkoutCount = employees.filter(e => (e.setor || '').toLowerCase().includes('caixa')).length;
+  const pdvs = Math.max(3, Math.ceil(checkoutCount * 0.75));
   const openHour = 8, closeHour = 20;
 
   // Play animation
@@ -171,7 +172,7 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
         h += `<text x="${x}" y="${y - 13}" text-anchor="middle" fill="#fff" font-size="6" font-weight="700">${ini}</text>`;
         h += `<rect x="${x - lblW / 2}" y="${y + 3}" width="${lblW}" height="11" rx="3" fill="rgba(0,0,0,.7)" stroke="rgba(255,255,255,.15)" stroke-width="0.4"/>`;
         h += `<text x="${x}" y="${y + 11}" text-anchor="middle" fill="#e2e8f0" font-size="6.5" font-weight="500">${fname}</text>`;
-        if (isOnBreak(w)) h += `<text x="${x}" y="${y - 28}" text-anchor="middle" font-size="9">☕</text>`;
+        if (isOnBreak(w)) h += `<text x="${x}" y="${y - 28}" text-anchor="middle" font-size="8" fill="#94a3b8">INTERVALO</text>`;
       }
     }
 
@@ -290,7 +291,7 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     <div style={{ color: '#e8eef5', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '12px', marginBottom: '16px' }}>
       {/* Cabeçalho */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
-        <span style={{ fontSize: '13px', fontWeight: '600' }}>🏪 Planta da loja</span>
+        <span style={{ fontSize: '13px', fontWeight: '600' }}>Planta da loja</span>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
           <button
             onClick={() => setIsPlaying(!isPlaying)}

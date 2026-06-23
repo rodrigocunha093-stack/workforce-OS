@@ -30,10 +30,10 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
   const todayIdx = diaSemana;
   const totalColaboradores = Object.keys(schedule || {}).length;
 
-  const scenarios = [
-    { id: 'atual', label: 'Atual 6x1 - 44h', hours: 44, pdvs: 3, operators: 4, capacity: 440 },
-    { id: 'transicao', label: 'Transição 5x2 - 42h', hours: 42, pdvs: 3, operators: 4, capacity: 420 },
-    { id: 'final', label: 'Final 5x2 - 40h', hours: 40, pdvs: 3, operators: 4, capacity: 400 }
+  const scenarios = !employees.length ? [] : [
+    { id: 'atual', label: 'Atual 6x1 - 44h', hours: 44, pdvs: '—', operators: employees.length, capacity: employees.length * 44 },
+    { id: 'transicao', label: 'Transição 5x2 - 42h', hours: 42, pdvs: '—', operators: employees.length, capacity: employees.length * 42 },
+    { id: 'final', label: 'Final 5x2 - 40h', hours: 40, pdvs: '—', operators: employees.length, capacity: employees.length * 40 }
   ];
 
   return (
@@ -41,14 +41,14 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
       {/* Section Head */}
       <div className={styles.sectionHead}>
         <div>
-          <p style={{ margin: '0 0 7px', color: '#2dd4bf', fontSize: '11px', fontWeight: '800', textTransform: 'uppercase' }}>
+          <p style={{ margin: '0 0 7px', color: '#0369a1', fontSize: '11px', fontWeight: '800', textTransform: 'uppercase' }}>
             Comparativo de cenários
           </p>
           <h2 style={{ margin: '0', fontSize: '25px', lineHeight: '1.2', maxWidth: '850px' }}>
             Impacto da jornada na capacidade da equipe
           </h2>
         </div>
-        <span className={styles.softPill}>4 operadores de caixa</span>
+        <span className={styles.softPill}>{employees.length} colaboradores</span>
       </div>
 
       {/* Week Selector Panel */}
@@ -81,21 +81,27 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
 
       {/* Scenario Cards */}
       <div className={styles.scenarioGrid}>
-        {scenarios.map((scenario, idx) => (
-          <div key={scenario.id} className={styles.scenarioCard}>
-            <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '800', textTransform: 'uppercase' }}>
-              Simulação
-            </span>
-            <h3 style={{ margin: '12px 0 18px', fontSize: '17px', color: '#e8eef5' }}>
-              {scenario.label}
-            </h3>
-            <div style={{ marginTop: '12px', fontSize: '12px', color: '#cbd5e1', lineHeight: '1.8' }}>
-              <div><strong>Horas semanais</strong><span style={{ float: 'right' }}>{scenario.hours}h</span></div>
-              <div><strong>PDVs / operadores</strong><span style={{ float: 'right' }}>{scenario.pdvs} / {scenario.operators}</span></div>
-              <div><strong>Capacidade</strong><span style={{ float: 'right' }}>{scenario.capacity}h</span></div>
-            </div>
+        {scenarios.length === 0 ? (
+          <div style={{ gridColumn: '1 / -1', padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
+            Importe colaboradores para visualizar cenários
           </div>
-        ))}
+        ) : (
+          scenarios.map((scenario, idx) => (
+            <div key={scenario.id} className={styles.scenarioCard}>
+              <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '800', textTransform: 'uppercase' }}>
+                Simulação
+              </span>
+              <h3 style={{ margin: '12px 0 18px', fontSize: '17px', color: '#e8eef5' }}>
+                {scenario.label}
+              </h3>
+              <div style={{ marginTop: '12px', fontSize: '12px', color: '#cbd5e1', lineHeight: '1.8' }}>
+                <div><strong>Horas semanais</strong><span style={{ float: 'right' }}>{scenario.hours}h</span></div>
+                <div><strong>PDVs / operadores</strong><span style={{ float: 'right' }}>{scenario.pdvs} / {scenario.operators}</span></div>
+                <div><strong>Capacidade</strong><span style={{ float: 'right' }}>{scenario.capacity}h</span></div>
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Store Floor Map Panel */}
@@ -105,20 +111,20 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
       <div className={`${styles.periodoBox} ${styles.periodoAberto}`}>
         <div>
           <div className={styles.periodoInfo}>
-            <strong>📝 RASCUNHO — escala dinâmica</strong>
+            <strong>RASCUNHO — escala dinâmica</strong>
             <span>Semana de {datas[0].label} a {datas[6].label}</span>
             <small>Esta escala é recalculada automaticamente. Feche o período para gerar a versão oficial imutável.</small>
           </div>
         </div>
         <div className={styles.periodoActions}>
-          <button className={styles.optimizeButton}>🖨️ Exportar / Imprimir</button>
-          <button className={styles.optimizeButton}>🔒 Fechar período</button>
+          <button className={styles.optimizeButton}>Exportar / Imprimir</button>
+          <button className={styles.optimizeButton}>Fechar período</button>
         </div>
       </div>
 
       {/* CLT Compliance Box */}
       <div className={`${styles.cltBox} ${styles.cltOk}`}>
-        <strong>✅ Escala em conformidade CLT</strong>
+        <strong>Escala em conformidade CLT</strong>
         <span>Validados: interjornada 11h · DSR · máx 44h/sem · máx 10h/dia · máx 6h contínuas (art. 71) · 6 dias consecutivos.</span>
         <p style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
           Auditoria baseada na CLT federal. Convenções coletivas locais (CCT dos comerciários) podem ter regras adicionais — valide com seu contador/sindicato.
@@ -144,8 +150,8 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
         </div>
         <div className={styles.wcCard}>
           <small>Conformidade CLT</small>
-          <strong>✅ Ok</strong>
-          <span className={styles.wcDetail}>Todos conformes</span>
+          <strong>Conforme</strong>
+          <span className={styles.wcDetail}>CLT validado</span>
         </div>
         <div className={styles.wcCard}>
           <small>Aderência ponto</small>
@@ -289,7 +295,7 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
             </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
               <button className={styles.optimizeButton} title="Otimização inteligente">
-                ⚡ Otimização IA
+                Otimização
               </button>
               {scenarios.map((scenario) => (
                 <button
@@ -298,8 +304,8 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
                   className={styles.optimizeButton}
                   style={{
                     background: selectedScenario === scenario.id ? 'rgba(45,212,191,.25)' : 'rgba(59,130,246,.15)',
-                    borderColor: selectedScenario === scenario.id ? '#2dd4bf' : 'rgba(59,130,246,.3)',
-                    color: selectedScenario === scenario.id ? '#2dd4bf' : '#60a5fa'
+                    borderColor: selectedScenario === scenario.id ? '#0369a1' : 'rgba(59,130,246,.3)',
+                    color: selectedScenario === scenario.id ? '#0369a1' : '#0ea5e9'
                   }}
                 >
                   {scenario.label.split(' - ')[0]}
@@ -318,8 +324,8 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
               className={styles.optimizeButton}
               style={{
                 background: selectedDay === dia.toLowerCase() ? 'rgba(45,212,191,.25)' : 'rgba(59,130,246,.15)',
-                borderColor: selectedDay === dia.toLowerCase() ? '#2dd4bf' : 'rgba(59,130,246,.3)',
-                color: selectedDay === dia.toLowerCase() ? '#2dd4bf' : '#60a5fa',
+                borderColor: selectedDay === dia.toLowerCase() ? '#0369a1' : 'rgba(59,130,246,.3)',
+                color: selectedDay === dia.toLowerCase() ? '#0369a1' : '#0ea5e9',
                 fontSize: '12px',
                 padding: '6px 10px'
               }}
@@ -329,36 +335,6 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
           ))}
         </div>
 
-        {/* Coverage Summary */}
-        <div style={{
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '8px',
-          padding: '16px',
-          marginBottom: '12px'
-        }}>
-          <p style={{ margin: '0 0 8px', fontSize: '12px', fontWeight: '600', color: '#e8eef5' }}>
-            Resumo de Cobertura
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', fontSize: '12px' }}>
-            <div>
-              <span style={{ color: '#94a3b8' }}>Demanda</span>
-              <strong style={{ color: '#e8eef5', display: 'block', marginTop: '4px' }}>12 clientes/h</strong>
-            </div>
-            <div>
-              <span style={{ color: '#94a3b8' }}>Escalado</span>
-              <strong style={{ color: '#6ee7b7', display: 'block', marginTop: '4px' }}>3 operadores</strong>
-            </div>
-            <div>
-              <span style={{ color: '#94a3b8' }}>Tempo médio</span>
-              <strong style={{ color: '#60a5fa', display: 'block', marginTop: '4px' }}>3.2 min</strong>
-            </div>
-            <div>
-              <span style={{ color: '#94a3b8' }}>Utilização</span>
-              <strong style={{ color: '#fcd34d', display: 'block', marginTop: '4px' }}>82%</strong>
-            </div>
-          </div>
-        </div>
 
         {/* Heatmap Placeholder */}
         <div style={{
@@ -374,7 +350,6 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
           color: '#94a3b8'
         }}>
           <div style={{ textAlign: 'center' }}>
-            <p style={{ fontSize: '32px', marginBottom: '8px' }}>🔥</p>
             <p>Heatmap de demanda por hora</p>
             <small style={{ color: '#64748b' }}>(Intensidade de demanda ao longo do dia)</small>
           </div>
@@ -401,7 +376,7 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
                 textAlign: 'center'
               }}>
                 <span style={{ color: '#94a3b8' }}>{hora}</span>
-                <strong style={{ display: 'block', marginTop: '4px', color: '#60a5fa' }}>
+                <strong style={{ display: 'block', marginTop: '4px', color: '#0ea5e9' }}>
                   {Math.floor(Math.random() * 100)}%
                 </strong>
               </div>
@@ -409,47 +384,19 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
           </div>
         </div>
 
-        {/* Staff Section */}
-        <div style={{ marginTop: '16px', padding: '16px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}>
-          <h3 style={{ margin: '0 0 12px', fontSize: '15px', fontWeight: '600', color: '#e8eef5' }}>
-            Formação individual do dia
-          </h3>
-          <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#94a3b8' }}>
-            Escalado para {selectedDay}: Maria (08:00-16:00) | João (12:00-20:00)
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-            {['Maria', 'João'].map((nome) => (
-              <div key={nome} style={{
-                padding: '12px',
-                background: 'rgba(255,255,255,0.02)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '6px',
-                fontSize: '12px'
-              }}>
-                <strong style={{ color: '#e8eef5' }}>{nome}</strong>
-                <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '11px' }}>
-                  08:00 - 16:00 (8h)
-                </p>
-                <p style={{ margin: '2px 0 0', color: '#64748b', fontSize: '10px' }}>
-                  Intervalo: 12:00 - 13:00
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* KPI Cards */}
       <div className={styles.kpiCards}>
         <div className={styles.kpiCard}>
           <span className={styles.kpiLabel}>Total Colaboradores</span>
-          <div className={styles.kpiValue} style={{ color: '#60a5fa' }}>
+          <div className={styles.kpiValue} style={{ color: '#0ea5e9' }}>
             {totalColaboradores}
           </div>
         </div>
         <div className={styles.kpiCard}>
           <span className={styles.kpiLabel}>Regime</span>
-          <div className={styles.kpiValue} style={{ color: '#34d399' }}>
+          <div className={styles.kpiValue} style={{ color: '#06b6d4' }}>
             6x1
           </div>
         </div>

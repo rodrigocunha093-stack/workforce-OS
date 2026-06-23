@@ -36,7 +36,7 @@ export default function Login({ onLogin }) {
   return (
     <div style={{ background: '#0a0e1a', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
       <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '32px', width: '100%', maxWidth: '400px' }}>
-        <h1 style={{ fontSize: '28px', fontWeight: '700', color: '#2dd4bf', marginBottom: '32px', textAlign: 'center' }}>Escalágil</h1>
+        <h1 style={{ fontSize: '28px', fontWeight: '700', color: '#0ea5e9', marginBottom: '32px', textAlign: 'center' }}>Escalágil</h1>
 
         {error && (
           <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', color: '#fca5a5', borderRadius: '6px', fontSize: '13px' }}>
@@ -142,7 +142,7 @@ export default function Login({ onLogin }) {
               width: '100%',
               padding: '12px',
               borderRadius: '6px',
-              background: '#2dd4bf',
+              background: '#0ea5e9',
               color: '#000',
               border: 'none',
               fontWeight: '600',
@@ -162,7 +162,7 @@ export default function Login({ onLogin }) {
             style={{
               background: 'none',
               border: 'none',
-              color: '#2dd4bf',
+              color: '#0ea5e9',
               textDecoration: 'underline',
               fontSize: '13px',
               cursor: 'pointer',

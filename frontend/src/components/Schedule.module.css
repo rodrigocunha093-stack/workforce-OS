@@ -4,11 +4,11 @@
   --line: rgba(255,255,255,0.10);
   --canvas: #0a0e1a;
   --panel: rgba(255,255,255,0.04);
-  --teal: #2dd4bf;
-  --blue: #3b82f6;
+  --teal: #0369a1;
+  --blue: #1e40af;
   --amber: #fbbf24;
   --red: #f87171;
-  --green: #34d399;
+  --green: #06b6d4;
 }
 
 .container {
@@ -219,7 +219,7 @@
 
 .weekNavBtn {
   background: rgba(59,130,246,.15);
-  color: #60a5fa;
+  color: #0ea5e9;
   border: 1px solid rgba(59,130,246,.3);
   border-radius: 6px;
   padding: 6px 14px;
@@ -267,7 +267,7 @@
 
 .forecastLabel strong {
   font-size: 11px;
-  color: #60a5fa;
+  color: #0ea5e9;
 }
 
 .forecastLabel small {
@@ -457,7 +457,7 @@
   min-height: 38px;
   padding: 0 14px;
   background: rgba(59,130,246,.15);
-  color: #60a5fa;
+  color: #0ea5e9;
   border: 1px solid rgba(59,130,246,.3);
   border-radius: 8px;
   cursor: pointer;

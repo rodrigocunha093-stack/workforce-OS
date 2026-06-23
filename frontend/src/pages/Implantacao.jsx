@@ -52,7 +52,7 @@ export default function Implantacao() {
 
   const eyebrowStyle = {
     margin: '0 0 7px',
-    color: '#2dd4bf',
+    color: '#0369a1',
     fontSize: '11px',
     fontWeight: '800',
     textTransform: 'uppercase'
@@ -134,7 +134,7 @@ export default function Implantacao() {
   const buttonStyle = {
     padding: '10px 16px',
     borderRadius: '6px',
-    background: '#2dd4bf',
+    background: '#0369a1',
     color: '#000',
     border: 'none',
     fontWeight: '600',
@@ -147,7 +147,7 @@ export default function Implantacao() {
     padding: '8px 14px',
     borderRadius: '6px',
     background: 'rgba(59,130,246,0.15)',
-    color: '#60a5fa',
+    color: '#0ea5e9',
     border: '1px solid rgba(59,130,246,0.3)',
     fontWeight: '600',
     cursor: 'pointer',
@@ -297,7 +297,7 @@ export default function Implantacao() {
             style={{ ...inputStyle, marginBottom: '12px', cursor: 'pointer' }}
           />
           <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '12px', padding: '8px', background: 'rgba(255,255,255,0.02)', borderRadius: '4px' }}>
-            {importedFiles.employees ? `✅ ${importedFiles.employees}` : '⭕ Nenhum arquivo selecionado'}
+            {importedFiles.employees ? `${importedFiles.employees}` : '⭕ Nenhum arquivo selecionado'}
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button style={secondaryButtonStyle}>📥 Baixar modelo</button>
@@ -324,7 +324,7 @@ export default function Implantacao() {
             style={{ ...inputStyle, marginBottom: '12px', cursor: 'pointer' }}
           />
           <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '12px', padding: '8px', background: 'rgba(255,255,255,0.02)', borderRadius: '4px' }}>
-            {importedFiles.sales ? `✅ ${importedFiles.sales}` : '⭕ Nenhum arquivo selecionado'}
+            {importedFiles.sales ? `${importedFiles.sales}` : '⭕ Nenhum arquivo selecionado'}
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button style={secondaryButtonStyle}>📥 Baixar modelo</button>
@@ -351,7 +351,7 @@ export default function Implantacao() {
             style={{ ...inputStyle, marginBottom: '12px', cursor: 'pointer' }}
           />
           <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '12px', padding: '8px', background: 'rgba(255,255,255,0.02)', borderRadius: '4px' }}>
-            {importedFiles.merchandise ? `✅ ${importedFiles.merchandise}` : '⭕ Nenhum arquivo selecionado'}
+            {importedFiles.merchandise ? `${importedFiles.merchandise}` : '⭕ Nenhum arquivo selecionado'}
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button style={secondaryButtonStyle}>📥 Baixar modelo</button>
@@ -378,7 +378,7 @@ export default function Implantacao() {
             style={{ ...inputStyle, marginBottom: '12px', cursor: 'pointer' }}
           />
           <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '12px', padding: '8px', background: 'rgba(255,255,255,0.02)', borderRadius: '4px' }}>
-            {importedFiles.revenue ? `✅ ${importedFiles.revenue}` : '⭕ Nenhum arquivo selecionado'}
+            {importedFiles.revenue ? `${importedFiles.revenue}` : '⭕ Nenhum arquivo selecionado'}
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button style={secondaryButtonStyle}>📥 Baixar modelo</button>
@@ -405,7 +405,7 @@ export default function Implantacao() {
             style={{ ...inputStyle, marginBottom: '12px', cursor: 'pointer' }}
           />
           <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '12px', padding: '8px', background: 'rgba(255,255,255,0.02)', borderRadius: '4px' }}>
-            {importedFiles.timecard ? `✅ ${importedFiles.timecard}` : '⭕ Nenhum arquivo selecionado'}
+            {importedFiles.timecard ? `${importedFiles.timecard}` : '⭕ Nenhum arquivo selecionado'}
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button style={secondaryButtonStyle}>📥 Baixar modelo</button>

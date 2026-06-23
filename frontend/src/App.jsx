@@ -41,13 +41,13 @@ export default function App() {
     <div style={{ background: '#0a0e1a', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <nav style={{
         background: '#0d171e',
-        borderBottom: '3px solid #2dd4bf',
+        borderBottom: '3px solid #0369a1',
         padding: '16px 24px'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '100%' }}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <h1 style={{ margin: '0', fontSize: '18px', fontWeight: '700', color: '#e8eef5' }}>
-              <span style={{ color: '#2dd4bf' }}>Escal</span>ágil <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '400', marginLeft: '8px' }}>uma solução Contagil</span>
+              <span style={{ color: '#0ea5e9' }}>Escal</span>ágil <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '400', marginLeft: '8px' }}>uma solução Contagil</span>
             </h1>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -57,7 +57,7 @@ export default function App() {
               style={{
                 padding: '8px 14px',
                 background: 'rgba(59,130,246,0.15)',
-                color: '#60a5fa',
+                color: '#0ea5e9',
                 border: '1px solid rgba(59,130,246,0.3)',
                 borderRadius: '6px',
                 cursor: 'pointer',
@@ -88,7 +88,6 @@ export default function App() {
               fontSize: '16px'
             }}>
               <div style={{ textAlign: 'center' }}>
-                <p style={{ margin: '0 0 8px', fontSize: '32px' }}>🚧</p>
                 <p>Esta página ainda não foi implementada</p>
               </div>
             </div>
