@@ -1,7 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import styles from './Sidebar.module.css';
 
-export default function Sidebar({ activeTab, onTabChange }) {
+export default function Sidebar({ activeTab, onTabChange, onToggle }) {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  const handleToggle = () => {
+    const newState = !isExpanded;
+    setIsExpanded(newState);
+    if (onToggle) onToggle(newState);
+  };
+
   const tabs = [
     { id: 'diagnostico', label: 'Diagnostico', number: '01' },
     { id: 'escala', label: 'Escala', number: '02' },
@@ -16,7 +24,15 @@ export default function Sidebar({ activeTab, onTabChange }) {
   ];
 
   return (
-    <aside className={styles.sidebar}>
+    <aside className={`${styles.sidebar} ${!isExpanded ? styles.collapsed : ''}`}>
+      <button
+        className={styles.toggleBtn}
+        onClick={handleToggle}
+        title={isExpanded ? 'Ocultar' : 'Expandir'}
+      >
+        <span className={styles.hamburger}>☰</span>
+      </button>
+
       <div className={styles.sidebarContent}>
         {tabs.map((tab) => (
           <button

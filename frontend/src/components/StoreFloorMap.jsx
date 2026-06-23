@@ -288,7 +288,7 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
   };
 
   return (
-    <div style={{ color: '#e8eef5', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '12px', marginBottom: '16px' }}>
+    <div style={{ color: '#e8eef5', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '8px', marginBottom: '10px' }}>
       {/* Cabeçalho */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
         <span style={{ fontSize: '13px', fontWeight: '600' }}>Planta da loja</span>
@@ -313,14 +313,15 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
                 key={i}
                 onClick={() => setFloorDay(i)}
                 style={{
-                  background: i === floorDay ? '#2563eb' : 'transparent',
-                  color: i === floorDay ? '#fff' : 'rgba(255,255,255,.5)',
-                  border: '1px solid rgba(255,255,255,.1)',
+                  background: i === floorDay ? '#0ea5e9' : 'rgba(14, 165, 233, 0.12)',
+                  color: '#ffffff',
+                  border: `1px solid ${i === floorDay ? '#0ea5e9' : 'rgba(14, 165, 233, 0.3)'}`,
                   borderRadius: '4px',
-                  padding: '3px 6px',
-                  fontSize: '10px',
-                  fontWeight: i === floorDay ? '600' : '400',
+                  padding: '6px 10px',
+                  fontSize: '11px',
+                  fontWeight: i === floorDay ? '600' : '500',
                   cursor: 'pointer',
+                  transition: 'all 0.2s',
                 }}
               >
                 {d}
@@ -331,16 +332,16 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
       </div>
 
       {/* SVG */}
-      <div style={{ background: 'rgba(0,0,0,.2)', borderRadius: '8px', overflow: 'hidden', marginBottom: '12px' }}>
-        <svg viewBox="-10 0 860 480" style={{ display: 'block', width: '100%', height: 'auto', minHeight: '450px' }} dangerouslySetInnerHTML={{ __html: svg() }} />
+      <div style={{ background: 'rgba(0,0,0,.2)', borderRadius: '8px', overflow: 'hidden', marginBottom: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <svg viewBox="-10 0 860 480" style={{ display: 'block', width: '95%', height: 'auto', minHeight: '120px' }} dangerouslySetInnerHTML={{ __html: svg() }} />
       </div>
 
       {/* Timeline */}
       <div style={{ marginBottom: '14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '8px' }}>
-          <button onClick={() => setFloorHour(Math.max(openHour, floorHour - 0.5))} style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '50%', width: '26px', height: '26px', cursor: 'pointer', color: 'rgba(255,255,255,.6)', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>◀</button>
-          <span style={{ fontSize: '18px', fontWeight: '700', color: '#fff', minWidth: '65px', textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{timeStr}</span>
-          <button onClick={() => setFloorHour(Math.min(closeHour - 0.5, floorHour + 0.5))} style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '50%', width: '26px', height: '26px', cursor: 'pointer', color: 'rgba(255,255,255,.6)', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▶</button>
+          <button onClick={() => setFloorHour(Math.max(openHour, floorHour - 0.5))} style={{ background: 'rgba(14, 165, 233, 0.15)', border: '1px solid rgba(14, 165, 233, 0.3)', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', color: '#0ea5e9', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>◀</button>
+          <span style={{ fontSize: '18px', fontWeight: '700', color: '#e8eef5', minWidth: '65px', textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{timeStr}</span>
+          <button onClick={() => setFloorHour(Math.min(closeHour - 0.5, floorHour + 0.5))} style={{ background: 'rgba(14, 165, 233, 0.15)', border: '1px solid rgba(14, 165, 233, 0.3)', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', color: '#0ea5e9', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>▶</button>
         </div>
 
         <div ref={timelineRef} onClick={handleTimelineClick} style={{ position: 'relative', height: '32px', cursor: 'pointer', margin: '0 4px' }}>

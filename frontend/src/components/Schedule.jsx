@@ -107,32 +107,46 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
       {/* Store Floor Map Panel */}
       <StoreFloorMap schedule={schedule} demand={demand} employees={employees} storeConfig={{ pdvs: 4 }} />
 
+      {/* Semana completa por colaboradora Header */}
+      <div style={{ marginBottom: '12px', padding: '12px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+        <div>
+          <h3 style={{ margin: '0 0 6px', fontSize: '15px', fontWeight: '600', color: '#e8eef5' }}>Semana completa por colaboradora</h3>
+          <p style={{ margin: '0', fontSize: '12px', color: '#94a3b8' }}>
+            44h semanais + 1 folga a cada 7 dias (conforme CLT)
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <span className={styles.auditSummary}>{totalColaboradores}/{totalColaboradores} conformes</span>
+          <button className={styles.primaryButton}>Exportar / Imprimir</button>
+        </div>
+      </div>
+
       {/* Período Box */}
-      <div className={`${styles.periodoBox} ${styles.periodoAberto}`}>
+      <div className={`${styles.periodoBox} ${styles.periodoAberto} ${styles.sectionDivider}`}>
         <div>
           <div className={styles.periodoInfo}>
-            <strong>RASCUNHO — escala dinâmica</strong>
+            <strong style={{ color: '#f59e0b' }}>RASCUNHO — Escala Dinâmica</strong>
             <span>Semana de {datas[0].label} a {datas[6].label}</span>
             <small>Esta escala é recalculada automaticamente. Feche o período para gerar a versão oficial imutável.</small>
           </div>
         </div>
         <div className={styles.periodoActions}>
-          <button className={styles.optimizeButton}>Exportar / Imprimir</button>
-          <button className={styles.optimizeButton}>Fechar período</button>
+          <button className={styles.primaryButton}>Exportar / Imprimir</button>
+          <button className={styles.primaryButton}>Fechar período</button>
         </div>
       </div>
 
       {/* CLT Compliance Box */}
-      <div className={`${styles.cltBox} ${styles.cltOk}`}>
-        <strong>Escala em conformidade CLT</strong>
-        <span>Validados: interjornada 11h · DSR · máx 44h/sem · máx 10h/dia · máx 6h contínuas (art. 71) · 6 dias consecutivos.</span>
+      <div className={`${styles.cltBox} ${styles.cltOk} ${styles.sectionDivider}`}>
+        <strong style={{ color: '#34d399' }}>Escala em conformidade CLT</strong>
+        <span>✓ Interjornada 11h  ✓ DSR  ✓ Máx 44h/semana  ✓ Máx 10h/dia  ✓ Máx 6h contínuas  ✓ 6 dias consecutivos</span>
         <p style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
           Auditoria baseada na CLT federal. Convenções coletivas locais (CCT dos comerciários) podem ter regras adicionais — valide com seu contador/sindicato.
         </p>
       </div>
 
       {/* Week Comparison Cards */}
-      <div className={styles.weekComparison}>
+      <div className={`${styles.weekComparison} ${styles.sectionDivider}`}>
         <div className={styles.wcCard}>
           <small>Previsão semana</small>
           <strong>—</strong>
@@ -153,15 +167,10 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
           <strong>Conforme</strong>
           <span className={styles.wcDetail}>CLT validado</span>
         </div>
-        <div className={styles.wcCard}>
-          <small>Aderência ponto</small>
-          <strong style={{ color: '#6ee7b7' }}>95%</strong>
-          <span className={styles.wcDetail}>0h real · 0h plan.</span>
-        </div>
       </div>
 
       {/* Week Navigation */}
-      <div className={styles.weekNavBar}>
+      <div className={`${styles.weekNavBar} ${styles.sectionDivider}`}>
         <button className={styles.weekNavBtn} onClick={() => setWeekOffset(weekOffset - 1)}>
           ← Anterior
         </button>
@@ -175,20 +184,7 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
       </div>
 
       {/* Weekly Panel */}
-      <div className={styles.weeklyPanel}>
-        <div style={{ marginBottom: '12px', padding: '12px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-          <div>
-            <h3 style={{ margin: '0 0 6px', fontSize: '15px', fontWeight: '600', color: '#e8eef5' }}>Semana completa por colaboradora</h3>
-            <p style={{ margin: '0', fontSize: '12px', color: '#94a3b8' }}>
-              🔓 abre · 🔒 fecha — meta de 44h e 1 folga a cada 7 dias.
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span className={styles.auditSummary}>{totalColaboradores}/{totalColaboradores} conformes</span>
-            <button className={styles.optimizeButton}>🖨️ Exportar / Imprimir</button>
-          </div>
-        </div>
-
+      <div className={`${styles.weeklyPanel} ${styles.sectionDivider}`}>
         {/* Weekly Grid */}
         <div className={styles.weeklySchedule}>
           <div className={styles.weeklyGrid}>
@@ -303,9 +299,11 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
                   onClick={() => setSelectedScenario(scenario.id)}
                   className={styles.optimizeButton}
                   style={{
-                    background: selectedScenario === scenario.id ? 'rgba(45,212,191,.25)' : 'rgba(59,130,246,.15)',
-                    borderColor: selectedScenario === scenario.id ? '#0369a1' : 'rgba(59,130,246,.3)',
-                    color: selectedScenario === scenario.id ? '#0369a1' : '#0ea5e9'
+                    background: selectedScenario === scenario.id ? '#0ea5e9' : 'rgba(14, 165, 233, 0.12)',
+                    borderColor: selectedScenario === scenario.id ? '#0ea5e9' : 'rgba(14, 165, 233, 0.3)',
+                    color: '#ffffff',
+                    fontSize: '11px',
+                    padding: '4px 8px'
                   }}
                 >
                   {scenario.label.split(' - ')[0]}
@@ -323,11 +321,11 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
               onClick={() => setSelectedDay(dia.toLowerCase())}
               className={styles.optimizeButton}
               style={{
-                background: selectedDay === dia.toLowerCase() ? 'rgba(45,212,191,.25)' : 'rgba(59,130,246,.15)',
-                borderColor: selectedDay === dia.toLowerCase() ? '#0369a1' : 'rgba(59,130,246,.3)',
-                color: selectedDay === dia.toLowerCase() ? '#0369a1' : '#0ea5e9',
-                fontSize: '12px',
-                padding: '6px 10px'
+                background: selectedDay === dia.toLowerCase() ? '#0ea5e9' : 'rgba(14, 165, 233, 0.12)',
+                borderColor: selectedDay === dia.toLowerCase() ? '#0ea5e9' : 'rgba(14, 165, 233, 0.3)',
+                color: '#ffffff',
+                fontSize: '11px',
+                padding: '4px 8px'
               }}
             >
               {dia}
