@@ -95,7 +95,7 @@ export default function App() {
       <Sidebar activeTab={activeTab} onTabChange={handleTabChange} onToggle={handleSidebarToggle} />
 
       <div style={{ marginLeft: sidebarExpanded ? '214px' : '60px', marginTop: '76px', flex: 1, overflow: 'auto', height: 'calc(100vh - 76px)', transition: 'margin-left 0.3s ease' }}>
-        <main style={{ height: '100%' }}>
+        <main style={{ minHeight: '100%' }}>
           {activeTab === 'escala' && <Dashboard token={token} />}
           {activeTab === 'implantacao' && <Implantacao />}
 
@@ -115,6 +115,40 @@ export default function App() {
           )}
         </main>
       </div>
+
+      <footer style={{
+        background: '#0d171e',
+        borderTop: '1px solid rgba(255,255,255,0.08)',
+        padding: '20px 24px',
+        color: '#e8eef5',
+        position: 'relative',
+        zIndex: 1001,
+        height: '76px',
+        display: 'flex',
+        alignItems: 'center'
+      }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '24px',
+          width: '100%'
+        }}>
+          <div style={{ fontSize: '12px' }}>
+            <strong>Contagil Contabilidade</strong>
+          </div>
+
+          <div style={{ display: 'flex', gap: '24px', fontSize: '12px', flex: 1, justifyContent: 'center' }}>
+            <a href="#" style={{ color: '#ffffff', textDecoration: 'none' }}>Documentação</a>
+            <a href="#" style={{ color: '#ffffff', textDecoration: 'none' }}>Contato</a>
+            <a href="https://www.contagilpb.com.br" target="_blank" rel="noopener" style={{ color: '#ffffff', textDecoration: 'none' }}>Contagil</a>
+          </div>
+
+          <div style={{ fontSize: '11px', color: '#64748b', textAlign: 'right', whiteSpace: 'nowrap' }}>
+            © 2026 Escalágil · uma solução Contagil
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

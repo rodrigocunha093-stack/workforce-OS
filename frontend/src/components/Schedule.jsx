@@ -107,46 +107,49 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
       {/* Store Floor Map Panel */}
       <StoreFloorMap schedule={schedule} demand={demand} employees={employees} storeConfig={{ pdvs: 4 }} />
 
-      {/* Semana completa por colaboradora Header */}
-      <div style={{ marginBottom: '12px', padding: '12px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-        <div>
-          <h3 style={{ margin: '0 0 6px', fontSize: '15px', fontWeight: '600', color: '#e8eef5' }}>Semana completa por colaboradora</h3>
-          <p style={{ margin: '0', fontSize: '12px', color: '#94a3b8' }}>
-            44h semanais + 1 folga a cada 7 dias (conforme CLT)
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <span className={styles.auditSummary}>{totalColaboradores}/{totalColaboradores} conformes</span>
-          <button className={styles.primaryButton}>Exportar / Imprimir</button>
-        </div>
-      </div>
+      {/* Weekly Panel - Semana Completa */}
+      <div className={styles.weeklyPanel} style={{ background: 'var(--panel)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px' }}>
 
-      {/* Período Box */}
-      <div className={`${styles.periodoBox} ${styles.periodoAberto} ${styles.sectionDivider}`}>
-        <div>
-          <div className={styles.periodoInfo}>
-            <strong style={{ color: '#f59e0b' }}>RASCUNHO — Escala Dinâmica</strong>
-            <span>Semana de {datas[0].label} a {datas[6].label}</span>
-            <small>Esta escala é recalculada automaticamente. Feche o período para gerar a versão oficial imutável.</small>
+        {/* Panel Head */}
+        <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', paddingBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <div>
+            <h3 style={{ margin: '0 0 6px', fontSize: '15px', fontWeight: '600', color: '#e8eef5' }}>Semana completa por colaboradora</h3>
+            <p style={{ margin: '0', fontSize: '12px', color: '#94a3b8' }}>
+              44h semanais + 1 folga a cada 7 dias (conforme CLT)
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span className={styles.auditSummary}>{totalColaboradores}/{totalColaboradores} conformes</span>
+            <button className={styles.primaryButton}>Exportar / Imprimir</button>
           </div>
         </div>
-        <div className={styles.periodoActions}>
-          <button className={styles.primaryButton}>Exportar / Imprimir</button>
-          <button className={styles.primaryButton}>Fechar período</button>
+
+        {/* Período Box */}
+        <div className={`${styles.periodoBox} ${styles.periodoAberto}`} style={{ marginBottom: '12px' }}>
+          <div>
+            <div className={styles.periodoInfo}>
+              <strong style={{ color: '#f59e0b' }}>RASCUNHO — Escala Dinâmica</strong>
+              <span>Semana de {datas[0].label} a {datas[6].label}</span>
+              <small>Esta escala é recalculada automaticamente. Feche o período para gerar a versão oficial imutável.</small>
+            </div>
+          </div>
+          <div className={styles.periodoActions}>
+            <button className={styles.optimizeButton}>Marcar revisado</button>
+            <button className={styles.primaryButton}>🔒 Fechar período</button>
+          </div>
         </div>
-      </div>
 
-      {/* CLT Compliance Box */}
-      <div className={`${styles.cltBox} ${styles.cltOk} ${styles.sectionDivider}`}>
-        <strong style={{ color: '#34d399' }}>Escala em conformidade CLT</strong>
-        <span>✓ Interjornada 11h  ✓ DSR  ✓ Máx 44h/semana  ✓ Máx 10h/dia  ✓ Máx 6h contínuas  ✓ 6 dias consecutivos</span>
-        <p style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
-          Auditoria baseada na CLT federal. Convenções coletivas locais (CCT dos comerciários) podem ter regras adicionais — valide com seu contador/sindicato.
-        </p>
-      </div>
+        {/* CLT Compliance Box */}
+        <div className={`${styles.cltBox} ${styles.cltOk}`} style={{ marginBottom: '12px' }}>
+          <strong style={{ color: '#34d399' }}>Escala em conformidade CLT</strong>
+          <span>✓ Interjornada 11h  ✓ DSR  ✓ Máx 44h/semana  ✓ Máx 10h/dia  ✓ Máx 6h contínuas  ✓ 6 dias consecutivos</span>
+          <p style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+            Auditoria baseada na CLT federal. Convenções coletivas locais (CCT dos comerciários) podem ter regras adicionais — valide com seu contador/sindicato.
+          </p>
+        </div>
 
-      {/* Week Comparison Cards */}
-      <div className={`${styles.weekComparison} ${styles.sectionDivider}`}>
+        {/* Week Comparison Cards */}
+        <div className={`${styles.weekComparison}`} style={{ marginBottom: '12px' }}>
         <div className={styles.wcCard}>
           <small>Previsão semana</small>
           <strong>—</strong>
@@ -170,7 +173,7 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
       </div>
 
       {/* Week Navigation */}
-      <div className={`${styles.weekNavBar} ${styles.sectionDivider}`}>
+        <div className={styles.weekNavBar}>
         <button className={styles.weekNavBtn} onClick={() => setWeekOffset(weekOffset - 1)}>
           ← Anterior
         </button>
@@ -277,8 +280,10 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
         </div>
       </div>
 
+      </div>
+
       {/* Visual Panel - Demanda VRSoft x Caixas */}
-      <div className={styles.weeklyPanel}>
+      <div className={`${styles.weeklyPanel} ${styles.sectionDivider}`} style={{ background: 'var(--panel)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px' }}>
         <div style={{ marginBottom: '12px', padding: '12px 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '12px', flexWrap: 'wrap' }}>
             <div>
@@ -382,28 +387,6 @@ export default function Schedule({ schedule, demand, employees, periodo }) {
           </div>
         </div>
 
-      </div>
-
-      {/* KPI Cards */}
-      <div className={styles.kpiCards}>
-        <div className={styles.kpiCard}>
-          <span className={styles.kpiLabel}>Total Colaboradores</span>
-          <div className={styles.kpiValue} style={{ color: '#0ea5e9' }}>
-            {totalColaboradores}
-          </div>
-        </div>
-        <div className={styles.kpiCard}>
-          <span className={styles.kpiLabel}>Regime</span>
-          <div className={styles.kpiValue} style={{ color: '#06b6d4' }}>
-            6x1
-          </div>
-        </div>
-        <div className={styles.kpiCard}>
-          <span className={styles.kpiLabel}>Horas Semanais</span>
-          <div className={styles.kpiValue} style={{ color: '#c4b5fd' }}>
-            44h
-          </div>
-        </div>
       </div>
     </div>
   );
