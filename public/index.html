@@ -1,0 +1,705 @@
+﻿<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TáÓtimo! · Inteligência de escala para o varejo</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 46 46'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='46' y2='46' gradientUnits='userSpaceOnUse'%3E%3Cstop stop-color='%2334d399'/%3E%3Cstop offset='.55' stop-color='%232dd4bf'/%3E%3Cstop offset='1' stop-color='%233b82f6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='46' height='46' rx='13' fill='url(%23g)'/%3E%3Cpath d='M16 23.5L21 28.5L31 17.5' stroke='%23fff' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="futuristic.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-logo" aria-label="TáÓtimo">
+        <svg width="46" height="46" viewBox="0 0 46 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="taoGrad" x1="0" y1="0" x2="46" y2="46" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#34d399"/>
+              <stop offset="0.55" stop-color="#2dd4bf"/>
+              <stop offset="1" stop-color="#3b82f6"/>
+            </linearGradient>
+          </defs>
+          <rect width="46" height="46" rx="13" fill="url(#taoGrad)"/>
+          <circle cx="23" cy="23" r="13.5" stroke="#ffffff" stroke-opacity="0.45" stroke-width="2"/>
+          <path d="M16 23.5L21 28.5L31 17.5" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="23" cy="23" r="2.4" fill="#ffffff" fill-opacity="0.9"/>
+        </svg>
+      </span>
+      <div>
+        <h1>Tá<span class="brand-accent">Ótimo!</span> <a href="https://www.contagilpb.com.br" target="_blank" rel="noopener" class="by-contagil">uma solução Contagil</a></h1>
+        <p>Inteligência de escala para o varejo — demanda, jornada, folgas e custos no ponto certo.</p>
+      </div>
+    </div>
+    <div class="top-status">
+      <span id="dataSourceStatus">Verificando fonte de dados...</span>
+      <strong>Junho/2026</strong>
+      <button id="themeToggle" class="theme-toggle" title="Alternar tema claro/escuro" type="button">🌙</button>
+      <button id="openLogin" class="auth-button">Entrar</button>
+      <button id="openRegister" class="auth-button primary">Criar conta</button>
+      <div id="accountMenu" class="account-menu" hidden>
+        <span id="accountName"></span>
+        <button id="logoutButton" class="auth-button">Sair</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <button class="active" data-tab="diagnostico"><span>01</span> Diagnostico</button>
+      <button data-tab="cenarios"><span>02</span> Escala</button>
+      <button data-tab="domingo"><span>03</span> Domingos</button>
+      <button data-tab="auditoria"><span>04</span> Auditoria</button>
+      <button data-tab="acoes"><span>05</span> Controlador</button>
+      <button data-tab="financeiro"><span>06</span> Financeiro</button>
+      <button data-tab="resiliencia"><span>07</span> Resiliencia</button>
+      <button data-tab="setores"><span>08</span> Setores</button>
+      <button data-tab="memoria"><span>09</span> Memoria</button>
+      <button data-tab="implantacao"><span>10</span> Implantacao</button>
+    </aside>
+
+    <main>
+      <section id="diagnostico" class="tab active">
+        <div class="hero-panel">
+          <div>
+            <p class="eyebrow">Diagnóstico executivo</p>
+            <h2>Carregando diagnóstico operacional...</h2>
+            <p id="conclusion"></p>
+          </div>
+          <div class="decision-card">
+            <small>Decisão inicial</small>
+            <strong>Manter equipe e ampliar a análise</strong>
+            <span>Validar com mais semanas de venda, CCT e ponto real.</span>
+          </div>
+        </div>
+
+        <div class="data-strip">
+          <div><small>Última importação VRSoft</small><strong id="lastImport"></strong></div>
+          <div><small>Período analisado</small><strong id="samplePeriod"></strong></div>
+          <div class="confidence"><small>Confiança da análise</small><strong id="confidenceValue"></strong><span><i id="confidenceBar"></i></span></div>
+        </div>
+
+        <article class="panel ops-dashboard-panel">
+          <div class="panel-head">
+            <div>
+              <h3>⚡ Painel Operacional</h3>
+              <p class="note">Indicadores-chave da operação cruzando faturamento, fluxo de caixa e equipe.</p>
+            </div>
+            <div class="ops-period-switch" id="opsPeriodSwitch">
+              <button class="ops-period-btn active" data-period="dia">Dia</button>
+              <button class="ops-period-btn" data-period="semana">Semana</button>
+              <button class="ops-period-btn" data-period="mes">Mês</button>
+            </div>
+          </div>
+          <div id="opsDashboard"></div>
+        </article>
+
+        <div id="kpis" class="kpis"></div>
+
+        <article class="panel enterprise-readiness-panel">
+          <div class="panel-head">
+            <div>
+              <h3>Prontidão enterprise da implantação</h3>
+              <p class="note">Leitura rápida da base, segurança, persistência e nível atual de decisão operacional.</p>
+            </div>
+          </div>
+          <div id="enterpriseReadiness" class="enterprise-readiness-grid"></div>
+        </article>
+
+        <article class="panel weekly-strength-panel">
+          <div class="panel-head">
+            <div>
+              <h3>Semanas observadas do mes</h3>
+              <p class="note">Leitura da forca semanal com base no historico importado, normalizada para semana equivalente de 7 dias.</p>
+            </div>
+          </div>
+          <div id="weeklyMonthAnalysis" class="weekly-strength-grid"></div>
+        </article>
+
+        <article class="panel benchmark-panel">
+          <div class="panel-head">
+            <div>
+              <h3>Referência TáÓtimo!</h3>
+              <p class="note">Régua de maturidade: o que a implantação já cobre e o que precisa evoluir antes de virar produto robusto.</p>
+            </div>
+          </div>
+          <div id="benchmarkGrid" class="benchmark-grid"></div>
+        </article>
+
+        <div class="diagnostic-grid">
+          <article class="panel chart-panel">
+            <div class="panel-head">
+              <div><h3>Demanda x capacidade contratual</h3><p class="note">Períodos distintos, apresentados separadamente para evitar interpretação incorreta.</p></div>
+            </div>
+            <div id="capacityChart" class="capacity-chart"></div>
+          </article>
+          <article class="panel loss-panel">
+            <div class="panel-head"><div><h3>Onde estão as horas reduzidas</h3><p class="note">Impacto esperado ao sair de 44h para 40h.</p></div></div>
+            <div id="lossBreakdown"></div>
+          </article>
+        </div>
+
+        <div class="insight-grid">
+          <article>
+            <span class="tag teal">Operação</span>
+            <h3>Movimento antes do caixa</h3>
+            <p>Antes dos picos de venda, a loja precisa de frente organizada, troco, embalagem, reposição leve e precificação conferida.</p>
+          </article>
+          <article>
+            <span class="tag amber">Gestão de tempo</span>
+            <h3>Intervalos escalonados</h3>
+            <p>Intervalos maiores podem melhorar cobertura, desde que não deixem jornada corrida próxima de 6h e respeitem CLT/CCT.</p>
+          </article>
+          <article>
+            <span class="tag blue">Auditoria</span>
+            <h3>Gerente controlador</h3>
+            <p>O sistema deve sugerir, justificar e registrar ajustes de escala antes de virar folha, banco de horas ou problema de ponto.</p>
+          </article>
+        </div>
+
+        <div class="primary-action">
+          <div><strong>Próxima decisão</strong><span>Gerar uma proposta mensal usando as regras atuais e destacar o que precisa de validação humana.</span></div>
+          <button id="generateSchedule">Gerar escala recomendada</button>
+        </div>
+      </section>
+
+      <section id="cenarios" class="tab">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Comparativo de cenários</p>
+            <h2>Impacto da jornada na capacidade da equipe</h2>
+          </div>
+          <span class="soft-pill">4 operadoras de caixa</span>
+        </div>
+
+        <div class="week-selector-panel">
+          <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+            <label for="weekSelector" style="margin: 0; font-weight: 600;">Analisar por semana do mês:</label>
+            <select id="weekSelector" style="padding: 8px 12px; border-radius: 8px; font-size: 14px;">
+              <option value="">Todos os dados importados (padrão)</option>
+              <option value="1">Semana 1 (1-7) - Normal</option>
+              <option value="2">Semana 2 (8-14) - Normal</option>
+              <option value="3">Semana 3 (15-21) - Normal</option>
+              <option value="4">Semana 4 (22-28) - Promoção Iniciando</option>
+              <option value="5">Semana 5 (29-05) - Pico de Promoção</option>
+            </select>
+            <small id="weekInfo" style="min-width: 200px;"></small>
+          </div>
+        </div>
+
+        <div id="scenarioCards" class="scenario-grid"></div>
+
+        <div class="panel" style="overflow:hidden">
+          <div id="storeFloorMap"></div>
+        </div>
+
+        <div class="panel weekly-panel">
+          <div class="panel-head">
+            <div>
+              <h3>Semana completa por colaboradora</h3>
+              <p id="weeklyScheduleNote" class="note"></p>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <div id="weeklyAuditSummary" class="weekly-audit-summary"></div>
+              <button id="exportSchedule" class="optimize-button" type="button">🖨️ Exportar / Imprimir</button>
+            </div>
+          </div>
+          <div id="weeklySchedule" class="weekly-schedule"></div>
+        </div>
+
+        <div class="panel visual-panel">
+          <div class="panel-head">
+            <div>
+              <h3>Demanda VRSoft x caixas escalados</h3>
+              <p id="coverageNote" class="note"></p>
+            </div>
+            <div class="scenario-filter">
+              <button id="optimizeCoverage" type="button" class="optimize-button" title="Otimização inteligente do TáÓtimo!: aloca caixas nos horários críticos respeitando PDVs e equipe disponível.">Otimização IA · TáÓtimo!</button>
+              <button id="saveOptimization" type="button" class="optimize-button save-optimization" hidden title="Persistir a escala otimizada no banco de dados">Salvar otimização</button>
+              <button class="scenario-filter-button active" data-scenario="atual">6x1 44h</button>
+              <button class="scenario-filter-button" data-scenario="transicao">5x2 42h</button>
+              <button class="scenario-filter-button" data-scenario="final">5x2 40h</button>
+            </div>
+          </div>
+          <div class="toolbar day-toolbar">
+            <button class="day-filter active" data-day="monday">Segunda</button>
+            <button class="day-filter" data-day="tuesday">Terça</button>
+            <button class="day-filter" data-day="wednesday">Quarta</button>
+            <button class="day-filter" data-day="thursday">Quinta</button>
+            <button class="day-filter" data-day="friday">Sexta</button>
+            <button class="day-filter" data-day="saturday">Sábado</button>
+            <button class="day-filter" data-day="sunday">Domingo</button>
+          </div>
+          <div id="coverageSummary" class="coverage-summary"></div>
+          <div id="coverageHeatmap" class="heatmap"></div>
+          <div id="cashierLoadPanel" class="cashier-load-panel"></div>
+          <div class="staff-section">
+            <div class="staff-section-head">
+              <div><h3>Formação individual do dia</h3><p id="staffScheduleNote" class="note"></p></div>
+              <div id="staffDaySummary" class="staff-day-summary"></div>
+            </div>
+            <div id="staffSchedule" class="staff-schedule"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="domingo" class="tab">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Revezamento dominical</p>
+            <h2>Folgas femininas e cobertura mínima no domingo</h2>
+          </div>
+          <span class="soft-pill amber-bg">Regra sujeita a CCT</span>
+        </div>
+        <div id="sundayGrid" class="sunday-grid"></div>
+      </section>
+
+      <section id="auditoria" class="tab">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Auditoria mensal e calendário</p>
+            <h2>Horas, folgas e domingos por colaboradora</h2>
+          </div>
+          <span class="soft-pill">Junho/2026</span>
+        </div>
+        <div id="auditCards" class="audit-grid"></div>
+        <div class="panel calendar-panel">
+          <div class="panel-head">
+            <div><h3>Calendário operacional de junho</h3><p class="note">Clique em um dia para analisar cobertura, riscos e sugestões.</p></div>
+            <div class="calendar-legend"><span class="legend-good">Adequado</span><span class="legend-warn">Atenção</span><span class="legend-bad">Déficit</span><span class="legend-unknown">Sem dados</span></div>
+          </div>
+          <div id="monthCalendar" class="month-calendar"></div>
+        </div>
+      </section>
+
+      <section id="acoes" class="tab">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Controlador</p>
+            <h2>Comissão de decisão da escala</h2>
+          </div>
+          <span class="soft-pill red-bg">Revisão multidisciplinar</span>
+        </div>
+        <!-- Forecast 7 dias -->
+        <article class="panel forecast-panel">
+          <div class="panel-head"><div><h3>Previsão de demanda — 7 dias <span class="new-badge">NOVO</span></h3><p class="note">Decomposição multiplicativa: dia-da-semana × semana-do-mês × evento</p></div></div>
+          <div id="forecast7Container" class="forecast7-grid"></div>
+        </article>
+
+        <!-- Calendário de eventos -->
+        <article class="panel eventos-panel">
+          <div class="panel-head"><div><h3>Calendário de eventos <span class="new-badge">NOVO</span></h3><p class="note">Feriados, promoções e datas especiais que ajustam a previsão de demanda.</p></div></div>
+          <div class="evento-form">
+            <input id="eventoData" type="date">
+            <select id="eventoTipo">
+              <option value="feriado">Feriado (×0.30)</option>
+              <option value="vespera">Véspera (×1.40)</option>
+              <option value="promocao">Promoção (×1.35)</option>
+              <option value="data_comemorativa">Data comemorativa (×1.25)</option>
+              <option value="pagamento">Dia de pagamento (×1.15)</option>
+            </select>
+            <input id="eventoNome" type="text" placeholder="Nome do evento" maxlength="80">
+            <input id="eventoFator" type="number" step="0.05" min="0" max="5" placeholder="Fator">
+            <button id="addEvento" type="button">Adicionar</button>
+          </div>
+          <div id="eventosLista" class="eventos-lista"></div>
+        </article>
+
+        <!-- Escala sugerida -->
+        <article class="panel escala-sugerida-panel">
+          <div class="panel-head"><div><h3>Escala sugerida — próximos 7 dias <span class="new-badge">NOVO</span></h3><p class="note">Quantas pessoas por dia e por setor, baseado no forecast e na necessidade operacional.</p></div></div>
+          <div id="escalaSugeridaContainer" class="escala-sugerida-grid"></div>
+        </article>
+
+        <!-- Controller de Frente de Caixa -->
+        <article class="panel controller-caixa-panel">
+          <div class="panel-head"><div><h3>Controller de Frente de Caixa <span class="new-badge">NOVO</span></h3><p class="note">Comparação realizado × ideal por hora — orientação para abrir, manter ou realocar caixas.</p></div></div>
+          <div id="controllerCaixaContainer"></div>
+        </article>
+
+        <div id="commissionSummary" class="commission-summary"></div>
+        <div class="controller-toolbar">
+          <button class="action-filter active" data-priority="all">Todas</button>
+          <button class="action-filter" data-priority="Crítica">Críticas</button>
+          <button class="action-filter" data-priority="Alta">Altas</button>
+          <button class="action-filter" data-priority="Média">Médias</button>
+        </div>
+        <div id="actions" class="action-grid"></div>
+      </section>
+
+      <section id="financeiro" class="tab">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Primeira fase estratégica</p>
+            <h2>Impacto financeiro da capacidade de mão de obra</h2>
+          </div>
+          <span class="soft-pill amber-bg">Premissas editáveis</span>
+        </div>
+
+        <div class="finance-warning">
+          <strong>Reduzir jornada não significa reduzir folha automaticamente.</strong>
+          <span>O painel separa economia comprovada, capacidade perdida e custo de oportunidade.</span>
+        </div>
+
+        <div class="finance-layout">
+          <aside class="finance-assumptions">
+            <h3>Premissas da simulação</h3>
+            <label>Regime tributário <input id="taxRegimeInput" type="text" readonly></label>
+            <label>Salário-base mensal por operadora <input id="salaryInput" type="number" min="0" step="100"></label>
+            <label>Benefícios mensais por operadora <input id="benefitsInput" type="number" min="0" step="50"></label>
+            <label>Encargos sobre salário - provisório (%) <input id="burdenInput" type="number" min="0" step="1"></label>
+            <label>Faturamento semanal de referência <input id="revenueInput" type="number" min="0" step="1000"></label>
+            <label>Margem bruta estimada (%) <input id="marginInput" type="number" min="0" max="100" step="1"></label>
+            <button id="recalculateFinance">Recalcular impacto</button>
+            <small>Lucro Real não define sozinho os encargos da folha. Substituir os 70% provisórios pelos valores reais importados do Domínio.</small>
+          </aside>
+
+          <div class="finance-content">
+            <div id="financeKpis" class="finance-kpis"></div>
+            <div id="financeScenarios" class="finance-scenarios"></div>
+          </div>
+        </div>
+
+        <div class="panel optimization-savings-panel">
+          <div class="panel-head"><div><h3>💰 Economia com otimização TáÓtimo!</h3><p class="note">Comparação: como a loja operou vs. operação otimizada baseada na demanda real importada.</p></div></div>
+          <div id="optimizationSavings"></div>
+        </div>
+
+        <div class="panel finance-decision-panel">
+          <div class="panel-head"><div><h3>Decisão financeira recomendada</h3><p class="note">Baseada na semana de referência e nas premissas informadas.</p></div></div>
+          <div id="financeDecision"></div>
+        </div>
+      </section>
+
+      <section id="resiliencia" class="tab">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Segunda fase estratégica</p>
+            <h2>A equipe continua funcionando quando alguém falta</h2>
+          </div>
+          <span class="soft-pill amber-bg">Competências a validar</span>
+        </div>
+
+        <div id="resilienceKpis" class="resilience-kpis"></div>
+
+        <div class="resilience-layout">
+          <article class="panel skill-panel">
+            <div class="panel-head">
+              <div><h3>Matriz de competências</h3><p class="note">Níveis iniciais: 1 em treinamento, 2 apta, 3 referência.</p></div>
+            </div>
+            <div id="skillMatrix" class="skill-matrix"></div>
+          </article>
+
+          <article class="panel absence-panel">
+            <div class="panel-head">
+              <div><h3>Simular ausência</h3><p class="note">Teste o impacto operacional antes de publicar a escala.</p></div>
+            </div>
+            <div id="absenceButtons" class="absence-buttons"></div>
+            <div id="absenceResult" class="absence-result"></div>
+          </article>
+        </div>
+
+        <article class="panel resilience-actions-panel">
+          <div class="panel-head"><div><h3>Plano de capacitação e contingência</h3><p class="note">Prioridades geradas pela concentração de conhecimento.</p></div></div>
+          <div id="resilienceActions" class="resilience-actions"></div>
+        </article>
+      </section>
+      <section id="setores" class="tab">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Motor TáÓtimo!</p>
+            <h2>Dimensionamento por setor e producao por hora</h2>
+          </div>
+          <span class="soft-pill">Benchmark inicial calibravel</span>
+        </div>
+
+        <article class="panel setor-dashboard-panel">
+          <div class="panel-head">
+            <div>
+              <h3>📊 ICOS — Carga Operacional por Mercadológico</h3>
+              <p class="note">Equivalente ao ICOC do caixa, mas por grupo mercadológico (Açougue, Bebidas, Limpeza, Cereais, Padaria, FLV...). Cada colaborador é dividido entre os mercadológicos que atende. Mostra venda, produtividade e curva de demanda por dia da semana.</p>
+            </div>
+          </div>
+          <div id="setorDashboard"></div>
+        </article>
+
+        <div id="sectorKpis" class="sector-kpis"></div>
+
+        <article class="panel sector-engine-panel">
+          <div class="panel-head">
+            <div>
+              <h3>5 setores prioritarios da implantação</h3>
+              <p class="note">Comecar pequeno, medir rapido e substituir o benchmark inicial pelo benchmark real da base de clientes.</p>
+            </div>
+          </div>
+          <div id="coreSectors" class="core-sectors"></div>
+        </article>
+
+        <div class="sector-layout">
+          <article class="panel">
+            <div class="panel-head"><div><h3>Exemplo de calculo</h3><p class="note">Transforma volume previsto em horas e escala sugerida.</p></div></div>
+            <div id="sectorExample" class="sector-example"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h3>Evolucao do benchmark</h3><p class="note">Apos 90 dias, o sistema deixa de depender da faixa generica.</p></div></div>
+            <div id="benchmarkEvolution" class="benchmark-evolution"></div>
+          </article>
+        </div>
+
+        <article class="panel sector-library-panel">
+          <div class="panel-head">
+            <div>
+              <h3>Biblioteca de setores</h3>
+              <p class="note">Matriz expandida para supermercados regionais. Use como ponto de partida, nunca como verdade final.</p>
+            </div>
+          </div>
+          <div id="sectorLibrary" class="sector-library"></div>
+        </article>
+      </section>
+
+      <section id="memoria" class="tab">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Decisões explicáveis</p>
+            <h2>Cada recomendação mostra dados, fórmula, confiança e limitação</h2>
+          </div>
+          <span class="soft-pill">Inteligência TáÓtimo! · adaptação regional</span>
+        </div>
+        <div id="operatingPrinciples" class="operating-principles"></div>
+        <div id="decisionMemories" class="decision-memories"></div>
+      </section>
+
+      <section id="implantacao" class="tab">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Começar implantação</p>
+            <h2>Configure a loja e importe os dados necessários para o diagnóstico</h2>
+          </div>
+          <span id="onboardingBadge" class="soft-pill amber-bg">Implantação incompleta</span>
+        </div>
+
+        <div id="onboardingProgress" class="onboarding-progress"></div>
+
+        <div id="dataManagementPanel" class="data-management-panel" style="display:none">
+          <h3>Dados importados</h3>
+          <p class="note">Clique em "Reimportar" para atualizar qualquer fonte. Os dados anteriores serão substituídos.</p>
+          <div class="data-mgmt-grid" id="dataMgmtGrid"></div>
+        </div>
+
+        <article class="panel company-panel">
+          <div class="panel-head">
+            <div>
+              <h3>👥 Equipe da empresa</h3>
+              <p class="note">Compartilhe o código abaixo para que colegas acessem os mesmos dados desta empresa.</p>
+            </div>
+          </div>
+          <div id="companyInfo"></div>
+        </article>
+
+        <article class="panel maturity-panel">
+          <div class="panel-head">
+            <div>
+              <h3>Prontidão da operação</h3>
+              <p class="note">Mostra o que já pode ser usado e o que ainda precisa de dado antes de publicar escala com segurança.</p>
+            </div>
+          </div>
+          <div id="pilotMaturity" class="pilot-maturity"></div>
+        </article>
+
+        <div class="onboarding-layout">
+          <form id="storeSetupForm" class="panel setup-form">
+            <div class="panel-head"><div><h3>1. Empresa e operação</h3><p class="note">Dados usados nos cálculos e relatórios da implantação.</p></div></div>
+            <div class="setup-fields">
+              <label>Empresa <input id="setupCompany" required></label>
+              <label>Loja <input id="setupStore" required></label>
+              <label>Regime tributário
+                <select id="setupTaxRegime"><option>Lucro Real</option><option>Lucro Presumido</option><option>Simples Nacional</option></select>
+              </label>
+              <label>PDVs disponíveis <input id="setupPdvs" type="number" min="1" required></label>
+              <label>Operadores de caixa <input id="setupOperators" type="number" min="1" required></label>
+              <label>Segunda a sexta <input id="setupWeekdayHours" placeholder="07:00-19:00" required></label>
+              <label>Sábado <input id="setupSaturdayHours" placeholder="06:00-19:00" required></label>
+              <label>Operação no domingo
+                <select id="setupSundayOperation">
+                  <option value="aberto">Abre aos domingos</option>
+                  <option value="fechado">Fecha todos os domingos</option>
+                  <option value="parcial">Fecha parte dos domingos</option>
+                </select>
+              </label>
+              <label>Domingos fechados/mês <input id="setupClosedSundays" type="number" min="0" max="5" value="0"></label>
+              <label>Horário de domingo <input id="setupSundayHours" placeholder="08:00-12:00"></label>
+            </div>
+            <button type="submit">Salvar configuração da loja</button>
+          </form>
+
+          <article class="panel import-panel">
+            <div class="panel-head"><div><h3>2. Importar equipe</h3><p class="note">A implantação atual analisa inicialmente as operadoras de caixa.</p></div></div>
+            <div class="import-instructions">
+              <strong>Colunas aceitas</strong>
+              <code>nome;sexo;cargo;setor;horas_semanais;salario</code>
+              <span>Importe a quantidade de operadoras conforme cadastrado na sua operação. Cada operadora alimentará a escala individual.</span>
+            </div>
+            <input id="employeesCsvInput" type="file" accept=".csv,text/csv">
+            <div id="employeesImportPreview" class="import-preview"><span>Nenhum arquivo selecionado.</span></div>
+            <div class="import-actions">
+              <button id="downloadEmployeesTemplate" type="button" class="secondary-button">Baixar modelo</button>
+              <button id="confirmEmployeesImport" type="button" disabled>Importar equipe</button>
+            </div>
+          </article>
+
+          <article class="panel manage-employees-panel">
+            <div class="panel-head"><div><h3>Gerenciar equipe manualmente</h3><p class="note">Adicione, edite ou remova colaboradores um a um — sem precisar de planilha.</p></div></div>
+            <div id="employeesManager"></div>
+          </article>
+
+          <article class="panel import-panel">
+            <div class="panel-head"><div><h3>3. Importar vendas VRSoft</h3><p class="note">Modelo oficial: cupom a cupom para alimentar o ICOC e a escala de caixa.</p></div></div>
+            <div class="import-instructions">
+              <strong>Modelo oficial</strong>
+              <code>id;id_loja;data;numerocupom;matricula;horainicio;horatermino;qtd_itens;qtd_unidades;valor_cupom</code>
+              <span>Esse padrão permite calcular minutos reais de atendimento, itens por cupom, valor e operador por faixa horária.</span>
+            </div>
+            <label class="compact-field">Data inicial do arquivo <input id="salesImportDate" type="date"></label>
+            <label class="compact-field">Dias representados <input id="salesImportDays" type="number" min="1" value="1"></label>
+            <input id="salesCsvInput" type="file">
+            <div id="importPreview" class="import-preview"><span>Nenhum arquivo selecionado.</span></div>
+            <div class="import-actions">
+              <button id="downloadCsvTemplate" type="button" class="secondary-button">Baixar modelo VRSoft</button>
+              <button id="confirmSalesImport" type="button" disabled>Importar dados validados</button>
+            </div>
+          </article>
+
+          <article class="panel import-panel merc-import-panel">
+            <div class="panel-head"><div><h3>4. Importar vendas por mercadológico <span class="new-badge">NOVO</span></h3><p class="note">Vendas por dia e por grupo mercadológico (departamento). Base para dimensionar a escala de cada setor por dados — não só o caixa.</p></div></div>
+            <div class="import-instructions">
+              <strong>Colunas aceitas (padrão do seu sistema)</strong>
+              <code>data;descricao_m1;descricao_m2;qtd_itens;qtd_unidades;valor_total</code>
+              <span>Ex.: 2026-05-01;PERECIVEIS;ACOUGUE;167;127.965;4027.33 — o sistema usa o nível 2 (descricao_m2) e mapeia ao setor operacional: Açougue, Padaria, Hortifruti (FLV), Frios e Laticínios, Congelados e Mercearia. Caixa e Administrativo ficam fora.</span>
+            </div>
+            <input id="mercCsvInput" type="file" accept=".csv,text/csv">
+            <div id="mercImportPreview" class="import-preview"><span>Nenhum arquivo selecionado.</span></div>
+            <div class="import-actions">
+              <button id="downloadMercTemplate" type="button" class="secondary-button">Baixar modelo</button>
+              <button id="confirmMercImport" type="button" disabled>Importar mercadológico</button>
+            </div>
+            <div id="mercResumo" class="merc-resumo"></div>
+          </article>
+
+          <article class="panel import-panel fat-import-panel">
+            <div class="panel-head"><div><h3>5. Importar faturamento diário <span class="new-badge">NOVO</span></h3><p class="note">Histórico de faturamento total da loja por dia. Quanto mais meses, melhor a previsão de demanda — ideal: 12 meses.</p></div></div>
+            <div class="import-instructions">
+              <strong>Colunas aceitas (2 obrigatórias)</strong>
+              <code>data;faturamento</code>
+              <span>Ex.: 2025-06-13;45230.50 — uma linha por dia, com a data no formato AAAA-MM-DD e o faturamento bruto ou líquido total do dia. Aceita separador ; ou , (vírgula). Cabeçalho é opcional.</span>
+            </div>
+            <input id="fatCsvInput" type="file" accept=".csv,.txt,text/csv">
+            <div id="fatImportPreview" class="import-preview"><span>Nenhum arquivo selecionado.</span></div>
+            <div class="import-actions">
+              <button id="downloadFatTemplate" type="button" class="secondary-button">Baixar modelo</button>
+              <button id="confirmFatImport" type="button" disabled>Importar faturamento</button>
+            </div>
+            <div id="fatResumo" class="fat-resumo"></div>
+          </article>
+
+          <article class="panel import-panel timecard-import-panel">
+            <div class="panel-head"><div><h3>6. Importar registros de ponto <span class="new-badge">NOVO</span></h3><p class="note">Registros reais de entrada e saída para comparar planejado × realizado na escala semanal.</p></div></div>
+            <div class="import-instructions">
+              <strong>Colunas aceitas (4 obrigatórias)</strong>
+              <code>nome;data;entrada;saida</code>
+              <span>Ex.: Lucila;2026-06-09;07:02;15:05 — uma linha por batida de ponto. O nome deve corresponder exatamente ao cadastrado na equipe. Formato de hora: HH:MM.</span>
+            </div>
+            <input id="timecardCsvInput" type="file" accept=".csv,.txt,text/csv">
+            <div id="timecardImportPreview" class="import-preview"><span>Nenhum arquivo selecionado.</span></div>
+            <div class="import-actions">
+              <button id="downloadTimecardTemplate" type="button" class="secondary-button">Baixar modelo</button>
+              <button id="confirmTimecardImport" type="button" disabled>Importar ponto</button>
+            </div>
+          </article>
+        </div>
+
+        <article class="panel readiness-panel">
+          <div class="panel-head"><div><h3>4. Prontidão do diagnóstico</h3><p class="note">O sistema deixa claro o que já pode concluir e o que ainda depende de dados.</p></div></div>
+          <div id="readinessChecklist" class="readiness-checklist"></div>
+        </article>
+
+        <article class="panel account-security-panel">
+          <div class="panel-head"><div><h3>5. Segurança e histórico</h3><p class="note">Sessões persistentes, atividades da conta e backups automáticos.</p></div></div>
+          <div id="accountSecuritySummary" class="account-security-summary"></div>
+          <div class="account-controls">
+            <button id="exportAccountData" type="button">Baixar meus dados</button>
+            <button id="openPasswordChange" type="button" class="secondary-button">Alterar senha</button>
+          </div>
+          <div id="accountActivity" class="account-activity"></div>
+        </article>
+      </section>
+    </main>
+  </div>
+  <div id="toast" class="toast"></div>
+  <div id="dayDrawer" class="day-drawer" aria-hidden="true">
+    <button id="closeDayDrawer" class="drawer-close" aria-label="Fechar">×</button>
+    <div id="dayDrawerContent"></div>
+  </div>
+  <div id="drawerBackdrop" class="drawer-backdrop"></div>
+  <div id="authBackdrop" class="auth-backdrop"></div>
+  <section id="authDialog" class="auth-dialog" aria-hidden="true">
+    <button id="closeAuthDialog" class="auth-close" aria-label="Fechar">×</button>
+    <div class="auth-intro">
+      <span class="brand-mark">WO</span>
+      <div><strong>Área do cliente</strong><p>Crie uma conta para cadastrar sua loja em um ambiente próprio, isolado da demonstração.</p></div>
+    </div>
+    <div class="auth-tabs">
+      <button class="active" data-auth-mode="login">Entrar</button>
+      <button data-auth-mode="register">Criar conta</button>
+    </div>
+    <form id="loginForm" class="auth-form">
+      <label>E-mail <input id="loginEmail" type="email" autocomplete="email" required></label>
+      <label>Senha <input id="loginPassword" type="password" autocomplete="current-password" required></label>
+      <button type="submit">Entrar na área do cliente</button>
+    </form>
+    <form id="registerForm" class="auth-form" hidden>
+      <label>Seu nome <input id="registerName" autocomplete="name" required></label>
+      <label>E-mail <input id="registerEmail" type="email" autocomplete="email" required></label>
+      <div class="pilot-invite"><span>Convite de implantação</span><strong>PILOTO-CX-2026</strong></div>
+      <label>Código de convite <input id="registerInvite" autocomplete="off" required></label>
+      <label>Código da empresa <span style="font-weight:400;opacity:0.7">(opcional)</span> <input id="registerCompany" autocomplete="off" placeholder="Ex: EMP-A1B2C3 — deixe vazio para criar nova empresa"></label>
+      <small style="opacity:0.8">Tem um código de empresa? Cole para acessar os dados compartilhados da sua equipe. Vazio = você cria uma nova empresa e recebe um código para convidar colegas.</small>
+      <label>Senha <input id="registerPassword" type="password" minlength="8" autocomplete="new-password" required></label>
+      <small>Mínimo de 8 caracteres. Não envie dados sensíveis antes da validação final da implantação.</small>
+      <button type="submit">Criar conta</button>
+    </form>
+    <p id="authError" class="auth-error"></p>
+  </section>
+  <section id="passwordDialog" class="auth-dialog" aria-hidden="true">
+    <button id="closePasswordDialog" class="auth-close" aria-label="Fechar">×</button>
+    <div class="auth-intro">
+      <span class="brand-mark">WO</span>
+      <div><strong>Alterar senha</strong><p>A alteração encerra as outras sessões da conta.</p></div>
+    </div>
+    <form id="passwordChangeForm" class="auth-form password-change-form">
+      <label>Senha atual <input id="currentPassword" type="password" autocomplete="current-password" required></label>
+      <label>Nova senha <input id="newPassword" type="password" minlength="8" autocomplete="new-password" required></label>
+      <label>Confirmar nova senha <input id="confirmNewPassword" type="password" minlength="8" autocomplete="new-password" required></label>
+      <button type="submit">Salvar nova senha</button>
+    </form>
+    <p id="passwordError" class="auth-error"></p>
+  </section>
+
+  <footer class="app-footer">
+    <div class="app-footer-brand">
+      <span class="footer-logo">
+        <svg width="22" height="22" viewBox="0 0 46 46" fill="none"><defs><linearGradient id="fg" x1="0" y1="0" x2="46" y2="46" gradientUnits="userSpaceOnUse"><stop stop-color="#34d399"/><stop offset=".55" stop-color="#2dd4bf"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs><rect width="46" height="46" rx="13" fill="url(#fg)"/><path d="M16 23.5L21 28.5L31 17.5" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <div>
+        <strong>TáÓtimo!</strong> · uma solução <a href="https://www.contagilpb.com.br" target="_blank" rel="noopener">Contagil</a>
+        <span>Especialistas em Contabilidade para o Varejo</span>
+      </div>
+    </div>
+    <div class="app-footer-links">
+      <a href="https://www.contagilpb.com.br" target="_blank" rel="noopener">contagilpb.com.br</a>
+      <a href="/colaborador.html">Área do colaborador</a>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
