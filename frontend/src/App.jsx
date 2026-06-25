@@ -15,7 +15,10 @@ export default function App() {
 
   useEffect(() => {
     if (token) {
-      setUser({ token });
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
+      }
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     }
 
@@ -25,6 +28,7 @@ export default function App() {
       error => {
         if (error.response?.status === 401) {
           localStorage.removeItem('token');
+          localStorage.removeItem('user');
           setToken(null);
           setUser(null);
         }
@@ -35,8 +39,12 @@ export default function App() {
     return () => axios.interceptors.response.eject(interceptor);
   }, [token]);
 
-  const handleLogin = (newToken) => {
+  const handleLogin = (newToken, userData) => {
     localStorage.setItem('token', newToken);
+    if (userData) {
+      localStorage.setItem('user', JSON.stringify(userData));
+      setUser(userData);
+    }
     setToken(newToken);
   };
 
@@ -88,7 +96,7 @@ export default function App() {
             </h1>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <span style={{ color: '#e8eef5', fontSize: '14px' }}>Bem-vindo</span>
+            <span style={{ color: '#e8eef5', fontSize: '14px' }}>Bem-vindo, {user?.name || 'Usuário'}</span>
             <button
               onClick={handleLogout}
               style={{
