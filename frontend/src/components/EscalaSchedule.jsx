@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import StoreFloorMap from './StoreFloorMap';
 
-export default function EscalaSchedule({ schedule, demand, employees, periodo }) {
+export default function EscalaSchedule({ schedule, demand, employees, periodo, token }) {
   const dias = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
   const diasFull = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 
@@ -9,6 +10,173 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo })
   const [selectedWeek, setSelectedWeek] = useState('');
   const [selectedScenario, setSelectedScenario] = useState('atual');
   const [selectedDay, setSelectedDay] = useState('monday');
+
+  // Workflow state
+  const [workflowStatus, setWorkflowStatus] = useState('rascunho');
+  const [dataInicio, setDataInicio] = useState('');
+  const [dataFim, setDataFim] = useState('');
+  const [closedPeriods, setClosedPeriods] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // Carregar períodos fechados ao montar
+  useEffect(() => {
+    loadClosedPeriods();
+  }, []);
+
+  const loadClosedPeriods = async () => {
+    try {
+      const res = await api.get('/schedule/closed-periods');
+      setClosedPeriods(res.data.periods || []);
+    } catch (err) {
+      console.error('Erro ao carregar períodos:', err);
+    }
+  };
+
+  // Calcula horas de um turno parseando os horários (ex: "08:00-16:00" → 8h)
+  const parseHours = (value) => {
+    if (!value || value === 'Folga') return 0;
+
+    // Extrai todos os blocos de horário (HH:MM-HH:MM)
+    const timeBlocks = value.match(/(\d{2}):(\d{2})-(\d{2}):(\d{2})/g) || [];
+    let totalHours = 0;
+
+    timeBlocks.forEach(block => {
+      const [start, end] = block.split('-');
+      const [startH, startM] = start.split(':').map(Number);
+      const [endH, endM] = end.split(':').map(Number);
+
+      let startTime = startH + startM / 60;
+      let endTime = endH + endM / 60;
+
+      // Se fim < início, assume que passou da meia-noite
+      if (endTime < startTime) endTime += 24;
+
+      totalHours += endTime - startTime;
+    });
+
+    return totalHours;
+  };
+
+  // Formata turno de forma legível e profissional
+  const formatShift = (shift) => {
+    if (!shift || shift === 'Folga') return 'Folga';
+
+    // Extrai blocos de horário, corrigindo minutos inválidos (60+)
+    let cleaned = shift.replace(/(\d{2}):([6-9]\d)/g, (match, hour, min) => {
+      const h = parseInt(hour);
+      return `${String(h + 1).padStart(2, '0')}:00`;
+    });
+
+    const timeBlocks = cleaned.match(/(\d{2}):(\d{2})-(\d{2}):(\d{2})/g) || [];
+
+    if (timeBlocks.length === 1) {
+      // Turno sem pausa
+      return timeBlocks[0];
+    } else if (timeBlocks.length === 2) {
+      // Extrai horários para calcular intervalo
+      const match1 = timeBlocks[0].match(/(\d{2}):(\d{2})-(\d{2}):(\d{2})/);
+      const match2 = timeBlocks[1].match(/(\d{2}):(\d{2})-(\d{2}):(\d{2})/);
+
+      if (match1 && match2) {
+        const fimPrimeiro = `${match1[3]}:${match1[4]}`;
+        const inicioSegundo = `${match2[1]}:${match2[2]}`;
+        const intervalo = `Intervalo ${fimPrimeiro}-${inicioSegundo}`;
+
+        return (
+          <>
+            <div style={{ fontSize: '11px' }}>{timeBlocks[0]} / {timeBlocks[1]}</div>
+            <div style={{ fontSize: '9px', color: 'var(--esc-muted)', marginTop: '2px' }}>{intervalo}</div>
+          </>
+        );
+      }
+    }
+
+    return cleaned;
+  };
+
+  const api = axios.create({
+    baseURL: '/api',
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  });
+
+  // Marcar revisado
+  const handleMarcarRevisado = async () => {
+    try {
+      setLoading(true);
+      const newStatus = workflowStatus === 'revisado' ? 'rascunho' : 'revisado';
+      await api.post('/schedule/status', { status: newStatus });
+      setWorkflowStatus(newStatus);
+    } catch (err) {
+      console.error('Erro:', err);
+      alert('Erro ao atualizar status');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fechar período
+  const handleFecharPeriodo = async () => {
+    const inicio = prompt('Data início (YYYY-MM-DD):');
+    if (!inicio) return;
+
+    const fim = prompt('Data fim (YYYY-MM-DD):');
+    if (!fim) return;
+
+    try {
+      setLoading(true);
+      await api.post('/schedule/fechar', { dataInicio: inicio, dataFim: fim });
+      setWorkflowStatus('publicado');
+      setDataInicio(inicio);
+      setDataFim(fim);
+      alert('Período fechado com sucesso!');
+    } catch (err) {
+      console.error('Erro:', err);
+      alert('Erro ao fechar período');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Exportar
+  const handleExportar = async () => {
+    if (!schedule || Object.keys(schedule).length === 0) {
+      alert('Nenhuma escala gerada para exportar');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const res = await api.post('/schedule/export', { schedule });
+      const win = window.open('', '_blank');
+      win.document.write(res.data);
+      win.document.close();
+    } catch (err) {
+      console.error('Erro:', err);
+      alert('Erro ao exportar');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Reabrir período
+  const handleReabrirPeriodo = async (periodId) => {
+    if (!window.confirm('Reabrir este período? Voltará ao status de rascunho.')) return;
+
+    try {
+      setLoading(true);
+      await api.post('/schedule/reabrir', { periodId });
+      setWorkflowStatus('rascunho');
+      setDataInicio('');
+      setDataFim('');
+      await loadClosedPeriods();
+      alert('Período reabirto com sucesso!');
+    } catch (err) {
+      console.error('Erro:', err);
+      alert('Erro ao reabrir período');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Calcular calendário
   const hoje = new Date();
@@ -171,6 +339,9 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo })
         .esc-weekly-off{background:rgba(255,255,255,.03);border-color:var(--esc-line);color:var(--esc-faint);}
         .esc-shift-main{font-size:12px;}
         .esc-shift-icons{display:flex;gap:4px;font-size:11px;}
+        .esc-role-badge{padding:2px 5px;border-radius:4px;font-size:7px;font-weight:700;text-transform:uppercase;}
+        .esc-role-open{background:rgba(34,197,94,.2);color:#22c55e;border:1px solid rgba(34,197,94,.3);}
+        .esc-role-close{background:rgba(251,146,60,.2);color:#fb923c;border:1px solid rgba(251,146,60,.3);}
 
         .esc-weekly-status{display:flex;align-items:center;justify-content:center;padding:8px;border-radius:10px;
           font-size:11px;font-weight:700;text-align:center;}
@@ -260,7 +431,9 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo })
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <span className="esc-audit-summary">{totalColaboradores}/{totalColaboradores} conformes</span>
-            <button className="esc-btn">Exportar / Imprimir</button>
+            <button className="esc-btn" onClick={handleExportar} disabled={loading}>
+              {loading ? 'Exportando...' : 'Exportar / Imprimir'}
+            </button>
           </div>
         </div>
 
@@ -268,14 +441,34 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo })
         <div className="esc-periodo-box">
           <div>
             <div className="esc-periodo-info">
-              <strong style={{ color: '#fbbf24' }}>RASCUNHO — Escala Dinâmica</strong>
+              <strong style={{ color: workflowStatus === 'publicado' ? '#34d399' : '#fbbf24' }}>
+                {workflowStatus === 'rascunho' && 'RASCUNHO — Escala Dinâmica'}
+                {workflowStatus === 'revisado' && 'REVISADO — Escala Validada'}
+                {workflowStatus === 'publicado' && 'FECHADO — Escala Oficial' + (dataInicio ? ` (${dataInicio} a ${dataFim})` : '')}
+              </strong>
               <span>Semana de {datas[0].label} a {datas[6].label}</span>
-              <small>Esta escala é recalculada automaticamente. Feche o período para gerar a versão oficial imutável.</small>
+              <small>
+                {workflowStatus === 'rascunho' && 'Esta escala é recalculada automaticamente. Revise e feche para gerar versão oficial.'}
+                {workflowStatus === 'revisado' && 'Escala revisada. Feche o período para torná-la imutável.'}
+                {workflowStatus === 'publicado' && 'Escala oficial fechada e imutável.'}
+              </small>
             </div>
           </div>
           <div className="esc-periodo-actions">
-            <button className="esc-ghost">Marcar revisado</button>
-            <button className="esc-btn">🔒 Fechar período</button>
+            <button
+              className="esc-ghost"
+              onClick={handleMarcarRevisado}
+              disabled={loading || workflowStatus === 'publicado'}
+            >
+              {workflowStatus === 'revisado' ? '↩ Voltar para rascunho' : '✓ Marcar revisado'}
+            </button>
+            <button
+              className="esc-btn"
+              onClick={handleFecharPeriodo}
+              disabled={loading || workflowStatus === 'publicado'}
+            >
+              {loading ? 'Fechando...' : '🔒 Fechar período'}
+            </button>
           </div>
         </div>
 
@@ -361,9 +554,9 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo })
           {/* Pessoas */}
           {schedule &&
             Object.entries(schedule).map(([nome, shifts], idx) => {
-              const horasTrabalhadas = shifts.filter((s) => s !== 'Folga').length * 7.33;
+              const horasTrabalhadas = shifts.reduce((sum, shift) => sum + parseHours(shift), 0);
               const folgas = shifts.filter((s) => s === 'Folga').length;
-              const conforme = Math.abs(horasTrabalhadas - 44) < 1 && folgas === 1;
+              const conforme = Math.abs(horasTrabalhadas - 44) < 0.01 && folgas === 1;
 
               return (
                 <div key={idx} className="esc-weekly-row">
@@ -384,11 +577,11 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo })
                         <span className="esc-shift-main">Folga</span>
                       ) : (
                         <>
-                          <span className="esc-shift-main">{shift}</span>
+                          <span className="esc-shift-main">{formatShift(shift)}</span>
                           {shift && (
                             <div className="esc-shift-icons">
-                              {shift.includes('08') && <span title="Abre a loja">🔓</span>}
-                              {shift.includes('20') && <span title="Fecha a loja">🔒</span>}
+                              {shift.includes('08') && <span className="esc-role-badge esc-role-open">ABERTURA</span>}
+                              {shift.includes('20') && <span className="esc-role-badge esc-role-close">FECHAMENTO</span>}
                             </div>
                           )}
                         </>
@@ -408,6 +601,51 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo })
         </div>
 
       </div>
+
+      {/* Histórico de Períodos Fechados */}
+      {closedPeriods.length > 0 && (
+        <div className="esc-panel">
+          <div className="esc-panel-head">
+            <div>
+              <h3>Histórico de períodos fechados</h3>
+              <p>Últimos {closedPeriods.length} períodos — máximo 12 mantidos</p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {closedPeriods.map((period) => (
+              <div
+                key={period.id}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  background: 'var(--esc-surface)',
+                  border: '1px solid var(--esc-line)'
+                }}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <strong style={{ color: '#34d399', fontSize: '13px' }}>{period.label}</strong>
+                  <small style={{ color: 'var(--esc-muted)', fontSize: '11px' }}>
+                    Fechado por {period.closed_by} em{' '}
+                    {new Date(period.closed_at).toLocaleDateString('pt-BR')}
+                  </small>
+                </div>
+                <button
+                  className="esc-ghost"
+                  onClick={() => handleReabrirPeriodo(period.id)}
+                  disabled={loading}
+                  title="Reabrir este período voltará ao status de rascunho"
+                >
+                  ↻ Reabrir
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Visual Panel - Demanda VRSoft x Caixas */}
       <div className="esc-panel">

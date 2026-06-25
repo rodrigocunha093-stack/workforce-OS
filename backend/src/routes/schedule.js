@@ -50,7 +50,10 @@ router.get('/', async (req, res) => {
         quantidadePdvs: 3
       };
 
-      const schedule = generateScheduleByProfile(profile, employees);
+      // Calcular índices de demanda por dia da semana
+      const demandaIndices = calculateDemandaIndicesByDayOfWeek(salesResult.rows);
+
+      const schedule = generateScheduleByProfile(profile, employees, 44, 1, demandaIndices);
 
       // Calcular demanda por hora
       const demandByHour = calculateDemandByHour(salesResult.rows);
@@ -134,6 +137,24 @@ router.get('/demand', async (req, res) => {
   }
 });
 
+function calculateDemandaIndicesByDayOfWeek(salesRows) {
+  const demandByDay = [0, 0, 0, 0, 0, 0, 0]; // seg-dom
+
+  salesRows.forEach(row => {
+    const date = new Date(row.data);
+    const dayOfWeek = (date.getDay() + 6) % 7; // Converte: dom=6 → sun, seg=0, ..., sab=5
+    demandByDay[dayOfWeek] += (row.clientes || row.faturamento || 1);
+  });
+
+  // Calcula índices normalizados (1.0 = média)
+  const totalDemand = demandByDay.reduce((a, b) => a + b, 1); // +1 para evitar divisão por zero
+  const averageDemand = totalDemand / 7;
+
+  return demandByDay.map(demand => {
+    return demand > 0 ? demand / averageDemand : 1.0;
+  });
+}
+
 function calculateDemandByHour(salesRows) {
   const demand = {};
 
@@ -163,6 +184,194 @@ function getPeriodLabel() {
   return `Semana ${week} do mês`;
 }
 
+// POST /api/schedule/status - Marcar revisado/rascunho
+router.post('/status', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Não autenticado' });
 
+    const { status } = req.body;
+    const validStatuses = ['rascunho', 'revisado', 'publicado', 'realizado'];
+
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Status inválido' });
+    }
+
+    const now = new Date().toISOString();
+    const email = req.user.email;
+
+    const result = await pool.query(
+      `INSERT INTO schedule_workflow (user_id, status, updated_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id) DO UPDATE SET status = $2, updated_at = $3
+       RETURNING *`,
+      [userId, status, now]
+    );
+
+    if (status === 'revisado') {
+      await pool.query(
+        `UPDATE schedule_workflow SET reviewed_at = $1, reviewed_by = $2 WHERE user_id = $3`,
+        [now, email, userId]
+      );
+    }
+
+    res.json({ ok: true, workflow: result.rows[0] });
+  } catch (err) {
+    console.error('Erro ao atualizar status:', err);
+    res.status(500).json({ error: 'Erro ao atualizar status' });
+  }
+});
+
+// POST /api/schedule/fechar - Fechar período (criar snapshot imutável)
+router.post('/fechar', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Não autenticado' });
+
+    const { dataInicio, dataFim } = req.body;
+
+    if (!dataInicio || !dataFim) {
+      return res.status(400).json({ error: 'Informe data início e fim' });
+    }
+
+    // Busca escala atual para capturar snapshot
+    const scheduleResult = await pool.query(
+      'SELECT * FROM schedules WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [userId]
+    );
+
+    const scheduleData = scheduleResult.rows[0]?.schedule_data || {};
+    const label = `${dataInicio.split('-').reverse().join('/')} a ${dataFim.split('-').reverse().join('/')}`;
+    const now = new Date().toISOString();
+    const email = req.user.email;
+
+    // Salva snapshot fechado
+    const result = await pool.query(
+      `INSERT INTO schedule_closed_period (user_id, label, data_inicio, data_fim, cenario, schedule_data, closed_at, closed_by)
+       VALUES ($1, $2, $3, $4, 'atual', $5, $6, $7)
+       RETURNING *`,
+      [userId, label, dataInicio, dataFim, scheduleData, now, email]
+    );
+
+    // Atualiza workflow para publicado
+    await pool.query(
+      `UPDATE schedule_workflow SET status = 'publicado', published_at = $1, published_by = $2 WHERE user_id = $3`,
+      [now, email, userId]
+    );
+
+    res.json({ ok: true, closedPeriod: result.rows[0] });
+  } catch (err) {
+    console.error('Erro ao fechar período:', err);
+    res.status(500).json({ error: 'Erro ao fechar período' });
+  }
+});
+
+// GET /api/schedule/closed-periods - Lista períodos fechados (últimos 12)
+router.get('/closed-periods', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Não autenticado' });
+
+    const result = await pool.query(
+      `SELECT * FROM schedule_closed_period WHERE user_id = $1 ORDER BY closed_at DESC LIMIT 12`,
+      [userId]
+    );
+
+    res.json({ periods: result.rows });
+  } catch (err) {
+    console.error('Erro ao buscar períodos:', err);
+    res.status(500).json({ error: 'Erro ao buscar períodos' });
+  }
+});
+
+// POST /api/schedule/reabrir - Reabrir período fechado
+router.post('/reabrir', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Não autenticado' });
+
+    const { periodId } = req.body;
+    if (!periodId) return res.status(400).json({ error: 'Period ID obrigatório' });
+
+    const now = new Date().toISOString();
+    const email = req.user.email;
+
+    // Volta workflow para rascunho
+    await pool.query(
+      `UPDATE schedule_workflow SET status = 'rascunho', updated_at = $1 WHERE user_id = $2`,
+      [now, userId]
+    );
+
+    res.json({ ok: true, message: 'Período reabirto com sucesso' });
+  } catch (err) {
+    console.error('Erro ao reabrir período:', err);
+    res.status(500).json({ error: 'Erro ao reabrir período' });
+  }
+});
+
+// POST /api/schedule/export - Exporta escala em HTML
+router.post('/export', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Não autenticado' });
+
+    const { schedule } = req.body;
+    if (!schedule) return res.status(400).json({ error: 'Escala obrigatória' });
+
+    const diasAbr = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+
+    // Monta tabela HTML
+    const rows = Object.entries(schedule).map(([nome, shifts]) => {
+      if (!Array.isArray(shifts)) return '';
+      return `<tr>
+        <td class="nm">${nome}</td>
+        ${shifts.map(s => {
+          const cleanShift = (s || '').toString().replace(/\s·\s/g, '<br>');
+          return `<td class="${s === 'Folga' ? 'fg' : ''}">${cleanShift}</td>`;
+        }).join('')}
+      </tr>`;
+    }).join('');
+
+    const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Escala de Trabalho</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
+    h1 { font-size: 20px; margin: 0; }
+    h2 { font-size: 13px; color: #555; margin: 4px 0 16px; font-weight: 400; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    th, td { border: 1px solid #ccc; padding: 8px 4px; text-align: center; }
+    th { background: #0d7d6f; color: #fff; font-weight: 700; }
+    td.nm { text-align: left; font-weight: 700; white-space: nowrap; }
+    td.fg { background: #f1f1f1; color: #999; }
+    .ft { margin-top: 16px; font-size: 10px; color: #888; }
+    button { padding: 10px 16px; background: #0d7d6f; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    button:hover { background: #0a6b62; }
+    @media print { button { display: none; } }
+  </style>
+</head>
+<body>
+  <h1>Escala de Trabalho</h1>
+  <h2>Gerado em ${new Date().toLocaleDateString('pt-BR')}</h2>
+
+  <table>
+    <thead><tr><th>Colaborador</th>${diasAbr.map(d => `<th>${d}</th>`).join('')}</tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+
+  <p class="ft">🔓 abre · 🔒 fecha · Folga = descanso. Documento gerado automaticamente — confira a conformidade CLT antes de afixar.</p>
+  <button onclick="window.print()">Imprimir / Salvar PDF</button>
+</body>
+</html>`;
+
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (err) {
+    console.error('Erro ao exportar:', err);
+    res.status(500).json({ error: 'Erro ao exportar escala' });
+  }
+});
 
 module.exports = router;

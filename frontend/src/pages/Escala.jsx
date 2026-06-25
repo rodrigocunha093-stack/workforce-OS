@@ -55,7 +55,7 @@ export default function Escala({ token }) {
   return (
     <div style={{ background: '#0a0e1a', minHeight: '100vh', padding: '25px 28px 38px' }}>
       {schedule && (
-        <EscalaSchedule schedule={schedule.schedule} demand={demand} employees={employees} periodo={schedule.periodo} />
+        <EscalaSchedule schedule={schedule.schedule} demand={demand} employees={employees} periodo={schedule.periodo} token={token} />
       )}
     </div>
   );
