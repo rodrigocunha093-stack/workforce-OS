@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
+import Escala from './pages/Escala';
 import Implantacao from './pages/Implantacao';
 import Sidebar from './components/Sidebar';
 import './index.css';
@@ -120,7 +120,7 @@ export default function App() {
 
       <div style={{ marginLeft: sidebarExpanded ? '214px' : '60px', marginTop: '76px', flex: 1, overflow: 'auto', height: 'calc(100vh - 76px)', transition: 'margin-left 0.3s ease' }}>
         <main style={{ minHeight: '100%' }}>
-          {activeTab === 'escala' && <Dashboard token={token} />}
+          {activeTab === 'escala' && <Escala token={token} />}
           {activeTab === 'implantacao' && <Implantacao />}
 
           {activeTab !== 'escala' && activeTab !== 'implantacao' && (

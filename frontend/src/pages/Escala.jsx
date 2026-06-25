@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import Schedule from '../components/Schedule';
+import EscalaSchedule from '../components/EscalaSchedule';
 
-export default function Dashboard({ token }) {
+export default function Escala({ token }) {
   const [schedule, setSchedule] = useState(null);
   const [demand, setDemand] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -55,7 +55,7 @@ export default function Dashboard({ token }) {
   return (
     <div style={{ background: '#0a0e1a', minHeight: '100vh', padding: '25px 28px 38px' }}>
       {schedule && (
-        <Schedule schedule={schedule.schedule} demand={demand} employees={employees} periodo={schedule.periodo} />
+        <EscalaSchedule schedule={schedule.schedule} demand={demand} employees={employees} periodo={schedule.periodo} />
       )}
     </div>
   );
