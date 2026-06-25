@@ -16,7 +16,23 @@ export default function App() {
   useEffect(() => {
     if (token) {
       setUser({ token });
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     }
+
+    // Interceptor para token expirado
+    const interceptor = axios.interceptors.response.use(
+      response => response,
+      error => {
+        if (error.response?.status === 401) {
+          localStorage.removeItem('token');
+          setToken(null);
+          setUser(null);
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => axios.interceptors.response.eject(interceptor);
   }, [token]);
 
   const handleLogin = (newToken) => {

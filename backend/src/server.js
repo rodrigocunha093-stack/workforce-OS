@@ -21,7 +21,7 @@ app.use((req, res, next) => {
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
       req.user = decoded;
     } catch (err) {
-      console.error('Token inválido');
+      console.error('Token inválido:', err.message);
     }
   }
 
@@ -98,7 +98,7 @@ app.get('/api/employees', async (req, res) => {
     const userId = req.user?.id;
 
     if (!userId) {
-      return res.json([]);
+      return res.status(401).json({ error: 'Token expirado ou inválido. Faça login novamente.' });
     }
 
     const result = await pool.query(
