@@ -1,8 +1,52 @@
 import React, { useState, useRef, useEffect } from 'react';
 
 export default function StoreFloorMap({ schedule = {}, demand = {}, employees = [] }) {
-  const [floorHour, setFloorHour] = useState(8);
-  const [floorDay, setFloorDay] = useState(1);
+  // Constantes de horário
+  const openHour = 8, closeHour = 20;
+
+  // Inicializa com horário real arredondado para meia hora
+  const getInitialTime = () => {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    let roundedHour = minutes >= 30 ? hours + 0.5 : hours;
+    const day = (now.getDay() + 6) % 7; // Converte: dom=0 → 6, seg=1 → 0
+
+    // Valida se loja está aberta - senão começa com horário de abertura
+    if (roundedHour < openHour || roundedHour >= closeHour) {
+      roundedHour = openHour;
+    }
+
+    return { hour: roundedHour, day };
+  };
+
+  const initialTime = getInitialTime();
+  const [floorHour, setFloorHour] = useState(initialTime.hour);
+  const [floorDay, setFloorDay] = useState(initialTime.day);
+
+  // Atualiza a cada 30 minutos em tempo real
+  useEffect(() => {
+    const updateTime = () => {
+      const { hour, day } = getInitialTime();
+      setFloorHour(hour);
+      setFloorDay(day);
+    };
+
+    // Calcula próxima meia hora
+    const now = new Date();
+    const minutes = now.getMinutes();
+    const seconds = now.getSeconds();
+    const msUntilNextHalf = ((30 - (minutes % 30)) * 60 - seconds) * 1000;
+
+    // Aguarda até próxima meia hora
+    const timeout = setTimeout(() => {
+      updateTime();
+      // Depois atualiza a cada 30 minutos (1800000 ms)
+      setInterval(updateTime, 1800000);
+    }, msUntilNextHalf);
+
+    return () => clearTimeout(timeout);
+  }, []);
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedSector, setSelectedSector] = useState(null);
   const timelineRef = useRef(null);
@@ -11,8 +55,21 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
   const DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab', 'Dom'];
   const DAY_LABELS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
   const checkoutCount = employees.filter(e => (e.setor || '').toLowerCase().includes('caixa')).length;
-  const pdvs = Math.max(3, Math.ceil(checkoutCount * 0.75));
-  const openHour = 8, closeHour = 20;
+  const totalPdvs = Math.max(3, Math.ceil(checkoutCount * 0.75));
+
+  // Calcula demanda horária (0-1) para a hora/dia atual
+  const getHourlyDemand = () => {
+    const hourKey = `${String(Math.floor(floorHour)).padStart(2, '0')}:00`;
+    const dayKey = DAYS[floorDay].toLowerCase();
+    const demandValue = demand?.[dayKey]?.[hourKey];
+    return demandValue !== undefined ? demandValue : 0.5; // fallback 50%
+  };
+
+  // PDVs ativos = min(operadores, total PDVs, demanda)
+  // Se demanda < 0.3 abre menos, se > 0.8 abre mais
+  const hourlyDemand = getHourlyDemand();
+  const pdvsOpenedByDemand = Math.max(1, Math.ceil(totalPdvs * hourlyDemand));
+  const pdvs = Math.min(checkoutCount, totalPdvs, pdvsOpenedByDemand);
 
   // Play animation
   useEffect(() => {
@@ -30,7 +87,7 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
       const texts = svgRef.current.querySelectorAll('text');
       texts.forEach(text => {
         const sectorName = text.textContent.trim();
-        const sectors = ['ACOUGUE', 'PADARIA', 'FRIOS', 'HORTI', 'MERCEARIA', 'RECEBIMENTO', 'ESCRITORIO', 'FRENTE DE CAIXA'];
+        const sectors = ['ACOUGUE', 'PADARIA', 'FRIOS', 'HORTI', 'LOJA', 'RECEBIMENTO', 'ESCRITORIO', 'COMERCIAL', 'FRENTE DE CAIXA'];
         if (sectors.includes(sectorName)) {
           text.style.cursor = 'pointer';
           text.style.userSelect = 'none';
@@ -47,50 +104,57 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
   const zoneOf = (employee) => {
     const setor = (employee.setor || '').toLowerCase();
     const cargo = (employee.cargo || '').toLowerCase();
-    const combined = `${setor} ${cargo}`;
-    if (combined.includes('açougue') || combined.includes('acougue')) return 'acougue';
-    if (combined.includes('padaria')) return 'padaria';
-    if (combined.includes('hortifruti')) return 'hortifruti';
-    if (combined.includes('frios')) return 'frios';
-    if (combined.includes('bebida')) return 'bebida';
-    if (combined.includes('caixa') || combined.includes('operador')) return 'checkout';
-    if (combined.includes('mercearia')) return 'gondola';
-    if (combined.includes('administrativa') || combined.includes('escritorio')) return 'escritorio';
-    if (combined.includes('recebimento')) return 'recebimento';
-    return 'gondola';
+    const combined = `${setor} ${cargo}`.normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+    if (combined.includes('acougue') || combined.includes('carnes')) return 'acougue';
+    if (combined.includes('padaria') || combined.includes('confeitaria')) return 'padaria';
+    if (combined.includes('hortifruti') || combined.includes('frutas')) return 'hortifruti';
+    if (combined.includes('frios') || combined.includes('laticinio')) return 'frios';
+    if (combined.includes('recebimento') || combined.includes('estoque') || combined.includes('deposito') || combined.includes('doca') || combined.includes('descarga')) return 'recebimento';
+    if (combined.includes('administrativo') || combined.includes('admin') || combined.includes('escritorio') || combined.includes('rh') || combined.includes('financeiro') || combined.includes('contabil') || combined.includes('dp') || combined.includes('departamento pessoal')) return 'escritorio';
+    if (combined.includes('comercial') || combined.includes('gerente') || combined.includes('fiscal')) return 'comercial';
+    if (combined.includes('mercearia') || combined.includes('gondola') || combined.includes('repositor') || combined.includes('repos')) return 'gondola';
+    if (combined.includes('caixa') || combined.includes('frente') || combined.includes('operador')) return 'checkout';
+    if (!combined) return 'checkout';
+    return 'outro';
   };
 
   const isWorking = (employee) => {
     const shifts = schedule[employee.name] || [];
     const dayShift = shifts[floorDay];
-    if (!dayShift || dayShift === 'Folga') return false;
-    const parts = dayShift.split('·')[0];
-    const times = parts.split('-');
-    if (times.length !== 2) return false;
-    const [h1, m1] = times[0].trim().split(':').map(Number);
-    const [h2, m2] = times[1].trim().split(':').map(Number);
-    const start = h1 + (m1 || 0) / 60;
-    const end = h2 + (m2 || 0) / 60;
-    return floorHour >= start && floorHour < end;
+    const ranges = parseRanges(dayShift);
+    return ranges ? ranges.some(r => floorHour >= r.s && floorHour < r.e) : false;
+  };
+
+  const parseRanges = (shift) => {
+    if (!shift || shift === 'Folga') return null;
+    // Remove "Intervalo HH:MM-HH:MM" se existir
+    const cleaned = shift.replace(/\s*Intervalo\s+\d{2}:\d{2}-\d{2}:\d{2}/, '');
+    // Separa blocos por / ou ·
+    const blocks = cleaned.split(/\/|·/).map(b => b.trim()).filter(b => b);
+    const ranges = [];
+    blocks.forEach(block => {
+      const match = block.match(/(\d{2}):(\d{2})-(\d{2}):(\d{2})/);
+      if (match) {
+        const s = parseInt(match[1]) + parseInt(match[2]) / 60;
+        const e = parseInt(match[3]) + parseInt(match[4]) / 60;
+        if (!isNaN(s) && !isNaN(e)) ranges.push({ s, e });
+      }
+    });
+    return ranges.length ? ranges : null;
   };
 
   const isOnBreak = (employee) => {
     const shifts = schedule[employee.name] || [];
     const dayShift = shifts[floorDay];
-    if (!dayShift) return false;
-    const parts = dayShift.split('·');
-    if (parts.length < 2) return false;
-    const times = parts[0].split('-');
-    if (times.length < 2) return false;
-    const [h1, m1] = times[0].trim().split(':').map(Number);
-    const [h2, m2] = times[1].trim().split(':').map(Number);
-    const end1 = h1 + (m1 || 0) / 60;
-    const start2 = h2 + (m2 || 0) / 60;
-    return floorHour >= end1 && floorHour < start2;
+    const ranges = parseRanges(dayShift);
+    // Intervalo é o gap entre primeiro e segundo bloco (se existem 2+)
+    if (!ranges || ranges.length < 2) return false;
+    return floorHour >= ranges[0].e && floorHour < ranges[1].s;
   };
 
   const TW = 60, TH = 25;
-  const ZC = { checkout: '#2563eb', gondola: '#16a34a', acougue: '#dc2626', padaria: '#ea580c', hortifruti: '#65a30d', frios: '#0891b2', bebida: '#1e40af', recebimento: '#7c2d12', escritorio: '#4c1d95' };
+  const ZC = { checkout: '#2563eb', gondola: '#16a34a', acougue: '#dc2626', padaria: '#ea580c', hortifruti: '#65a30d', frios: '#0891b2', bebida: '#1e40af', recebimento: '#7c2d12', escritorio: '#4c1d95', comercial: '#9333ea', outro: '#64748b' };
 
   const isoX = (gx, gy) => 368 + (gx - gy) * TW / 2;
   const isoY = (gx, gy) => 30 + (gx + gy) * TH / 2;
@@ -131,7 +195,7 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
 
   const isoWorker = (gx, gy, color, name, onBreak) => {
     const x = isoX(gx, gy), y = isoY(gx, gy);
-    const ini = name.split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
+    const ini = name[0].toUpperCase(); // Apenas primeira letra do primeiro nome
     const c = onBreak ? '#9e9e9e' : color;
     const firstName = name.split(' ')[0].slice(0, 8);
     const lblW = firstName.length * 4.2 + 6;
@@ -140,8 +204,8 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     s += `<rect x="${x - 6}" y="${y - 16}" width="12" height="14" rx="3" fill="${c}" stroke="#fff" stroke-width="0.8"/>`;
     s += `<circle cx="${x}" cy="${y - 21}" r="5.5" fill="${c}" stroke="#fff" stroke-width="0.8"/>`;
     s += `<text x="${x}" y="${y - 13}" text-anchor="middle" fill="#fff" font-size="6" font-weight="700" style="font-family:inherit;text-shadow:0 1px 2px rgba(0,0,0,.5)">${ini}</text>`;
-    s += `<rect x="${x - lblW / 2}" y="${y + 3}" width="${lblW}" height="11" rx="3" fill="rgba(0,0,0,.7)" stroke="rgba(255,255,255,.15)" stroke-width="0.4"/>`;
-    s += `<text x="${x}" y="${y + 11}" text-anchor="middle" fill="#e2e8f0" font-size="6.5" font-weight="500" style="font-family:inherit">${firstName}</text>`;
+    s += `<rect x="${x - lblW / 2}" y="${y + 3}" width="${lblW}" height="11" rx="3" fill="${onBreak ? 'rgba(0,0,0,.7)' : 'rgba(255,255,255,.85)'}" stroke="${onBreak ? 'rgba(255,255,255,.15)' : 'rgba(0,0,0,.1)'}" stroke-width="0.4"/>`;
+    s += `<text x="${x}" y="${y + 11}" text-anchor="middle" fill="${onBreak ? '#e2e8f0' : '#1e293b'}" font-size="6.5" font-weight="500" style="font-family:inherit">${firstName}</text>`;
     if (onBreak) s += `<text x="${x}" y="${y - 28}" text-anchor="middle" font-size="9">☕</text>`;
     s += '</g>';
     return s;
@@ -193,6 +257,11 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
         gondola: { necessary: 3, adequate: 2 },
         hortifruti: { necessary: 1, adequate: 1 },
         bebida: { necessary: 1, adequate: 1 },
+        recebimento: { necessary: 2, adequate: 1 },
+        escritorio: { necessary: 1, adequate: 1 },
+        checkout: { necessary: 1, adequate: 1 },
+        comercial: { necessary: 1, adequate: 1 },
+        outro: { necessary: 1, adequate: 0 },
       };
       const req = statusMap[zone];
       if (!req) return 'unknown';
@@ -208,28 +277,35 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     h += isoBox(7.5, 0.5, 4, 1.2, 14, frC, frD, frE) + isoLabel(9.5, 1.3, 'FRIOS', '#fff', 8) + isoStatus(11.3, 0.5, byZone.frios?.length || 0, getZoneStatus('frios', byZone.frios?.length || 0));
     h += isoBox(0.3, 2.5, 1.5, 5.5, 10, '#558b2f', '#33691e', '#1b5e20') + isoLabel(0.8, 4.8, 'HORTI', '#fff', 7) + isoStatus(1.6, 2.5, byZone.hortifruti?.length || 0, getZoneStatus('hortifruti', byZone.hortifruti?.length || 0));
 
-    // Mercearia com gondolas em boxes 3D (prateleiras)
-    h += isoLabel(6, 5, 'MERCEARIA', 'rgba(255,255,255,.4)', 9) + isoStatus(9.3, 3, byZone.gondola?.length || 0, getZoneStatus('gondola', byZone.gondola?.length || 0));
+    // LOJA com gondolas em boxes 3D (prateleiras)
+    h += isoLabel(9, 5.8, 'LOJA', 'rgb(255, 255, 255)', 8) + isoStatus(9.1, 5.6, byZone.gondola?.length || 0, getZoneStatus('gondola', byZone.gondola?.length || 0));
     for (let row = 0; row < 3; row++) {
       for (let col = 0; col < 6; col++) {
         const gx = 3 + col * 0.9;
-        const gy = 3 + row * 2.2;
+        const gy = 3.4 + row * 2.0;
         const colors = ['#e57373', '#64b5f6', '#fff176', '#81c784', '#ce93d8', '#ffb74d'];
         h += isoRect(gx, gy + 0.15, 0.7, 0.5, colors[col], null, 0.6);
       }
     }
 
+    // Corredores entre fileiras da LOJA (onde funcionários transitam)
+    for (let row = 0; row < 3; row++) {
+      const corridorY = 3.3+ row * 2.0;
+      h += isoBox(3, corridorY, 5.2, 0.25, 30, '#a8a8a7', '#464646', '#2c2b2b');
+    }
+
     // movimento x, movimento y, aumenta diminui x, aumenta diminui y, aumenta diminui altura
     // Bebidas
-    h += isoBox(11.3, 6.2, 0.7, 4.2, 60, beC, beD, beE) + isoLabel(10.6, 6.8, 'BEBIDAS', '#fff', 7);
+
+    // h += isoBox(10.3, 6.2, 0.7, 4.2, 10, beC, beD, beE) + isoLabel(10.6, 6.8, 'BEBIDAS', '#fff', 7);
 
     // Recebimento (doca) - fora, ao lado do escritório
-    h += isoBox(13.5, 5, 3.5, 7.2, 20, rcC, rcD, rcE) + isoLabel(14.75, 7.8, 'RECEBIMENTO', '#fff', 7);
+    h += isoBox(13.5, 5, 3.5, 7.2, 20, rcC, rcD, rcE) + isoLabel(14.75, 7.8, 'RECEBIMENTO', '#fff', 7) + isoStatus(14.75, 4.8, byZone.recebimento?.length || 0, getZoneStatus('recebimento', byZone.recebimento?.length || 0));
     h += isoRect(15.8, 5, 0.9, 0.4, '#555', 'rgba(0,0,0,.2)', 0.7);
     h += `<text x="${isoX(16.3, 5)}" y="${isoY(16.3, 6) - 7}" text-anchor="middle" fill="rgba(255,255,255,.4)" font-size="7" style="font-family:inherit">🚚</text>`;
 
     // Escritório
-    h += isoBox(13, 0.5, 4, 3.5, 80, ofC, ofD, ofE) + isoLabel(12.3, - 0.4, 'ESCRITORIO', '#fff', 8);
+    h += isoBox(13, 0.5, 4, 3.5, 80, ofC, ofD, ofE) + isoLabel(12.3, - 0.4, 'ESCRITORIO', '#fff', 8) + isoStatus(15, 0.3, byZone.escritorio?.length || 0, getZoneStatus('escritorio', byZone.escritorio?.length || 0));
     // h += `<line x1="${isoX(13, 3)}" y1="${isoY(13, 3) - 7}" x2="${isoX(12.3, 3.2)}" y2="${isoY(12.3, 3.2)}" stroke="rgba(255,255,255,.15)" stroke-width="1" stroke-dasharray="4,3"/>`;
     h += isoRect(13.5, 1.5, 0.8, 0.5, '#2d2760', null, 0.4);
     h += isoRect(15.5, 1.5, 0.8, 0.5, '#2d2760', null, 0.4);
@@ -273,7 +349,7 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
       h += isoLabel(gx + pdvSp * 0.35, 10.7, `PDV ${i + 1}`, act ? '#a5d6a7' : '#555', 6);
     }
 
-    h += isoLabel(6, 11.5, 'FRENTE DE CAIXA', 'rgba(255,255,255,.35)', 9);
+    h += isoLabel(6, 11.5, 'FRENTE DE CAIXA', 'rgba(255,255,255,.35)', 9) + isoStatus(6, 11.2, byZone.checkout?.length || 0, getZoneStatus('checkout', byZone.checkout?.length || 0));
     h += `<text x="${isoX(6, 12)}" y="${isoY(6, 12) + 14}" text-anchor="middle" fill="rgba(255,255,255,.3)" font-size="9" style="font-family:inherit"><tspan style="font-size:14px">↑</tspan> ENTRADA</text>`;
 
     return h;
@@ -287,9 +363,10 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
       'PADARIA': { x: 4, y: 0.5, w: 3, h: 1.5, ht: 12, mtC: '#453520', mtD: '#3a2a18', mtE: '#2e2010', zone: 'padaria' },
       'FRIOS': { x: 7.5, y: 0.5, w: 4, h: 1.2, ht: 14, mtC: '#1a3545', mtD: '#15303e', mtE: '#102530', zone: 'frios' },
       'HORTI': { x: 0.3, y: 2.5, w: 1.5, h: 3, ht: 10, mtC: '#558b2f', mtD: '#33691e', mtE: '#1b5e20', zone: 'hortifruti' },
-      'MERCEARIA': { x: 3, y: 3, w: 6, h: 2.2, ht: 12, mtC: '#3a3530', mtD: '#2d2820', mtE: '#221e18', zone: 'gondola' },
+      'LOJA': { x: 3, y: 3, w: 6, h: 2.2, ht: 12, mtC: '#3a3530', mtD: '#2d2820', mtE: '#221e18', zone: 'gondola' },
       'RECEBIMENTO': { x: 13.5, y: 5, w: 3.5, h: 7.2, ht: 20, mtC: '#3d2a1a', mtD: '#2e1f12', mtE: '#1e150c', zone: 'recebimento' },
       'ESCRITORIO': { x: 13, y: 0.5, w: 4, h: 3.5, ht: 80, mtC: '#1e1b4b', mtD: '#1a1740', mtE: '#151030', zone: 'escritorio' },
+      'COMERCIAL': { x: 13, y: 4, w: 4, h: 2, ht: 60, mtC: '#7c1f7e', mtD: '#6b1b6d', mtE: '#55145a', zone: 'comercial' },
       'FRENTE DE CAIXA': { x: 0.5, y: 0.5, w: 11, h: 11, ht: 20, mtC: '#1a4a2a', mtD: '#144020', mtE: '#0e3018', zone: 'checkout' }
     };
 
@@ -347,7 +424,10 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
   const activeCount = employees.filter(e => isWorking(e)).length;
   const checkoutActive = employees.filter(e => zoneOf(e) === 'checkout' && isWorking(e)).length;
   const onBreakCount = employees.filter(e => isOnBreak(e)).length;
-  const offCount = employees.filter(e => !isWorking(e) && !isOnBreak(e)).length;
+  const offCount = employees.filter(e => {
+    const dayShift = schedule[e.name]?.[floorDay];
+    return !dayShift || dayShift === 'Folga';
+  }).length;
 
   const handleTimelineClick = (e) => {
     if (!timelineRef.current) return;
@@ -446,27 +526,78 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
 
       </div>
 
-      {/* Métricas */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
+      {/* Métricas Gerais */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: '6px', marginBottom: '8px' }}>
+        {/* No piso */}
         <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
-          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Salão</p>
-          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{activeCount - (employees.filter(e => zoneOf(e) === 'escritorio' && isWorking(e)).length || 0)}</p>
+          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>No piso</p>
+          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{activeCount - (employees.filter(e => {
+            const z = zoneOf(e);
+            return (z === 'escritorio' || z === 'comercial') && isWorking(e);
+          }).length || 0)}</p>
         </div>
-        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
-          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>PDVs</p>
-          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{checkoutActive}/{pdvs}</p>
-        </div>
+
+        {/* Intervalo */}
         <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
           <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Intervalo</p>
           <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{onBreakCount}</p>
         </div>
+
+        {/* Folga */}
         <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
           <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Folga</p>
           <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{offCount}</p>
         </div>
+
+        {/* Total */}
         <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
           <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Total</p>
           <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{activeCount}/{employees.length}</p>
+        </div>
+      </div>
+
+      {/* Funcionários por Setor */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: '6px' }}>
+        {/* Caixa */}
+        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
+          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Caixa</p>
+          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{employees.filter(e => zoneOf(e) === 'checkout' && isWorking(e)).length}/{pdvs}</p>
+        </div>
+
+        {/* Loja */}
+        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
+          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Loja</p>
+          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{employees.filter(e => zoneOf(e) === 'gondola' && isWorking(e)).length}</p>
+        </div>
+
+        {/* Açougue */}
+        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
+          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Açougue</p>
+          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{employees.filter(e => zoneOf(e) === 'acougue' && isWorking(e)).length}</p>
+        </div>
+
+        {/* Padaria */}
+        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
+          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Padaria</p>
+          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{employees.filter(e => zoneOf(e) === 'padaria' && isWorking(e)).length}</p>
+        </div>
+
+        {/* Hortifruti */}
+        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
+          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Horti</p>
+          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{employees.filter(e => zoneOf(e) === 'hortifruti' && isWorking(e)).length}</p>
+        </div>
+
+        {/* Frios */}
+        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
+          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Frios</p>
+          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{employees.filter(e => zoneOf(e) === 'frios' && isWorking(e)).length}</p>
+        </div>
+
+        {/* Recebimento */}
+        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
+          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Recebimento</p>
+          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{employees.filter(e => zoneOf(e) === 'recebimento' && isWorking(e)).length}</p>
         </div>
       </div>
 

@@ -17,6 +17,7 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
   const [dataFim, setDataFim] = useState('');
   const [closedPeriods, setClosedPeriods] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [selectedSector, setSelectedSector] = useState('Geral');
 
   // Carregar períodos fechados ao montar
   useEffect(() => {
@@ -31,6 +32,53 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
       console.error('Erro ao carregar períodos:', err);
     }
   };
+
+  // Mapeamento de setores
+  const getSectorFromEmployee = (employee) => {
+    const setor = (employee.setor || '').toLowerCase();
+    const cargo = (employee.cargo || '').toLowerCase();
+    const combined = `${setor} ${cargo}`;
+    if (combined.includes('caixa') || combined.includes('operador')) return 'Caixa';
+    if (combined.includes('açougue') || combined.includes('acougue')) return 'Açougue';
+    if (combined.includes('padaria')) return 'Padaria';
+    if (combined.includes('hortifruti')) return 'Hortifruti';
+    if (combined.includes('frios')) return 'Frios';
+    if (combined.includes('LOJA') || combined.includes('mercearia') || combined.includes('gondola')) return 'Loja';
+    if (combined.includes('recebimento')) return 'Recebimento';
+    if (combined.includes('administrativa') || combined.includes('escritorio')) return 'Escritório';
+    if (combined.includes('comercial') || combined.includes('gerente') || combined.includes('fiscal')) return 'Comercial';
+    return 'Caixa';
+  };
+
+  // Obtém lista única de setores dos employees
+  const setores = Array.from(new Set(employees.map(getSectorFromEmployee))).sort();
+
+  // Filtra employees pelo setor selecionado
+  const filteredEmployees = selectedSector === 'Geral'
+    ? employees
+    : employees.filter(e => getSectorFromEmployee(e) === selectedSector);
+
+  // Calcula quantos colaboradores estão conformes (44h + 1 folga)
+  const conformesCount = filteredEmployees.filter(emp => {
+    const shifts = schedule[emp.name] || [];
+    const horas = shifts.reduce((sum, shift) => {
+      if (!shift || shift === 'Folga') return sum;
+      const blocks = shift.match(/(\d{2}):(\d{2})-(\d{2}):(\d{2})/g) || [];
+      let total = 0;
+      blocks.forEach(block => {
+        const [start, end] = block.split('-');
+        const [h1, m1] = start.split(':').map(Number);
+        const [h2, m2] = end.split(':').map(Number);
+        let startTime = h1 + m1 / 60;
+        let endTime = h2 + m2 / 60;
+        if (endTime < startTime) endTime += 24;
+        total += endTime - startTime;
+      });
+      return sum + total;
+    }, 0);
+    const folgas = shifts.filter(s => s === 'Folga').length;
+    return Math.abs(horas - 44) < 0.01 && folgas === 1;
+  }).length;
 
   // Calcula horas de um turno parseando os horários (ex: "08:00-16:00" → 8h)
   const parseHours = (value) => {
@@ -246,6 +294,12 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
           outline:none;transition:.16s;
         }
         .esc-select:focus{border-color:var(--esc-accent-2);box-shadow:0 0 0 3px rgba(59,130,246,.18);}
+        .esc-select option{
+          background:#16233a;color:#eef2f8;padding:8px;border:none;
+        }
+        .esc-select option:checked{
+          background:var(--esc-accent);color:#fff;
+        }
         .esc-week-hint{min-width:200px;font-size:12.5px;color:var(--esc-muted);}
 
         /* ---------- Scenario Cards ---------- */
@@ -429,8 +483,19 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
             <h3>Semana completa por colaboradora</h3>
             <p>44h semanais + 1 folga a cada 7 dias (conforme CLT)</p>
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span className="esc-audit-summary">{totalColaboradores}/{totalColaboradores} conformes</span>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <select
+              className="esc-select"
+              value={selectedSector}
+              onChange={(e) => setSelectedSector(e.target.value)}
+              style={{ minWidth: '140px' }}
+            >
+              <option value="Geral">Todos os setores</option>
+              {setores.map(setor => (
+                <option key={setor} value={setor}>{setor}</option>
+              ))}
+            </select>
+            <span className="esc-audit-summary">{conformesCount}/{filteredEmployees.length} conformes{selectedSector !== 'Geral' && ` (${selectedSector})`}</span>
             <button className="esc-btn" onClick={handleExportar} disabled={loading}>
               {loading ? 'Exportando...' : 'Exportar / Imprimir'}
             </button>
@@ -553,7 +618,8 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
 
           {/* Pessoas */}
           {schedule &&
-            Object.entries(schedule).map(([nome, shifts], idx) => {
+            filteredEmployees.map((emp, idx) => {
+              const shifts = schedule[emp.name] || [];
               const horasTrabalhadas = shifts.reduce((sum, shift) => sum + parseHours(shift), 0);
               const folgas = shifts.filter((s) => s === 'Folga').length;
               const conforme = Math.abs(horasTrabalhadas - 44) < 0.01 && folgas === 1;
@@ -561,9 +627,9 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
               return (
                 <div key={idx} className="esc-weekly-row">
                   <div className="esc-weekly-person">
-                    <span className="esc-person-name">{nome}</span>
+                    <span className="esc-person-name">{emp.name}</span>
                     <span className="esc-person-details">
-                      {horasTrabalhadas.toFixed(1)}h trab. · {folgas} folga{folgas > 1 ? 's' : ''}
+                      {getSectorFromEmployee(emp)} · {horasTrabalhadas.toFixed(1)}h trab. · {folgas} folga{folgas > 1 ? 's' : ''}
                     </span>
                   </div>
                   {shifts.map((shift, dayIdx) => (
