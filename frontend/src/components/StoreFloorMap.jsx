@@ -1,8 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
+import './StoreFloorMap.responsive.css';
 
-export default function StoreFloorMap({ schedule = {}, demand = {}, employees = [] }) {
-  // Constantes de horário
-  const openHour = 8, closeHour = 20;
+export default function StoreFloorMap({ schedule = {}, demand = {}, employees = [], storeHours = {}, storeConfig = {} }) {
+  // Constantes de horário - agora recebe da loja do usuário
+  const parseHour = (timeStr) => {
+    const [hours] = (timeStr || '08:00').split(':');
+    return parseInt(hours);
+  };
+
+  const openHour = parseHour(storeHours.openTime || '08:00');
+  const closeHour = parseHour(storeHours.closeTime || '20:00');
 
   // Inicializa com horário real arredondado para meia hora
   const getInitialTime = () => {
@@ -49,13 +56,15 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
   }, []);
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedSector, setSelectedSector] = useState(null);
+  const [hoveredWorker, setHoveredWorker] = useState(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const timelineRef = useRef(null);
   const svgRef = useRef(null);
 
   const DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab', 'Dom'];
   const DAY_LABELS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
   const checkoutCount = employees.filter(e => (e.setor || '').toLowerCase().includes('caixa')).length;
-  const totalPdvs = Math.max(3, Math.ceil(checkoutCount * 0.75));
+  const totalPdvs = storeConfig?.pdvs || 3;
 
   // Calcula demanda horária (0-1) para a hora/dia atual
   const getHourlyDemand = () => {
@@ -80,10 +89,14 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     return () => clearInterval(timer);
   }, [isPlaying]);
 
-  // Add click listeners to sectors
+  // Add click listeners to sectors and hover listeners to workers
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!svgRef.current) return;
+
+      const svgContainer = svgRef.current.parentElement;
+
+      // Sector click listeners
       const texts = svgRef.current.querySelectorAll('text');
       texts.forEach(text => {
         const sectorName = text.textContent.trim();
@@ -97,6 +110,36 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
           };
         }
       });
+
+      // Single mousemove listener on SVG for all workers
+      const handleSvgMouseMove = (e) => {
+        const target = e.target.closest('.worker-icon');
+        const rect = svgContainer.getBoundingClientRect();
+        const posX = e.clientX - rect.left;
+        const posY = e.clientY - rect.top;
+
+        if (target) {
+          const name = target.getAttribute('data-worker-name');
+          const cargo = target.getAttribute('data-worker-cargo');
+          const setor = target.getAttribute('data-worker-setor');
+          setHoveredWorker({ name, cargo, setor });
+          setTooltipPos({ x: posX, y: posY });
+        } else {
+          setHoveredWorker(null);
+        }
+      };
+
+      const handleSvgMouseLeave = () => {
+        setHoveredWorker(null);
+      };
+
+      svgRef.current.addEventListener('mousemove', handleSvgMouseMove);
+      svgRef.current.addEventListener('mouseleave', handleSvgMouseLeave);
+
+      return () => {
+        svgRef.current?.removeEventListener('mousemove', handleSvgMouseMove);
+        svgRef.current?.removeEventListener('mouseleave', handleSvgMouseLeave);
+      };
     }, 100);
     return () => clearTimeout(timer);
   }, [floorHour, floorDay, selectedSector]);
@@ -193,13 +236,19 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     return `<circle cx="${x}" cy="${y - 18}" r="6" fill="${c}" stroke="#fff" stroke-width="1"/><text x="${x}" y="${y - 15}" text-anchor="middle" fill="#fff" font-size="7" font-weight="700" style="font-family:inherit">${count}</text>`;
   };
 
-  const isoWorker = (gx, gy, color, name, onBreak) => {
+  const isoWorker = (gx, gy, color, worker, onBreak) => {
     const x = isoX(gx, gy), y = isoY(gx, gy);
-    const ini = name[0].toUpperCase(); // Apenas primeira letra do primeiro nome
+    const name = typeof worker === 'string' ? worker : worker.name;
+    const setor = typeof worker === 'string' ? '' : (worker.setor || '');
+    const cargo = typeof worker === 'string' ? '' : (worker.cargo || '');
+    const workerId = typeof worker === 'string' ? name.replace(/\s+/g, '-') : `${worker.name.replace(/\s+/g, '-')}-${Math.random()}`;
+
+    const ini = name[0].toUpperCase();
     const c = onBreak ? '#9e9e9e' : color;
     const firstName = name.split(' ')[0].slice(0, 8);
     const lblW = firstName.length * 4.2 + 6;
-    let s = `<g style="cursor:pointer">`;
+
+    let s = `<g style="cursor:pointer" class="worker-icon" data-worker-id="${workerId}" data-worker-name="${name}" data-worker-cargo="${cargo}" data-worker-setor="${setor}" data-worker-x="${x}" data-worker-y="${y}">`;
     s += `<ellipse cx="${x}" cy="${y + 2}" rx="8" ry="4" fill="rgba(0,0,0,.2)"/>`;
     s += `<rect x="${x - 6}" y="${y - 16}" width="12" height="14" rx="3" fill="${c}" stroke="#fff" stroke-width="0.8"/>`;
     s += `<circle cx="${x}" cy="${y - 21}" r="5.5" fill="${c}" stroke="#fff" stroke-width="0.8"/>`;
@@ -359,15 +408,58 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     if (!selectedSector) return svg();
 
     const sectorConfig = {
-      'ACOUGUE': { x: 0.5, y: 0.5, w: 3, h: 1.5, ht: 12, mtC: '#451a1a', mtD: '#3a1515', mtE: '#2e1010', zone: 'acougue' },
-      'PADARIA': { x: 4, y: 0.5, w: 3, h: 1.5, ht: 12, mtC: '#453520', mtD: '#3a2a18', mtE: '#2e2010', zone: 'padaria' },
-      'FRIOS': { x: 7.5, y: 0.5, w: 4, h: 1.2, ht: 14, mtC: '#1a3545', mtD: '#15303e', mtE: '#102530', zone: 'frios' },
-      'HORTI': { x: 0.3, y: 2.5, w: 1.5, h: 3, ht: 10, mtC: '#558b2f', mtD: '#33691e', mtE: '#1b5e20', zone: 'hortifruti' },
-      'LOJA': { x: 3, y: 3, w: 6, h: 2.2, ht: 12, mtC: '#3a3530', mtD: '#2d2820', mtE: '#221e18', zone: 'gondola' },
-      'RECEBIMENTO': { x: 13.5, y: 5, w: 3.5, h: 7.2, ht: 20, mtC: '#3d2a1a', mtD: '#2e1f12', mtE: '#1e150c', zone: 'recebimento' },
-      'ESCRITORIO': { x: 13, y: 0.5, w: 4, h: 3.5, ht: 80, mtC: '#1e1b4b', mtD: '#1a1740', mtE: '#151030', zone: 'escritorio' },
-      'COMERCIAL': { x: 13, y: 4, w: 4, h: 2, ht: 60, mtC: '#7c1f7e', mtD: '#6b1b6d', mtE: '#55145a', zone: 'comercial' },
-      'FRENTE DE CAIXA': { x: 0.5, y: 0.5, w: 11, h: 11, ht: 20, mtC: '#1a4a2a', mtD: '#144020', mtE: '#0e3018', zone: 'checkout' }
+      'ACOUGUE': {
+        boxes: [{ x: 0.5, y: 0.5, w: 3, h: 1.5, ht: 12, mtC: '#451a1a', mtD: '#3a1515', mtE: '#2e1010' }],
+        zone: 'acougue'
+      },
+      'PADARIA': {
+        boxes: [{ x: 4, y: 0.5, w: 3, h: 1.5, ht: 12, mtC: '#453520', mtD: '#3a2a18', mtE: '#2e2010' }],
+        zone: 'padaria'
+      },
+      'FRIOS': {
+        boxes: [{ x: 7.5, y: 0.5, w: 4, h: 1.2, ht: 14, mtC: '#1a3545', mtD: '#15303e', mtE: '#102530' }],
+        zone: 'frios'
+      },
+      'HORTI': {
+        boxes: [{ x: 0, y: 0, w: 8.5, h: 11.99, ht: 10, mtC: '#558b2f', mtD: '#33691e', mtE: '#1b5e20' },  
+
+                { x: 11, y: 0.1, w: 0.5, h: 11.99, ht: 50, mtC: '#525252', mtD: '#1c1d1b', mtE: '#4c4d4c' }
+              
+                ], 
+        zone: 'hortifruti'
+      },
+      'LOJA': {
+        boxes: [{ x: 2, y: 1, w: 4, h: 0.30, ht: 40, mtC: '#a8a8a7', mtD: '#464646', mtE: '#2c2b2b' },
+                { x: 7, y: 1, w: 4, h: 0.30, ht: 40, mtC: '#a8a8a7', mtD: '#464646', mtE: '#2c2b2b' },
+                { x: 2, y: 3, w: 4, h: 0.30, ht: 40, mtC: '#a8a8a7', mtD: '#464646', mtE: '#2c2b2b' },
+                { x: 7, y: 3, w: 4, h: 0.30, ht: 40, mtC: '#a8a8a7', mtD: '#464646', mtE: '#2c2b2b' },
+                { x: 2, y: 5, w: 4, h: 0.30, ht: 40, mtC: '#a8a8a7', mtD: '#464646', mtE: '#2c2b2b' },
+                { x: 7, y: 5, w: 4, h: 0.30, ht: 40, mtC: '#a8a8a7', mtD: '#464646', mtE: '#2c2b2b' },
+                { x: 2, y: 7, w: 4, h: 0.30, ht: 40, mtC: '#a8a8a7', mtD: '#464646', mtE: '#2c2b2b' },
+                { x: 7, y: 7, w: 4, h: 0.30, ht: 40, mtC: '#a8a8a7', mtD: '#464646', mtE: '#2c2b2b' },
+                { x: 2, y: 9, w: 4, h: 0.30, ht: 40, mtC: '#a8a8a7', mtD: '#464646', mtE: '#2c2b2b' },
+                { x: 7, y: 9, w: 4, h: 0.30, ht: 40, mtC: '#a8a8a7', mtD: '#464646', mtE: '#2c2b2b' },
+                { x: 2, y: 11, w: 4, h: 0.30, ht: 40, mtC: '#a8a8a7', mtD: '#464646', mtE: '#2c2b2b' },
+                { x: 7, y: 11, w: 4, h: 0.30, ht: 40, mtC: '#a8a8a7', mtD: '#464646', mtE: '#2c2b2b' },
+        ],
+        zone: 'gondola'
+      },
+      'RECEBIMENTO': {
+        boxes: [{ x: 13.5, y: 5, w: 3.5, h: 7.2, ht: 20, mtC: '#3d2a1a', mtD: '#2e1f12', mtE: '#1e150c' }],
+        zone: 'recebimento'
+      },
+      'ESCRITORIO': {
+        boxes: [{ x: 13, y: 0.5, w: 4, h: 3.5, ht: 80, mtC: '#1e1b4b', mtD: '#1a1740', mtE: '#151030' }],
+        zone: 'escritorio'
+      },
+      'COMERCIAL': {
+        boxes: [{ x: 13, y: 4, w: 4, h: 2, ht: 60, mtC: '#7c1f7e', mtD: '#6b1b6d', mtE: '#55145a' }],
+        zone: 'comercial'
+      },
+      'FRENTE DE CAIXA': {
+        boxes: [{ x: 0.5, y: 0.5, w: 11, h: 11, ht: 20, mtC: '#1a4a2a', mtD: '#144020', mtE: '#0e3018' }],
+        zone: 'checkout'
+      }
     };
 
     const conf = sectorConfig[selectedSector];
@@ -396,22 +488,53 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     h += `<polygon points="${isoX(0, 0)},${isoY(0, 0) - 40} ${isoX(15, 0)},${isoY(15, 0) - 40} ${isoX(15, 0)},${isoY(15, 0)} ${isoX(0, 0)},${isoY(0, 0)}" fill="${wC}" stroke="${wD}" stroke-width="0.5"/>`;
     h += `<polygon points="${isoX(0, 0)},${isoY(0, 0) - 40} ${isoX(0, 12)},${isoY(0, 12) - 40} ${isoX(0, 12)},${isoY(0, 12)} ${isoX(0, 0)},${isoY(0, 0)}" fill="${wD}" stroke="${wC}" stroke-width="0.5"/>`;
 
-    // Setor destacado (maior)
-    h += isoBox(conf.x, conf.y, conf.w, conf.h, conf.ht, conf.mtC, conf.mtD, conf.mtE);
-    h += isoLabel(conf.x + conf.w / 2, conf.y + conf.h / 2, selectedSector, '#fff', 14);
+    // Setores destacados - renderiza todos os boxes
+    conf.boxes.forEach(box => {
+      h += isoBox(box.x, box.y, box.w, box.h, box.ht, box.mtC, box.mtD, box.mtE);
+    });
 
-    // Colaboradores
+    // Gôndolas na frente de cada corredor (apenas para LOJA)
+    if (selectedSector === 'LOJA') {
+      const gondolaColors = ['#e57373', '#64b5f6', '#fff176', '#81c784', '#ce93d8', '#ffb74d'];
+      conf.boxes.forEach(box => {
+        for (let col = 0; col < 6; col++) {
+          const gx = box.x + col * 0.65;
+          const gy = box.y + box.h + -0.1;
+          h += isoRect(gx, gy, 0.6, 0.21, gondolaColors[col], null, 0.6);
+        }
+      });
+    }
+
+    // Label removido de dentro do box - agora está no header acima
+
+    // Colaboradores - distribuir em cima dos boxes
     const workers = byZone[conf.zone] || [];
+    const TH = 25; // Height unit (mesmo do código isométrico)
+
+    // Distribuir funcionários em cima de cada box
     workers.forEach((w, i) => {
-      const cols = Math.min(Math.ceil(Math.sqrt(workers.length)), 4);
-      const row = Math.floor(i / cols);
-      const col = i % cols;
+      // Distribuir entre todos os boxes
+      const boxIndex = i % conf.boxes.length;
+      const posInBox = Math.floor(i / conf.boxes.length);
+      const box = conf.boxes[boxIndex];
+
+      const workersPerBox = Math.ceil(workers.length / conf.boxes.length);
+      const cols = Math.min(Math.ceil(Math.sqrt(workersPerBox)), 3);
+      const row = Math.floor(posInBox / cols);
+      const col = posInBox % cols;
+
+      // Distribuir dentro das margens do box (não nas bordas)
+      const marginX = box.w * 0.15;
+      const marginY = box.h * 0.15;
       const tx = cols > 1 ? col / (cols - 1) : 0.5;
-      const rowCount = Math.ceil(workers.length / cols);
+      const rowCount = Math.ceil(workersPerBox / cols);
       const ty = rowCount > 1 ? row / (rowCount - 1) : 0.5;
-      const gx = conf.x + tx * conf.w;
-      const gy = conf.y + ty * conf.h;
-      h += isoWorker(gx, gy, ZC[conf.zone] || '#888', w.name, isOnBreak(w));
+
+      // Posicionar DENTRO da superfície do box, depois subtrair altura para parecer em cima
+      const gx = box.x + marginX + tx * (box.w - marginX * 2);
+      const gy = (box.y + marginY + ty * (box.h - marginY * 2)) - (box.ht / TH * 0.8);
+
+      h += isoWorker(gx, gy, ZC[conf.zone] || '#888', w, isOnBreak(w));
     });
 
     return h;
@@ -441,7 +564,9 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     <div style={{ color: '#eef2f8', background: 'linear-gradient(180deg,#16233a 0%,#111c2e 100%)', border: '1px solid rgba(148,163,184,.14)', borderRadius: '12px', padding: '14px', marginBottom: '10px', boxShadow: '0 20px 50px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04)' }}>
       {/* Cabeçalho */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
-        <span style={{ fontSize: '13px', fontWeight: '600' }}>Planta da loja</span>
+        <span style={{ fontSize: '13px', fontWeight: '600' }}>
+          {selectedSector ? `Setor: ${selectedSector}` : 'Planta da loja'}
+        </span>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
           <button
             onClick={() => setIsPlaying(!isPlaying)}
@@ -485,7 +610,7 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
       </div>
 
       {/* SVG */}
-      <div style={{ marginBottom: '12px', borderRadius: '8px', overflow: 'hidden', background: 'rgba(0,0,0,.2)', height: '500px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexDirection: 'column', padding: '8px' }}>
+      <div style={{ position: 'relative', marginBottom: '12px', borderRadius: '8px', overflow: 'hidden', background: 'rgba(0,0,0,.2)', height: '500px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexDirection: 'column', padding: '8px' }}>
         {selectedSector && (
           <button onClick={() => setSelectedSector(null)} style={{
             background: 'rgba(96,165,250,.2)', border: '1px solid rgba(96,165,250,.5)', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer', color: '#60a5fa', fontSize: '12px', fontWeight: '600', zIndex: 10
@@ -494,6 +619,30 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
           </button>
         )}
         <svg ref={svgRef} viewBox="-120 -1 1100 380" style={{ display: 'block', width: '100%', flexGrow: 1 }} dangerouslySetInnerHTML={{ __html: svgSector() }} />
+
+        {/* Custom Worker Tooltip */}
+        {hoveredWorker && (
+          <div style={{
+            position: 'absolute',
+            left: `${tooltipPos.x + 12}px`,
+            top: `${tooltipPos.y - 8}px`,
+            background: 'rgba(15, 23, 42, 0.95)',
+            border: '1px solid rgba(59, 130, 246, 0.4)',
+            borderRadius: '8px',
+            padding: '10px 12px',
+            fontSize: '12px',
+            color: '#e8eef5',
+            zIndex: 1001,
+            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.5)',
+            pointerEvents: 'none',
+            backdropFilter: 'blur(8px)',
+            whiteSpace: 'nowrap'
+          }}>
+            <div style={{ fontWeight: '600', marginBottom: '4px', color: '#60a5fa' }}>{hoveredWorker.name}</div>
+            {hoveredWorker.cargo && <div style={{ fontSize: '11px', color: 'rgba(203, 213, 225, 0.8)' }}>{hoveredWorker.cargo}</div>}
+            {hoveredWorker.setor && <div style={{ fontSize: '11px', color: 'rgba(203, 213, 225, 0.8)', marginTop: '2px' }}>{hoveredWorker.setor}</div>}
+          </div>
+        )}
       </div>
 
       {/* Timeline */}
@@ -527,7 +676,7 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
       </div>
 
       {/* Métricas Gerais */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: '6px', marginBottom: '8px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: window.innerWidth < 768 ? 'repeat(2, 1fr)' : 'repeat(auto-fit, minmax(80px, 1fr))', gap: window.innerWidth < 768 ? '4px' : '6px', marginBottom: '8px' }}>
         {/* No piso */}
         <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
           <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>No piso</p>
@@ -557,7 +706,7 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
       </div>
 
       {/* Funcionários por Setor */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: '6px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: window.innerWidth < 768 ? 'repeat(2, 1fr)' : 'repeat(auto-fit, minmax(80px, 1fr))', gap: window.innerWidth < 768 ? '4px' : '6px' }}>
         {/* Caixa */}
         <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
           <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Caixa</p>

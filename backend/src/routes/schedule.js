@@ -20,9 +20,9 @@ router.get('/', async (req, res) => {
         [userId]
       );
 
-      // Buscar horários da loja
-      const hoursResult = await pool.query(
-        'SELECT * FROM store_hours WHERE user_id = $1',
+      // Buscar configuração completa da loja
+      const setupResult = await pool.query(
+        'SELECT * FROM store_setup WHERE user_id = $1',
         [userId]
       );
 
@@ -33,7 +33,11 @@ router.get('/', async (req, res) => {
       );
 
       const employees = employeesResult.rows;
-      const hours = hoursResult.rows[0] || { open_time: '08:00', close_time: '20:00' };
+      const setup = setupResult.rows[0] || {
+        weekday_hours: '08:00-20:00',
+        pdvs: 3
+      };
+      const pdvs = setup.pdvs || 3;
 
       if (employees.length === 0) {
         return res.json({
@@ -45,9 +49,9 @@ router.get('/', async (req, res) => {
       }
 
       const profile = {
-        horario: `${hours.open_time}-${hours.close_time}`,
+        horario: setup.weekday_hours || '08:00-20:00',
         quantidadeOperadores: employees.length,
-        quantidadePdvs: 3
+        quantidadePdvs: pdvs
       };
 
       // Calcular índices de demanda por dia da semana
@@ -58,11 +62,19 @@ router.get('/', async (req, res) => {
       // Calcular demanda por hora
       const demandByHour = calculateDemandByHour(salesResult.rows);
 
+      // Extrair horários de abertura e fechamento
+      const [openTime, closeTime] = (setup.weekday_hours || '08:00-20:00').split('-');
+
       res.json({
         schedule,
         demand: demandByHour,
         employees: employees.length,
-        periodo: getPeriodLabel()
+        periodo: getPeriodLabel(),
+        storeHours: {
+          openTime: openTime || '08:00',
+          closeTime: closeTime || '20:00',
+          pdvs
+        }
       });
     } catch (dbErr) {
       console.log('Database error:', dbErr.code);
@@ -118,18 +130,25 @@ router.get('/demand', async (req, res) => {
         [userId, day || 6] // 6 = Saturday
       );
 
+      // Buscar PDVs da configuração da loja
+      const setupResult = await pool.query(
+        'SELECT pdvs FROM store_setup WHERE user_id = $1',
+        [userId]
+      );
+      const pdvs = setupResult.rows[0]?.pdvs || 3;
+
       const demand = calculateDemandByHour(salesResult.rows);
 
       // Aplicar Erlang-C para cada hora
       const coverage = Object.entries(demand).map(([hour, clients]) => {
-        const load = cashierLoadForHour(hour, clients / 24, 3, 'saturday', 3);
+        const load = cashierLoadForHour(hour, clients / 24, 3, 'saturday', pdvs);
         return load;
       });
 
       res.json(coverage);
     } catch (dbErr) {
       console.error('Database error:', dbErr.code);
-      res.status(500).json({ error: 'Não foi possível calcular demanda' });
+      res.status(400).json({ error: 'Configure a loja antes de gerar a escala' });
     }
   } catch (err) {
     console.error(err);
@@ -240,18 +259,8 @@ router.post('/fechar', async (req, res) => {
       [userId]
     );
 
-    const scheduleData = scheduleResult.rows[0]?.schedule_data || {};
-    const label = `${dataInicio.split('-').reverse().join('/')} a ${dataFim.split('-').reverse().join('/')}`;
     const now = new Date().toISOString();
     const email = req.user.email;
-
-    // Salva snapshot fechado
-    const result = await pool.query(
-      `INSERT INTO schedule_closed_period (user_id, label, data_inicio, data_fim, cenario, schedule_data, closed_at, closed_by)
-       VALUES ($1, $2, $3, $4, 'atual', $5, $6, $7)
-       RETURNING *`,
-      [userId, label, dataInicio, dataFim, scheduleData, now, email]
-    );
 
     // Atualiza workflow para publicado
     await pool.query(
@@ -259,53 +268,10 @@ router.post('/fechar', async (req, res) => {
       [now, email, userId]
     );
 
-    res.json({ ok: true, closedPeriod: result.rows[0] });
+    res.json({ ok: true, message: 'Escala publicada com sucesso' });
   } catch (err) {
     console.error('Erro ao fechar período:', err);
     res.status(500).json({ error: 'Erro ao fechar período' });
-  }
-});
-
-// GET /api/schedule/closed-periods - Lista períodos fechados (últimos 12)
-router.get('/closed-periods', async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ error: 'Não autenticado' });
-
-    const result = await pool.query(
-      `SELECT * FROM schedule_closed_period WHERE user_id = $1 ORDER BY closed_at DESC LIMIT 12`,
-      [userId]
-    );
-
-    res.json({ periods: result.rows });
-  } catch (err) {
-    console.error('Erro ao buscar períodos:', err);
-    res.status(500).json({ error: 'Erro ao buscar períodos' });
-  }
-});
-
-// POST /api/schedule/reabrir - Reabrir período fechado
-router.post('/reabrir', async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ error: 'Não autenticado' });
-
-    const { periodId } = req.body;
-    if (!periodId) return res.status(400).json({ error: 'Period ID obrigatório' });
-
-    const now = new Date().toISOString();
-    const email = req.user.email;
-
-    // Volta workflow para rascunho
-    await pool.query(
-      `UPDATE schedule_workflow SET status = 'rascunho', updated_at = $1 WHERE user_id = $2`,
-      [now, userId]
-    );
-
-    res.json({ ok: true, message: 'Período reabirto com sucesso' });
-  } catch (err) {
-    console.error('Erro ao reabrir período:', err);
-    res.status(500).json({ error: 'Erro ao reabrir período' });
   }
 });
 

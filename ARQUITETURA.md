@@ -54,8 +54,10 @@ frontend/src/
 workforce-v2/
 ├── backend/            # API backend (Node.js + Express)
 ├── frontend/           # React + Vite SPA
+├── public/             # Arquivos estáticos
+├── _docs/              # Documentação adicional
 ├── .env.example        # Variáveis de ambiente
-├── docker-compose.yml  # Configuração local (DB, etc)
+├── .gitignore          # Git config
 ├── package.json        # Scripts do projeto raiz
 ├── ARQUITETURA.md      # Este arquivo
 ├── DATABASE.md         # Documentação do banco
@@ -68,9 +70,9 @@ workforce-v2/
 ```bash
 cd backend
 npm install
-npm start
+npm run dev
 ```
-Roda em `http://localhost:3000/api`
+Roda em `http://localhost:5000/api`
 
 ### Frontend (Dev)
 ```bash
@@ -78,7 +80,7 @@ cd frontend
 npm install
 npm run dev -- --host
 ```
-Roda em `http://localhost:5173` (ou IP da rede)
+Roda em `http://localhost:3000` (ou IP da rede local)
 
 ## 📝 Padrões de Código
 

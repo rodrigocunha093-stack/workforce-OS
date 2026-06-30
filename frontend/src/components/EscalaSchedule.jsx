@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import StoreFloorMap from './StoreFloorMap';
+import './EscalaSchedule.responsive.css';
 
-export default function EscalaSchedule({ schedule, demand, employees, periodo, token }) {
+export default function EscalaSchedule({ schedule, demand, employees, periodo, token, storeHours = {}, pdvs = 3 }) {
   const dias = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
   const diasFull = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 
@@ -472,7 +473,7 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
       </div>
 
       {/* Store Floor Map Panel */}
-      <StoreFloorMap schedule={schedule} demand={demand} employees={employees} storeConfig={{ pdvs: 4 }} />
+      <StoreFloorMap schedule={schedule} demand={demand} employees={employees} storeConfig={{ pdvs }} storeHours={storeHours} />
 
       {/* Weekly Panel - Semana Completa */}
       <div className="esc-panel">

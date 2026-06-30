@@ -1,18 +1,94 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+
+const numberInputStyle = `
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  select option {
+    background-color: #1a1f2e;
+    color: #e8eef5;
+    padding: 8px;
+  }
+
+  select option:hover {
+    background-color: #0369a1;
+    color: #fff;
+  }
+
+  select option:checked {
+    background-color: #0369a1;
+    color: #fff;
+  }
+`;
 
 export default function Implantacao() {
   const [setupData, setSetupData] = useState({
     company: '',
     store: '',
     taxRegime: 'Lucro Real',
-    pdvs: 1,
-    operators: 1,
+    corredores: 1,
+    pdvs: 3,
     weekdayHours: '08:00-20:00',
     saturdayHours: '07:00-20:00',
     sundayOperation: 'aberto',
     closedSundays: 0,
     sundayHours: '09:00-18:00'
   });
+
+  // Carregar dados salvos ao montar o componente
+  useEffect(() => {
+    loadSavedSetup();
+  }, []);
+
+  const loadSavedSetup = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      console.log('Carregando setup... Token:', token ? 'presente' : 'ausente');
+
+      const response = await fetch('/api/config/store-hours', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('Resposta GET:', response.status);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Dados recebidos:', data);
+
+        if (data.storeSetup) {
+          console.log('Atualizando setupData com:', data.storeSetup);
+          setSetupData(prev => ({
+            ...prev,
+            company: data.storeSetup.empresa || '',
+            store: data.storeSetup.loja || '',
+            taxRegime: data.storeSetup.regimeTributario || 'Lucro Real',
+            corredores: data.storeSetup.corredores || 1,
+            pdvs: data.storeSetup.pdvs || 3,
+            weekdayHours: data.storeSetup.weekdayHours || '08:00-20:00',
+            saturdayHours: data.storeSetup.saturdayHours || '07:00-20:00',
+            sundayHours: data.storeSetup.sundayHours || '09:00-18:00',
+            sundayOperation: data.storeSetup.sundayOperation || 'aberto'
+          }));
+        } else {
+          console.log('Nenhum dado salvo no banco ainda');
+        }
+      } else {
+        console.error('Erro na resposta:', response.status, response.statusText);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar configuração:', err);
+    }
+  };
 
   const [importedFiles, setImportedFiles] = useState({
     employees: null,
@@ -30,10 +106,84 @@ export default function Implantacao() {
     setImportedFiles({ ...importedFiles, [field]: file?.name || null });
   };
 
-  const handleSubmitSetup = (e) => {
+  const downloadTemplate = (type) => {
+    const templates = {
+      employees: 'nome;sexo;cargo;setor;horas_semanais;salario\nLucila;Feminino;Operadora de Caixa;Caixa;44;1650\nEdvania;Feminino;Operadora de Caixa;Caixa;44;1650\nSamara;Feminino;Operadora de Caixa;Caixa;44;1650\nJane;Feminino;Operadora de Caixa;Caixa;44;1650\n',
+      sales: 'id;id_loja;data;numerocupom;matricula;horainicio;horatermino;qtd_itens;qtd_unidades;valor_cupom\n747336;1;2026-05-01;153678;200001;07:11:17;07:11:44;1;1.000;29.99\n747337;1;2026-05-01;153679;200001;07:13:25;07:14:13;1;1.000;18.99\n747338;1;2026-05-01;153680;200001;07:21:21;07:21:53;3;2.094;18.02\n',
+      merchandise: 'data;descricao_m1;descricao_m2;qtd_itens;qtd_unidades;valor_total\n2026-06-01;PERECIVEIS;ACOUGUE;167;127.965;4027.33\n2026-06-01;PERECIVEIS;PADARIA;91;182.000;789.08\n2026-06-01;PERECIVEIS;FLV;34;36.160;450.54\n2026-06-01;PERECIVEIS;FRIOS E LATICINEOS;312;337.554;3374.62\n2026-06-01;MERCEARIA;MERCEARIA DOCE;958;1223.000;7479.78\n2026-06-01;MERCEARIA;LIMPEZA;351;476.000;2694.76\n',
+      revenue: (() => {
+        const hoje = new Date();
+        const linhas = ['data;faturamento'];
+        for (let i = 365; i >= 0; i--) {
+          const d = new Date(hoje);
+          d.setDate(hoje.getDate() - i);
+          if (d.getDay() === 0) continue;
+          linhas.push(`${d.toISOString().slice(0, 10)};0.00`);
+        }
+        return linhas.join('\n');
+      })(),
+      timecard: 'nome;data;entrada;saida\nLucila;2026-06-09;07:02;15:05\nLucila;2026-06-10;06:58;15:01\nEdvania;2026-06-09;08:03;16:10\nEdvania;2026-06-10;07:55;16:02\nSamara;2026-06-09;10:05;19:03\nJane;2026-06-09;10:01;18:58\n'
+    };
+
+    const fileNames = {
+      employees: 'modelo-equipe-caixa.csv',
+      sales: 'modelo-vendas-vrsoft-detalhado.csv',
+      merchandise: 'modelo-vendas-mercadologico.csv',
+      revenue: 'modelo-faturamento-diario.csv',
+      timecard: 'modelo-ponto.csv'
+    };
+
+    const csv = templates[type];
+    const link = document.createElement('a');
+    const bomContent = (type === 'employees' || type === 'sales') ? csv : '﻿' + csv;
+    link.href = URL.createObjectURL(new Blob([bomContent], { type: 'text/csv;charset=utf-8' }));
+    link.download = fileNames[type];
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
+  const handleSubmitSetup = async (e) => {
     e.preventDefault();
-    console.log('Setup salvo:', setupData);
-    alert('Configuração da loja salva com sucesso!');
+    try {
+      const token = localStorage.getItem('token');
+      console.log('Salvando setup:', setupData);
+
+      const response = await fetch('/api/config/store-hours', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          empresa: setupData.company,
+          loja: setupData.store,
+          regimeTributario: setupData.taxRegime,
+          corredores: setupData.corredores,
+          pdvs: setupData.pdvs,
+          weekdayHours: setupData.weekdayHours,
+          saturdayHours: setupData.saturdayHours,
+          sundayHours: setupData.sundayHours,
+          sundayOperation: setupData.sundayOperation
+        })
+      });
+
+      console.log('Resposta POST:', response.status);
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Erro ao salvar configuração');
+      }
+
+      const data = await response.json();
+      alert(data.message || 'Configuração da loja salva com sucesso!');
+      console.log('Setup salvo com sucesso');
+
+      // Recarregar os dados após salvar
+      await loadSavedSetup();
+    } catch (err) {
+      console.error('Erro ao salvar:', err);
+      alert('Erro ao salvar: ' + err.message);
+    }
   };
 
   const containerStyle = {
@@ -164,6 +314,7 @@ export default function Implantacao() {
 
   return (
     <div style={containerStyle}>
+      <style>{numberInputStyle}</style>
       {/* Section Head */}
       <div style={sectionHeadStyle}>
         <div>
@@ -180,7 +331,8 @@ export default function Implantacao() {
           <p style={noteStyle}>Dados usados nos cálculos e relatórios da implantação.</p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', marginBottom: '16px' }}>
+          {/* Empresa - Full Width */}
           <label style={labelStyle}>
             <span>Empresa</span>
             <input
@@ -191,72 +343,86 @@ export default function Implantacao() {
               required
             />
           </label>
-          <label style={labelStyle}>
-            <span>Loja</span>
-            <input
-              type="text"
-              value={setupData.store}
-              onChange={(e) => handleSetupChange('store', e.target.value)}
-              style={inputStyle}
-              required
-            />
-          </label>
-          <label style={labelStyle}>
-            <span>Regime tributário</span>
-            <select
-              value={setupData.taxRegime}
-              onChange={(e) => handleSetupChange('taxRegime', e.target.value)}
-              style={selectStyle}
-            >
-              <option>Lucro Real</option>
-              <option>Lucro Presumido</option>
-              <option>Simples Nacional</option>
-            </select>
-          </label>
-          <label style={labelStyle}>
-            <span>PDVs</span>
-            <input
-              type="number"
-              min="1"
-              value={setupData.pdvs}
-              onChange={(e) => handleSetupChange('pdvs', parseInt(e.target.value))}
-              style={inputStyle}
-              required
-            />
-          </label>
-          <label style={labelStyle}>
-            <span>Operadores</span>
-            <input
-              type="number"
-              min="1"
-              value={setupData.operators}
-              onChange={(e) => handleSetupChange('operators', parseInt(e.target.value))}
-              style={inputStyle}
-              required
-            />
-          </label>
-          <label style={labelStyle}>
-            <span>Seg-Sex</span>
-            <input
-              type="text"
-              value={setupData.weekdayHours}
-              onChange={(e) => handleSetupChange('weekdayHours', e.target.value)}
-              placeholder="08:00-20:00"
-              style={inputStyle}
-              required
-            />
-          </label>
-          <label style={labelStyle}>
-            <span>Sábado</span>
-            <input
-              type="text"
-              value={setupData.saturdayHours}
-              onChange={(e) => handleSetupChange('saturdayHours', e.target.value)}
-              placeholder="07:00-20:00"
-              style={inputStyle}
-              required
-            />
-          </label>
+
+          {/* Loja + Regime Tributário */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <label style={labelStyle}>
+              <span>Loja</span>
+              <input
+                type="text"
+                value={setupData.store}
+                onChange={(e) => handleSetupChange('store', e.target.value)}
+                style={inputStyle}
+                required
+              />
+            </label>
+            <label style={labelStyle}>
+              <span>Regime tributário</span>
+              <select
+                value={setupData.taxRegime}
+                onChange={(e) => handleSetupChange('taxRegime', e.target.value)}
+                style={selectStyle}
+              >
+                <option>Lucro Real</option>
+                <option>Lucro Presumido</option>
+                <option>Simples Nacional</option>
+              </select>
+            </label>
+          </div>
+
+          {/* PDVs + Corredores */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <label style={labelStyle}>
+              <span>PDVs</span>
+              <input
+                type="number"
+                min="1"
+                value={setupData.pdvs}
+                onChange={(e) => handleSetupChange('pdvs', parseInt(e.target.value))}
+                style={inputStyle}
+                required
+              />
+            </label>
+            <label style={labelStyle}>
+              <span>Corredores</span>
+              <input
+                type="number"
+                min="1"
+                value={setupData.corredores}
+                onChange={(e) => handleSetupChange('corredores', parseInt(e.target.value))}
+                style={inputStyle}
+                required
+              />
+            </label>
+          </div>
+
+          {/* Seg-Sex + Sábado */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <label style={labelStyle}>
+              <span>Seg-Sex</span>
+              <input
+                type="text"
+                value={setupData.weekdayHours}
+                onChange={(e) => handleSetupChange('weekdayHours', e.target.value)}
+                placeholder="08:00-20:00"
+                style={inputStyle}
+                required
+              />
+            </label>
+            <label style={labelStyle}>
+              <span>Sábado</span>
+              <input
+                type="text"
+                value={setupData.saturdayHours}
+                onChange={(e) => handleSetupChange('saturdayHours', e.target.value)}
+                placeholder="07:00-20:00"
+                style={inputStyle}
+                required
+              />
+            </label>
+          </div>
+
+          {/* Domingo - Full Width */}
           <label style={labelStyle}>
             <span>Domingo</span>
             <select
@@ -300,7 +466,7 @@ export default function Implantacao() {
             {importedFiles.employees ? `${importedFiles.employees}` : '⭕ Nenhum arquivo selecionado'}
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button style={secondaryButtonStyle}>📥 Baixar modelo</button>
+            <button onClick={() => downloadTemplate('employees')} style={secondaryButtonStyle}>📥 Baixar modelo</button>
             <button style={buttonStyle}>Importar equipe</button>
           </div>
         </div>
@@ -327,7 +493,7 @@ export default function Implantacao() {
             {importedFiles.sales ? `${importedFiles.sales}` : '⭕ Nenhum arquivo selecionado'}
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button style={secondaryButtonStyle}>📥 Baixar modelo</button>
+            <button onClick={() => downloadTemplate('sales')} style={secondaryButtonStyle}>📥 Baixar modelo</button>
             <button style={buttonStyle}>Importar VRSoft</button>
           </div>
         </div>
@@ -354,7 +520,7 @@ export default function Implantacao() {
             {importedFiles.merchandise ? `${importedFiles.merchandise}` : '⭕ Nenhum arquivo selecionado'}
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button style={secondaryButtonStyle}>📥 Baixar modelo</button>
+            <button onClick={() => downloadTemplate('merchandise')} style={secondaryButtonStyle}>📥 Baixar modelo</button>
             <button style={buttonStyle}>Importar mercado</button>
           </div>
         </div>
@@ -381,7 +547,7 @@ export default function Implantacao() {
             {importedFiles.revenue ? `${importedFiles.revenue}` : '⭕ Nenhum arquivo selecionado'}
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button style={secondaryButtonStyle}>📥 Baixar modelo</button>
+            <button onClick={() => downloadTemplate('revenue')} style={secondaryButtonStyle}>📥 Baixar modelo</button>
             <button style={buttonStyle}>Importar faturamento</button>
           </div>
         </div>
@@ -408,7 +574,7 @@ export default function Implantacao() {
             {importedFiles.timecard ? `${importedFiles.timecard}` : '⭕ Nenhum arquivo selecionado'}
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button style={secondaryButtonStyle}>📥 Baixar modelo</button>
+            <button onClick={() => downloadTemplate('timecard')} style={secondaryButtonStyle}>📥 Baixar modelo</button>
             <button style={buttonStyle}>Importar ponto</button>
           </div>
         </div>

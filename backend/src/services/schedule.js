@@ -300,9 +300,17 @@ function generateScheduleByProfile(profile, employees, targetHours = 44, targetD
       shifts[day] = generateTurnoForDay(papel, startHour, horasDia, horario.close, breakMinutes);
     }
 
-    // Domingo: resprita lei 10.101 (rodízio)
-    const weekSeed = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
-    shifts[6] = ((idx + weekSeed) % 3 === 0) ? 'Folga' : shifts[0]; // Rodízio 1 em 3 semanas
+    // Domingo: respeita pode_domingo e lei 10.101 (rodízio)
+    const podeDomingo = emp.pode_domingo !== false;
+
+    if (!podeDomingo) {
+      // Se não pode trabalhar domingo, sempre folga
+      shifts[6] = 'Folga';
+    } else {
+      // Se pode, aplica rodízio: folga 1 em 3 semanas
+      const weekSeed = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
+      shifts[6] = ((idx + weekSeed) % 3 === 0) ? 'Folga' : shifts[0]; // Rodízio 1 em 3 semanas
+    }
 
     result[emp.name] = shifts;
   });

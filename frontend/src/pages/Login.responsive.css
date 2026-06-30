@@ -1,0 +1,260 @@
+/* ========== LOGIN MOBILE RESPONSIVE ========== */
+
+.login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 16px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 40px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #16233a 0%, #111c2e 100%);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-input {
+  padding: 12px 14px;
+  background: rgba(148, 163, 184, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 10px;
+  color: #e8eef5;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.16s ease;
+  min-height: 44px;
+}
+
+.login-input:focus {
+  border-color: #0ea5e9;
+  background: rgba(148, 163, 184, 0.1);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+}
+
+.login-button {
+  padding: 12px 16px;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 44px;
+  transition: all 0.16s ease;
+}
+
+.login-button:hover {
+  background: #1d4ed8;
+}
+
+.login-button:active {
+  transform: scale(0.98);
+}
+
+.login-error {
+  padding: 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  color: #fca5a5;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* Tablet (768px - 1024px) */
+@media (max-width: 1024px) {
+  .login-container {
+    padding: 20px;
+  }
+
+  .login-card {
+    max-width: 380px;
+    padding: 32px;
+  }
+
+  .login-form {
+    gap: 14px;
+  }
+
+  .login-input,
+  .login-button {
+    font-size: 13px;
+    padding: 11px 13px;
+  }
+}
+
+/* Mobile (320px - 767px) */
+@media (max-width: 767px) {
+  .login-container {
+    padding: 12px;
+    min-height: calc(100vh - 12px);
+  }
+
+  .login-card {
+    max-width: 100%;
+    width: 100%;
+    padding: 24px;
+    border-radius: 16px;
+  }
+
+  .login-form {
+    gap: 12px;
+  }
+
+  .login-input {
+    padding: 12px;
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  .login-button {
+    padding: 12px;
+    font-size: 14px;
+    min-height: 44px;
+    font-weight: 700;
+  }
+
+  .login-error {
+    padding: 10px;
+    font-size: 12px;
+  }
+
+  /* Prevent zoom on input focus (iOS) */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  /* Larger tap targets */
+  label {
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+
+  .login-link {
+    font-size: 12px;
+  }
+}
+
+/* Small phones (320px - 480px) */
+@media (max-width: 480px) {
+  .login-container {
+    padding: 10px;
+  }
+
+  .login-card {
+    padding: 20px;
+    border-radius: 14px;
+  }
+
+  .login-form {
+    gap: 10px;
+  }
+
+  .login-input {
+    padding: 11px;
+    border-radius: 8px;
+    font-size: 16px;
+  }
+
+  .login-button {
+    padding: 11px;
+    font-size: 13px;
+    min-height: 44px;
+  }
+
+  .login-error {
+    padding: 10px;
+    font-size: 11px;
+  }
+
+  /* Hide unnecessary text on small screens */
+  .login-subtitle {
+    font-size: 13px;
+  }
+
+  .login-title {
+    font-size: 18px;
+  }
+}
+
+/* Landscape mode */
+@media (max-height: 600px) {
+  .login-container {
+    min-height: auto;
+    padding: 8px;
+  }
+
+  .login-card {
+    padding: 20px;
+    margin: 20px 0;
+  }
+
+  .login-form {
+    gap: 10px;
+  }
+
+  .login-input,
+  .login-button {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+  .login-button,
+  .login-input {
+    min-height: 48px;
+  }
+
+  .login-button {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .login-button:active {
+    opacity: 0.8;
+  }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .login-button,
+  .login-input {
+    transition: none !important;
+  }
+}
+
+/* Dark mode (already dark) */
+@media (prefers-color-scheme: dark) {
+  .login-input::placeholder {
+    color: rgba(203, 213, 225, 0.5);
+  }
+}
+
+/* Safe areas for notched devices */
+@supports (padding: max(0px)) {
+  .login-container {
+    padding: max(12px, env(safe-area-inset-top))
+            max(12px, env(safe-area-inset-right))
+            max(12px, env(safe-area-inset-bottom))
+            max(12px, env(safe-area-inset-left));
+  }
+}

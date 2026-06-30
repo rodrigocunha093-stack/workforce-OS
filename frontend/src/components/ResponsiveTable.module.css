@@ -1,0 +1,241 @@
+.tableWrapper {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.responsiveTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: #e8eef5;
+}
+
+.responsiveTable thead {
+  background: rgba(14, 165, 233, 0.1);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.responsiveTable th {
+  padding: 12px 14px;
+  text-align: left;
+  font-weight: 700;
+  color: #dbe6f5;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.responsiveTable tbody tr {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  transition: background 0.2s ease;
+}
+
+.responsiveTable tbody tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.responsiveTable tbody tr:last-child {
+  border-bottom: none;
+}
+
+.responsiveTable td {
+  padding: 12px 14px;
+  color: #cad4da;
+}
+
+.responsiveTable td:first-child {
+  font-weight: 500;
+}
+
+/* Mobile card layout */
+.mobileContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.mobileCard {
+  background: linear-gradient(180deg, #16233a 0%, #111c2e 100%);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.mobileRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.mobileRow:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.mobileLabel {
+  font-weight: 700;
+  color: #94a3b8;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex: 0 0 auto;
+  min-width: 100px;
+}
+
+.mobileValue {
+  font-weight: 500;
+  color: #e8eef5;
+  text-align: right;
+  flex: 1;
+  word-break: break-word;
+}
+
+/* Tablet adjustments */
+@media (max-width: 1024px) {
+  .responsiveTable th,
+  .responsiveTable td {
+    padding: 10px 10px;
+    font-size: 12px;
+  }
+
+  .responsiveTable th {
+    font-size: 11px;
+  }
+}
+
+/* Mobile adjustments */
+@media (max-width: 767px) {
+  .tableWrapper {
+    border-radius: 8px;
+    margin: 0;
+  }
+
+  .responsiveTable {
+    font-size: 12px;
+  }
+
+  .responsiveTable th {
+    padding: 10px 8px;
+    font-size: 10px;
+  }
+
+  .responsiveTable td {
+    padding: 10px 8px;
+    font-size: 12px;
+  }
+
+  .mobileContainer {
+    gap: 10px;
+    padding: 8px;
+  }
+
+  .mobileCard {
+    padding: 12px;
+    gap: 8px;
+    border-radius: 10px;
+  }
+
+  .mobileRow {
+    gap: 8px;
+    padding-bottom: 8px;
+  }
+
+  .mobileLabel {
+    font-size: 10px;
+    min-width: 80px;
+  }
+
+  .mobileValue {
+    font-size: 13px;
+  }
+}
+
+/* Small phones */
+@media (max-width: 480px) {
+  .mobileCard {
+    padding: 10px;
+    gap: 6px;
+    border-radius: 8px;
+  }
+
+  .mobileRow {
+    gap: 6px;
+    padding-bottom: 6px;
+  }
+
+  .mobileLabel {
+    font-size: 9px;
+    min-width: 70px;
+  }
+
+  .mobileValue {
+    font-size: 12px;
+  }
+
+  .responsiveTable th,
+  .responsiveTable td {
+    padding: 8px 6px;
+  }
+}
+
+/* Landscape mode */
+@media (max-height: 500px) and (orientation: landscape) {
+  .mobileCard {
+    padding: 8px;
+    gap: 4px;
+  }
+
+  .mobileRow {
+    padding-bottom: 4px;
+    gap: 4px;
+  }
+
+  .mobileLabel {
+    min-width: 60px;
+    font-size: 9px;
+  }
+
+  .mobileValue {
+    font-size: 11px;
+  }
+}
+
+/* Horizontal scroll indicator */
+.tableWrapper::after {
+  content: '';
+  display: block;
+  height: 0;
+  background: linear-gradient(to right, rgba(14, 165, 233, 0.3), transparent);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0%, 100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* Dark mode overrides */
+@media (prefers-color-scheme: dark) {
+  .responsiveTable thead {
+    background: rgba(14, 165, 233, 0.15);
+  }
+
+  .mobileCard {
+    background: rgba(22, 35, 58, 0.8);
+  }
+}
