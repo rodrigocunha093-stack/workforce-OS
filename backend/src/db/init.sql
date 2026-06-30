@@ -8,13 +8,20 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+--Tabela de setores
+CREATE TABLE IF NOT EXISTS setores (
+  id SERIAL PRIMARY KEY,
+  nome VARCHAR(55) NOT NULL,
+  corredor INTEGER
+)
+
 -- Tabela de colaboradores
 CREATE TABLE IF NOT EXISTS employees (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name VARCHAR(100) NOT NULL,
   cargo VARCHAR(100),
-  setor VARCHAR(100),
+  id_setor INTEGER REFERENCES setores(id),
   proficiencia VARCHAR(20) DEFAULT 'pleno',
   turno VARCHAR(20) DEFAULT 'flexivel',
   pode_domingo BOOLEAN DEFAULT TRUE,
@@ -22,6 +29,19 @@ CREATE TABLE IF NOT EXISTS employees (
   desempenho DECIMAL(3,1) DEFAULT 3.0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+--Tabela de mercadologicos
+CREATE TABLE IF NOT EXISTS mercadologicos (
+  id SERIAL PRIMARY KEY,
+  nome VARCHAR(55) NOT NULL,
+)
+
+--Tabela de vinculo empregados_mercadologico
+CREATE TABLE IF NOT EXISTS empregado_mercadologico (
+  id SERIAL PRIMARY KEY,
+  id_employee INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  id_mercadologico INTEGER NOT NULL REFERENCES mercadologicos(id) ON DELETE CASCADE
+)
 
 -- Tabela de horários da loja
 CREATE TABLE IF NOT EXISTS store_hours (

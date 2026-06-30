@@ -422,6 +422,151 @@ app.post('/api/employees/batch', async (req, res) => {
   }
 });
 
+// ---- POST /api/setores/batch ----
+// Body esperado: array de objetos [{ nome, corredor }, ...]
+app.post('/api/setores/batch', async (req, res) => {
+  // Log temporário para confirmar o formato exato recebido em produção.
+  console.log('[setores/batch] body recebido:', JSON.stringify(req.body).slice(0, 2000));
+
+  const { type, payload } = extractEnvelope(req.body);
+
+  if (type && type.includes('DONE')) {
+    return res.status(200).json({
+      message: 'Execução concluída (recebido).',
+      total_rows: payload?.total_rows,
+    });
+  }
+
+  if (type && type.includes('ERROR')) {
+    console.error('[setores/batch] Agente reportou erro de execução:', payload?.message);
+    return res.status(200).json({ message: 'Erro do agente registrado nos logs.' });
+  }
+
+  const records = normalizeBatchPayload(payload);
+
+  if (!records) {
+    console.error('[setores/batch] 400 - formato não reconhecido. payload recebido:', payload);
+    return res.status(400).json({
+      error: 'Formato de payload não reconhecido. Esperado array de objetos ou { columns, rows }.',
+    });
+  }
+
+  if (records.length === 0) {
+    return res.status(200).json({ message: 'Nenhum registro nesta página.', inserted: 0 });
+  }
+
+  const errors = [];
+  records.forEach((r, idx) => {
+    if (!r.nome) errors.push(`Item ${idx}: campo "nome" é obrigatório.`);
+  });
+
+  if (errors.length > 0) {
+    console.error('[setores/batch] 400 - registros inválidos:', errors);
+    return res.status(400).json({ error: 'Registros inválidos.', details: errors });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const result = await bulkInsert(
+      client,
+      'setores',
+      ['nome', 'corredor'],
+      records,
+      (r) => [
+        r.nome,
+        r.corredor ?? null,
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    res.status(201).json({
+      message: `${result.rowCount} setor(es) inserido(s) com sucesso.`,
+      inserted: result.rowCount,
+      ids: result.rows.map((row) => row.id),
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Erro ao inserir setores em lote:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ---- POST /api/mercadologicos/batch ----
+// Body esperado: array de objetos [{ nome }, ...]
+app.post('/api/mercadologicos/batch', async (req, res) => {
+  // Log temporário para confirmar o formato exato recebido em produção.
+  console.log('[mercadologicos/batch] body recebido:', JSON.stringify(req.body).slice(0, 2000));
+
+  const { type, payload } = extractEnvelope(req.body);
+
+  if (type && type.includes('DONE')) {
+    return res.status(200).json({
+      message: 'Execução concluída (recebido).',
+      total_rows: payload?.total_rows,
+    });
+  }
+
+  if (type && type.includes('ERROR')) {
+    console.error('[mercadologicos/batch] Agente reportou erro de execução:', payload?.message);
+    return res.status(200).json({ message: 'Erro do agente registrado nos logs.' });
+  }
+
+  const records = normalizeBatchPayload(payload);
+
+  if (!records) {
+    console.error('[mercadologicos/batch] 400 - formato não reconhecido. payload recebido:', payload);
+    return res.status(400).json({
+      error: 'Formato de payload não reconhecido. Esperado array de objetos ou { columns, rows }.',
+    });
+  }
+
+  if (records.length === 0) {
+    return res.status(200).json({ message: 'Nenhum registro nesta página.', inserted: 0 });
+  }
+
+  const errors = [];
+  records.forEach((r, idx) => {
+    if (!r.nome) errors.push(`Item ${idx}: campo "nome" é obrigatório.`);
+  });
+
+  if (errors.length > 0) {
+    console.error('[mercadologicos/batch] 400 - registros inválidos:', errors);
+    return res.status(400).json({ error: 'Registros inválidos.', details: errors });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const result = await bulkInsert(
+      client,
+      'mercadologicos',
+      ['nome'],
+      records,
+      (r) => [r.nome]
+    );
+
+    await client.query('COMMIT');
+
+    res.status(201).json({
+      message: `${result.rowCount} mercadológico(s) inserido(s) com sucesso.`,
+      inserted: result.rowCount,
+      ids: result.rows.map((row) => row.id),
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Erro ao inserir mercadologicos em lote:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 // GET /api/config/store-hours - Retorna configuração completa da loja
 app.get('/api/config/store-hours', async (req, res) => {
   try {
