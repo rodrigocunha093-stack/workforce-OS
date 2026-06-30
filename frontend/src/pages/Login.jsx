@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import axios from 'axios';
+import './Login.responsive.css';
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, sessionExpired = false }) {
   const [isRegister, setIsRegister] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(sessionExpired ? 'Sua sessão expirou. Por favor, faça login novamente.' : '');
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({ email: '', password: '', name: '', orgName: '' });
 

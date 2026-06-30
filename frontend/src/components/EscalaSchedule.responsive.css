@@ -1,0 +1,492 @@
+/* ========== ESCALA SCHEDULE MOBILE RESPONSIVE ========== */
+
+/* Tablet (768px - 1024px) */
+@media (max-width: 1024px) {
+  .esc-container {
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .esc-section-head h2 {
+    font-size: 20px;
+  }
+
+  .esc-scenario-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+
+  .esc-select {
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+
+  .esc-btn {
+    padding: 9px 14px;
+    font-size: 12px;
+  }
+
+  .esc-weekly-row {
+    grid-template-columns: 1.2fr repeat(7, 0.9fr) 0.9fr;
+    min-width: 700px;
+    gap: 4px;
+  }
+
+  .esc-weekly-person {
+    padding: 8px 10px;
+  }
+
+  .esc-person-name {
+    font-size: 12px;
+  }
+
+  .esc-person-details {
+    font-size: 10px;
+  }
+
+  .esc-weekly-shift {
+    min-height: 40px;
+    font-size: 11px;
+    padding: 4px;
+  }
+}
+
+/* Mobile (320px - 767px) */
+@media (max-width: 767px) {
+  .esc-container {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  /* Section Head */
+  .esc-section-head {
+    gap: 12px;
+  }
+
+  .esc-section-head h2 {
+    font-size: 18px;
+    max-width: 100%;
+  }
+
+  .esc-eyebrow {
+    font-size: 10px;
+  }
+
+  .esc-soft-pill {
+    font-size: 11px;
+    padding: 6px 12px;
+  }
+
+  /* Panel */
+  .esc-panel {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  /* Week Selector */
+  .esc-week-selector {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .esc-week-selector label {
+    font-size: 12px;
+  }
+
+  .esc-select {
+    width: 100%;
+    font-size: 14px;
+    padding: 10px 12px;
+    min-height: 44px;
+  }
+
+  .esc-week-hint {
+    font-size: 11px;
+    min-width: auto;
+    width: 100%;
+  }
+
+  /* Scenario Grid */
+  .esc-scenario-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .esc-scenario-card {
+    padding: 14px;
+  }
+
+  .esc-scenario-tag {
+    font-size: 10px;
+  }
+
+  .esc-scenario-card h3 {
+    font-size: 15px;
+    margin: 10px 0 14px;
+  }
+
+  .esc-scenario-rows {
+    font-size: 12px;
+  }
+
+  /* Panel Head */
+  .esc-panel-head {
+    flex-direction: column;
+    gap: 12px;
+    padding-bottom: 12px;
+  }
+
+  .esc-panel-head h3 {
+    font-size: 14px;
+  }
+
+  .esc-panel-head p {
+    font-size: 12px;
+  }
+
+  /* Periodo Box */
+  .esc-periodo-box {
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .esc-periodo-info strong {
+    font-size: 13px;
+  }
+
+  .esc-periodo-info span {
+    font-size: 12px;
+  }
+
+  .esc-periodo-actions {
+    width: 100%;
+  }
+
+  /* CLT Box */
+  .esc-clt-box {
+    padding: 12px;
+    gap: 6px;
+  }
+
+  .esc-clt-box strong {
+    font-size: 13px;
+  }
+
+  .esc-clt-box span {
+    font-size: 11px;
+  }
+
+  .esc-clt-box p {
+    font-size: 10px;
+  }
+
+  /* Week Comparison */
+  .esc-week-comparison {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .esc-wc-card {
+    padding: 12px;
+  }
+
+  .esc-wc-card small {
+    font-size: 10px;
+  }
+
+  .esc-wc-card strong {
+    font-size: 16px;
+  }
+
+  .esc-wc-detail {
+    font-size: 10px;
+  }
+
+  /* Week Navigation */
+  .esc-week-nav {
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .esc-week-nav-btn {
+    width: 100%;
+    padding: 10px;
+    font-size: 12px;
+    min-height: 40px;
+  }
+
+  .esc-week-nav-label {
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+  }
+
+  /* Weekly Grid - Horizontal Scroll */
+  .esc-weekly-grid {
+    gap: 6px;
+    border-radius: 10px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .esc-weekly-row {
+    grid-template-columns: 1.2fr repeat(7, 0.95fr) 0.95fr;
+    min-width: 650px;
+    gap: 3px;
+  }
+
+  .esc-weekly-head {
+    padding: 8px 4px;
+    font-size: 11px;
+  }
+
+  .esc-head-date {
+    font-size: 9px;
+  }
+
+  .esc-today-tag {
+    font-size: 8px;
+    padding: 2px 6px;
+  }
+
+  .esc-weekly-person {
+    padding: 8px;
+    gap: 2px;
+  }
+
+  .esc-person-name {
+    font-size: 11px;
+  }
+
+  .esc-person-details {
+    font-size: 9px;
+  }
+
+  .esc-weekly-shift {
+    min-height: 38px;
+    padding: 4px 2px;
+    font-size: 10px;
+    gap: 2px;
+  }
+
+  .esc-shift-main {
+    font-size: 10px;
+  }
+
+  .esc-shift-icons {
+    font-size: 9px;
+    gap: 2px;
+  }
+
+  .esc-role-badge {
+    font-size: 7px;
+    padding: 1px 3px;
+  }
+
+  /* Buttons */
+  .esc-btn, .esc-ghost {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .esc-btn {
+    width: 100%;
+  }
+
+  .esc-audit-summary {
+    font-size: 11px;
+    padding: 5px 10px;
+  }
+
+  /* Load Grid */
+  .esc-load-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+  }
+
+  .esc-load-cell {
+    padding: 8px 4px;
+  }
+
+  .esc-load-cell span {
+    font-size: 10px;
+  }
+
+  .esc-load-cell strong {
+    font-size: 12px;
+  }
+
+  /* Forecast */
+  .esc-forecast-row .esc-weekly-shift {
+    min-height: 36px;
+    font-size: 9px;
+  }
+
+  .esc-forecast-label strong {
+    font-size: 12px;
+  }
+
+  .esc-forecast-label small {
+    font-size: 10px;
+  }
+}
+
+/* Small phones (320px - 480px) */
+@media (max-width: 480px) {
+  .esc-container {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .esc-section-head h2 {
+    font-size: 16px;
+  }
+
+  .esc-scenario-card {
+    padding: 12px;
+  }
+
+  .esc-scenario-card h3 {
+    font-size: 14px;
+  }
+
+  .esc-weekly-row {
+    grid-template-columns: 1fr repeat(7, 0.85fr) 0.85fr;
+    min-width: 600px;
+    gap: 2px;
+  }
+
+  .esc-weekly-head {
+    padding: 6px 2px;
+    font-size: 10px;
+  }
+
+  .esc-person-name {
+    font-size: 10px;
+  }
+
+  .esc-weekly-shift {
+    min-height: 32px;
+    font-size: 9px;
+    padding: 3px;
+  }
+
+  .esc-week-comparison {
+    grid-template-columns: 1fr;
+  }
+
+  .esc-select {
+    min-height: 40px;
+  }
+
+  .esc-btn {
+    min-height: 40px;
+  }
+
+  /* Hide less important info on small screens */
+  .esc-person-details {
+    display: none;
+  }
+
+  .esc-shift-icons {
+    display: none;
+  }
+
+  .esc-role-badge {
+    display: none;
+  }
+}
+
+/* Landscape mode */
+@media (max-height: 500px) and (orientation: landscape) {
+  .esc-container {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .esc-section-head h2 {
+    font-size: 16px;
+  }
+
+  .esc-scenario-grid {
+    grid-auto-flow: column;
+    overflow-x: auto;
+  }
+
+  .esc-scenario-card {
+    padding: 10px;
+  }
+
+  .esc-weekly-person,
+  .esc-weekly-shift {
+    min-height: 30px;
+    font-size: 9px;
+  }
+
+  .esc-panel {
+    padding: 10px;
+  }
+
+  .esc-panel-head {
+    margin-bottom: 10px;
+  }
+}
+
+/* Touch-friendly utilities */
+@media (hover: none) and (pointer: coarse) {
+  .esc-btn,
+  .esc-ghost,
+  .esc-week-nav-btn,
+  .esc-select {
+    min-height: 44px !important;
+    min-width: 44px !important;
+    padding: 10px 12px !important;
+  }
+
+  .esc-weekly-shift {
+    min-height: 44px !important;
+  }
+
+  .esc-btn {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* Scrollbar styling for mobile */
+.esc-weekly-grid::-webkit-scrollbar {
+  height: 6px;
+}
+
+.esc-weekly-grid::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.esc-weekly-grid::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.esc-weekly-grid::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .esc-scenario-card,
+  .esc-weekly-shift {
+    transition: none !important;
+  }
+}
+
+/* Safe areas for notched devices */
+@supports (padding: max(0px)) {
+  .esc-container {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+}

@@ -1,0 +1,120 @@
+/* ========== STORE FLOOR MAP MOBILE FIX ========== */
+
+/* Mobile (320px - 767px) */
+@media (max-width: 767px) {
+  /* Container principal */
+  div[style*="color: #eef2f8"][style*="background: linear-gradient"] {
+    padding: 8px !important;
+    margin-bottom: 6px !important;
+  }
+
+  /* Cards de métrica - melhor espaçamento */
+  div[style*="background: rgba(255,255,255,.04)"][style*="borderRadius: 6px"][style*="padding: 8px"] {
+    padding: 8px 10px !important;
+    font-size: 11px !important;
+    min-height: 50px !important;
+  }
+
+  div[style*="background: rgba(255,255,255,.04)"] p {
+    font-size: 10px !important;
+    margin: 0 0 4px !important;
+    font-weight: 500 !important;
+  }
+
+  div[style*="background: rgba(255,255,255,.04)"] p:last-child {
+    font-size: 14px !important;
+    margin: 4px 0 0 !important;
+    font-weight: 700 !important;
+    color: #e8eef5 !important;
+  }
+
+  /* Header com botões - flex wrap */
+  div[style*="display: flex"][style*="justifyContent: space-between"][style*="marginBottom: 8px"] {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  /* Botões dos dias - flex wrap e tamanho ajustado */
+  div[style*="display: flex"][style*="gap: 2px"] {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  /* Botões individuais (Seg, Ter, Qua, etc) */
+  button[style*="borderRadius: 6px"][style*="padding: 6px 10px"] {
+    padding: 6px 8px !important;
+    font-size: 10px !important;
+    min-width: 32px !important;
+    flex: 0 0 auto !important;
+  }
+
+  /* Botão Simular */
+  button[style*="padding: 6px 12px"] {
+    padding: 6px 10px !important;
+    font-size: 10px !important;
+    white-space: nowrap !important;
+    flex: 0 0 auto !important;
+  }
+
+  /* Grid responsivo para métricas */
+  div[style*="gridTemplateColumns: repeat(auto-fit, minmax(80px, 1fr))"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* SVG container - permitir scroll */
+  div[style*="marginBottom: 12px"][style*="borderRadius: 8px"][style*="overflow: hidden"][style*="height: 500px"] {
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+  }
+
+  svg[viewBox] {
+    min-width: 100% !important;
+    width: 100% !important;
+    height: auto !important;
+  }
+
+  /* Timeline - ajustado para mobile */
+  div[style*="marginBottom: 14px"] {
+    padding: 0 8px !important;
+  }
+
+  /* Botões timeline < > */
+  button[style*="width: 32px"][style*="height: 32px"] {
+    width: 28px !important;
+    height: 28px !important;
+    padding: 0 !important;
+    min-width: auto !important;
+  }
+
+  /* Container principal */
+  div[style*="color: #eef2f8"][style*="background: linear-gradient"] {
+    padding: 12px !important;
+    margin-bottom: 8px !important;
+  }
+
+  /* Espaçamento de padding no conteúdo main */
+  main {
+    padding: 0 !important;
+  }
+}
+
+@media (max-width: 480px) {
+  div[style*="gridTemplateColumns: repeat(auto-fit, minmax(80px, 1fr))"] {
+    grid-template-columns: 1fr !important;
+    gap: 4px !important;
+  }
+
+  button[style*="padding: 6px 8px"] {
+    padding: 5px 6px !important;
+    font-size: 9px !important;
+  }
+
+  button[style*="width: 28px"] {
+    width: 24px !important;
+    height: 24px !important;
+  }
+
+  span[style*="fontSize: 18px"] {
+    font-size: 16px !important;
+  }
+}

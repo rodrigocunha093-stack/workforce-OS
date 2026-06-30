@@ -56,8 +56,39 @@ CREATE TABLE IF NOT EXISTS schedules (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Tabela de workflow de escala (status, revisão, fechamento)
+CREATE TABLE IF NOT EXISTS schedule_workflow (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status VARCHAR(20) DEFAULT 'rascunho',  -- rascunho, revisado, publicado, realizado
+  reviewed_at TIMESTAMP,
+  reviewed_by VARCHAR(255),
+  published_at TIMESTAMP,
+  published_by VARCHAR(255),
+  completed_at TIMESTAMP,
+  completed_by VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tabela para períodos fechados (snapshots imutáveis)
+CREATE TABLE IF NOT EXISTS schedule_closed_period (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label VARCHAR(100),
+  data_inicio DATE,
+  data_fim DATE,
+  cenario VARCHAR(50),
+  schedule_data JSONB,  -- People, compliance, nominal data
+  closed_at TIMESTAMP,
+  closed_by VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Índices
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_employees_user_id ON employees(user_id);
 CREATE INDEX IF NOT EXISTS idx_sales_data_user_id ON sales_data(user_id);
 CREATE INDEX IF NOT EXISTS idx_schedules_user_id ON schedules(user_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_workflow_user_id ON schedule_workflow(user_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_closed_period_user_id ON schedule_closed_period(user_id);

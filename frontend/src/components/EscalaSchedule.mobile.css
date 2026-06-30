@@ -1,0 +1,383 @@
+/* ========== ESCALA SCHEDULE MOBILE FIX ========== */
+
+/* Mobile (320px - 767px) */
+@media (max-width: 767px) {
+  .esc-container {
+    padding: 6px !important;
+    gap: 6px !important;
+  }
+
+  .esc-section-head {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+
+  .esc-section-head h2 {
+    font-size: 16px !important;
+    max-width: 100% !important;
+    line-height: 1.3 !important;
+  }
+
+  .esc-eyebrow {
+    font-size: 10px !important;
+    margin-bottom: 4px !important;
+  }
+
+  .esc-soft-pill {
+    font-size: 10px !important;
+    padding: 4px 8px !important;
+  }
+
+  .esc-panel {
+    padding: 8px !important;
+    margin-bottom: 6px !important;
+  }
+
+  /* Week Selector - responsive */
+  .esc-week-selector {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .esc-week-selector label {
+    font-size: 12px !important;
+  }
+
+  .esc-select {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 8px 10px !important;
+    font-size: 12px !important;
+  }
+
+  .esc-week-hint {
+    width: 100% !important;
+    min-width: auto !important;
+    font-size: 11px !important;
+  }
+
+  /* Scenario Cards - 1 column, mais compacto */
+  .esc-scenario-grid {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+
+  .esc-scenario-card {
+    padding: 10px !important;
+  }
+
+  .esc-scenario-tag {
+    font-size: 10px !important;
+  }
+
+  .esc-scenario-card h3 {
+    font-size: 13px !important;
+    margin: 6px 0 10px !important;
+    font-weight: 700 !important;
+  }
+
+  .esc-scenario-rows {
+    font-size: 11px !important;
+    line-height: 1.6 !important;
+  }
+
+  .esc-scenario-rows div {
+    display: flex !important;
+    justify-content: space-between !important;
+    padding: 4px 0 !important;
+  }
+
+  .esc-scenario-rows strong {
+    font-size: 11px !important;
+  }
+
+  .esc-scenario-rows span {
+    font-size: 12px !important;
+  }
+
+  /* Weekly Grid - scrollable mas ajustado */
+  .esc-weekly-grid {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .esc-weekly-row {
+    grid-template-columns: 1.1fr repeat(7, 0.75fr) 0.7fr !important;
+    gap: 3px !important;
+    min-width: auto !important;
+    padding: 0 2px !important;
+  }
+
+  .esc-weekly-head {
+    padding: 4px 2px !important;
+    font-size: 8px !important;
+    min-height: 36px !important;
+  }
+
+  .esc-head-date {
+    font-size: 7px !important;
+  }
+
+  .esc-weekly-person {
+    padding: 6px 4px !important;
+    font-size: 10px !important;
+    min-height: 44px !important;
+  }
+
+  .esc-person-name {
+    font-size: 10px !important;
+    line-height: 1.2 !important;
+  }
+
+  .esc-person-details {
+    font-size: 8px !important;
+  }
+
+  .esc-weekly-shift {
+    min-height: 34px !important;
+    padding: 3px 2px !important;
+    font-size: 9px !important;
+  }
+
+  .esc-shift-main {
+    font-size: 9px !important;
+  }
+
+  .esc-shift-icons {
+    display: none !important;
+  }
+
+  .esc-role-badge {
+    font-size: 6px !important;
+    padding: 1px 3px !important;
+  }
+
+  .esc-weekly-status {
+    padding: 6px !important;
+    font-size: 9px !important;
+    min-height: 38px !important;
+  }
+
+  .esc-forecast-row .esc-weekly-shift {
+    min-height: 34px !important;
+    font-size: 9px !important;
+  }
+
+  /* Panel Head - responsivo */
+  .esc-panel-head {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .esc-panel-head h3 {
+    font-size: 13px !important;
+  }
+
+  .esc-panel-head p {
+    font-size: 11px !important;
+  }
+
+  .esc-panel-head div[style*="display: flex"] {
+    width: 100% !important;
+  }
+
+  /* Load Grid - 4 colunas em mobile */
+  .esc-load-grid {
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 4px !important;
+  }
+
+  .esc-load-cell {
+    padding: 6px 4px !important;
+    font-size: 9px !important;
+  }
+
+  .esc-load-cell strong {
+    font-size: 12px !important;
+  }
+
+  /* Week Comparison - 2 colunas */
+  .esc-week-comparison {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .esc-wc-card {
+    padding: 10px !important;
+    font-size: 10px !important;
+  }
+
+  .esc-wc-card small {
+    font-size: 8px !important;
+  }
+
+  .esc-wc-card strong {
+    font-size: 14px !important;
+  }
+
+  /* Week Nav - responsivo */
+  .esc-week-nav {
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+
+  .esc-week-nav-label {
+    width: 100% !important;
+  }
+
+  .esc-week-nav-btn {
+    padding: 6px 10px !important;
+    font-size: 11px !important;
+  }
+
+  /* Periodo Box */
+  .esc-periodo-box {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .esc-periodo-info {
+    width: 100% !important;
+  }
+
+  .esc-periodo-actions {
+    width: 100% !important;
+  }
+
+  .esc-periodo-actions button {
+    flex: 1 !important;
+  }
+
+  /* Buttons */
+  .esc-btn {
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+    width: 100% !important;
+  }
+
+  .esc-ghost {
+    padding: 6px 10px !important;
+    font-size: 10px !important;
+  }
+
+  /* Toolbar */
+  .esc-toolbar {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  /* Subtle Panel */
+  .esc-subtle-panel {
+    padding: 12px !important;
+  }
+
+  .esc-placeholder {
+    min-height: 150px !important;
+  }
+}
+
+/* Small phones (320px - 480px) */
+@media (max-width: 480px) {
+  .esc-weekly-row {
+    grid-template-columns: 1fr repeat(7, 0.65fr) 0.65fr !important;
+    gap: 3px !important;
+  }
+
+  .esc-weekly-head {
+    min-height: 36px !important;
+    font-size: 8px !important;
+  }
+
+  .esc-head-date {
+    font-size: 7px !important;
+  }
+
+  .esc-weekly-person {
+    min-height: 45px !important;
+    padding: 6px 4px !important;
+    font-size: 10px !important;
+  }
+
+  .esc-weekly-shift {
+    min-height: 34px !important;
+    padding: 3px 2px !important;
+    font-size: 9px !important;
+  }
+
+  .esc-person-name {
+    font-size: 10px !important;
+  }
+
+  .esc-person-details {
+    font-size: 8px !important;
+  }
+
+  /* Load Grid - 3 colunas */
+  .esc-load-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+
+  /* Scenario Cards - mais compacto */
+  .esc-scenario-rows {
+    font-size: 10px !important;
+    line-height: 1.6 !important;
+  }
+
+  .esc-today-tag {
+    font-size: 8px !important;
+    padding: 1px 6px !important;
+  }
+
+  .esc-soft-pill {
+    padding: 5px 10px !important;
+    font-size: 11px !important;
+  }
+}
+
+/* Landscape mode */
+@media (max-height: 600px) and (orientation: landscape) {
+  .esc-container {
+    padding: 10px !important;
+    gap: 8px !important;
+  }
+
+  .esc-section-head h2 {
+    font-size: 16px !important;
+  }
+
+  .esc-weekly-row {
+    gap: 2px !important;
+  }
+
+  .esc-weekly-shift {
+    min-height: 30px !important;
+    padding: 2px !important;
+    font-size: 9px !important;
+  }
+
+  .esc-person-name {
+    font-size: 10px !important;
+  }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+  .esc-btn,
+  .esc-ghost,
+  .esc-select {
+    min-height: 44px !important;
+    font-size: 14px !important;
+  }
+
+  .esc-weekly-shift {
+    min-height: 44px !important;
+  }
+
+  .esc-weekly-head {
+    min-height: 44px !important;
+  }
+}

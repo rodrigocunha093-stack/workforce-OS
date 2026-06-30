@@ -5,9 +5,9 @@
 ## 🎯 Stack
 
 ```
-Frontend:  React 18 + Tailwind CSS + JavaScript
-Backend:   Express + PostgreSQL + JavaScript
-Deploy:    Pronto para Vercel / Docker
+Frontend:  React 18 + Tailwind CSS + Vite
+Backend:   Node.js + Express + PostgreSQL
+Deploy:    Docker / Servidor Local
 ```
 
 ## 📁 Estrutura
@@ -143,20 +143,29 @@ POST   /api/employees              # Adicionar colaborador
 
 | Aspecto | Original | v2 |
 |---------|----------|-----|
-| Backend | Node puro | Express |
-| DB | Supabase REST | PostgreSQL direto |
-| Frontend | HTML/CSS | React + Tailwind |
-| Arquivos | 1 arquivo gigante | Modular |
-| Deploy | Vercel | Vercel / Docker |
-| Escalabilidade | REST API | API completa |
+| Backend | Node puro (6kb) | Express (minimalista) |
+| DB | Supabase | PostgreSQL direto |
+| Frontend | HTML/CSS estático | React 18 + Vite + Tailwind |
+| Arquivos | 1 arquivo monolítico | Estrutura DDD modular |
+| Arquitetura | Acoplado | Separação: backend/frontend |
+| Real-time | HTTP polling | WebSocket nativo |
 
-## 🐳 Deploy com Docker
+## 🐳 Deploy Local
 
+### Com Docker Compose
 ```bash
-# Build
 docker-compose up -d
-
 # Acessa: http://localhost:3000
+```
+
+### Servidor Físico (Produção)
+```bash
+# Backend
+cd backend && npm start
+
+# Frontend (em outra sessão)
+cd frontend && npm run build
+# Servir os arquivos estáticos
 ```
 
 ## 📝 Commits
@@ -179,11 +188,13 @@ Para expandir:
 5. Commit + push
 6. PR para `develop`
 
-## 📞 Suporte
+## 📞 Referência
 
-Ver arquivo `SISTEMA_CONTEXT.md` do projeto original para conceitos.
+- `ARQUITETURA.md` - Estrutura do projeto
+- `DATABASE.md` - Schema e migrations
+- `_docs/` - Documentação adicional
 
 ---
 
-**Criado em:** 2026-06-22  
-**Status:** MVP Funcional ✅
+**Versão:** 2.0 Refatorada  
+**Status:** MVP + Melhorias ✅

@@ -115,15 +115,15 @@ app.get('/api/employees', async (req, res) => {
 app.post('/api/employees', async (req, res) => {
   try {
     const userId = req.user?.id;
-    const { name, cargo, setor, turno, desempenho } = req.body;
+    const { name, cargo, setor, turno, desempenho, pode_domingo } = req.body;
 
     if (!userId) {
       return res.status(401).json({ error: 'Não autenticado' });
     }
 
     const result = await pool.query(
-      'INSERT INTO employees (user_id, name, cargo, setor, turno, desempenho) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-      [userId, name, cargo, setor, turno, desempenho]
+      'INSERT INTO employees (user_id, name, cargo, setor, turno, desempenho, pode_domingo) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [userId, name, cargo, setor, turno, desempenho, pode_domingo !== false]
     );
 
     res.json(result.rows[0]);
@@ -422,6 +422,108 @@ app.post('/api/employees/batch', async (req, res) => {
   }
 });
 
+// GET /api/config/store-hours - Retorna configuração completa da loja
+app.get('/api/config/store-hours', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
+
+    const result = await pool.query(
+      'SELECT * FROM store_setup WHERE user_id = $1',
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({
+        storeSetup: {
+          empresa: null,
+          loja: null,
+          regimeTributario: null,
+          corredores: 1,
+          pdvs: 3,
+          weekdayHours: '08:00-20:00',
+          saturdayHours: '07:00-20:00',
+          sundayHours: '09:00-18:00',
+          sundayOperation: 'aberto'
+        }
+      });
+    }
+
+    const setup = result.rows[0];
+    const storeSetup = {
+      empresa: setup.empresa,
+      loja: setup.loja,
+      regimeTributario: setup.regime_tributario,
+      corredores: setup.corredores || 1,
+      pdvs: setup.pdvs || 3,
+      weekdayHours: setup.weekday_hours || '08:00-20:00',
+      saturdayHours: setup.saturday_hours || '07:00-20:00',
+      sundayHours: setup.sunday_hours || '09:00-18:00',
+      sundayOperation: setup.sunday_operation || 'aberto'
+    };
+
+    res.json({ storeSetup });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/config/store-hours - Salva configuração completa da loja
+app.post('/api/config/store-hours', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { empresa, loja, regimeTributario, corredores, pdvs, weekdayHours, saturdayHours, sundayHours, sundayOperation } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
+
+    // Criar tabela store_setup se não existir
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS store_setup (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        empresa VARCHAR(255),
+        loja VARCHAR(255),
+        regime_tributario VARCHAR(50),
+        corredores INTEGER DEFAULT 1,
+        pdvs INTEGER DEFAULT 3,
+        weekday_hours VARCHAR(11),
+        saturday_hours VARCHAR(11),
+        sunday_hours VARCHAR(11),
+        sunday_operation VARCHAR(20),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Salvar todos os dados em uma única tabela
+    await pool.query(
+      `INSERT INTO store_setup (user_id, empresa, loja, regime_tributario, corredores, pdvs, weekday_hours, saturday_hours, sunday_hours, sunday_operation)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (user_id) DO UPDATE SET
+         empresa = $2,
+         loja = $3,
+         regime_tributario = $4,
+         corredores = $5,
+         pdvs = $6,
+         weekday_hours = $7,
+         saturday_hours = $8,
+         sunday_hours = $9,
+         sunday_operation = $10,
+         updated_at = CURRENT_TIMESTAMP`,
+      [userId, empresa, loja, regimeTributario, corredores || 1, pdvs || 3, weekdayHours, saturdayHours, sundayHours, sundayOperation]
+    );
+
+    res.json({ success: true, message: 'Configuração da loja salva com sucesso' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ===== HEALTH CHECK =====
 
 app.get('/api/health', (req, res) => {
@@ -434,4 +536,4 @@ app.listen(PORT, () => {
   console.log(`✅ Servidor rodando em http://localhost:${PORT}`);
   console.log(`   API em http://localhost:${PORT}/api`);
   console.log(`   Schedule em http://localhost:${PORT}/api/schedule`);
-});
+})

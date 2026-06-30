@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "check-db": "node check-db.js",
-    "migrate:audit": "node migrate-local-to-postgres.js",
-    "migrate:apply": "node migrate-local-to-postgres.js --apply"
+    "check-db": "node backend/scripts/check-db.js",
+    "migrate:audit": "node backend/scripts/migrate-local-to-postgres.js",
+    "migrate:apply": "node backend/scripts/migrate-local-to-postgres.js --apply"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.0",

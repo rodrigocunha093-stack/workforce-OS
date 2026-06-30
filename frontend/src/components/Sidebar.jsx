@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import styles from './Sidebar.module.css';
 
 export default function Sidebar({ activeTab, onTabChange, onToggle }) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const isMobile = window.innerWidth < 768;
+  const [isExpanded, setIsExpanded] = useState(window.innerWidth >= 768);
 
   const handleToggle = () => {
     const newState = !isExpanded;
