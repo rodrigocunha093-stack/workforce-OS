@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // payloads em lote podem ser maiores
 
 // Middleware de autenticação
 app.use((req, res, next) => {
@@ -129,6 +129,296 @@ app.post('/api/employees', async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ===== ROTAS DE INGESTÃO EM LOTE (AGENTE INTERNO) =====
+//
+// Estas rotas recebem arrays de registros enviados por um agente que roda
+// dentro da rede do cliente (não passa pelo fluxo de login/JWT). O agente
+// sempre envia user_id = 1, mas aceitamos um user_id explícito por item
+// como fallback de segurança caso isso mude no futuro.
+
+const DEFAULT_USER_ID = 1;
+
+// Insere um array de objetos numa tabela usando um único INSERT em lote,
+// dentro de uma transação. `columns` define a ordem das colunas no SQL;
+// `mapRow` extrai os valores de cada item do array na mesma ordem.
+async function bulkInsert(client, table, columns, rows, mapRow) {
+  const valuesSql = [];
+  const params = [];
+  let paramIndex = 1;
+
+  for (const row of rows) {
+    const values = mapRow(row);
+    const placeholders = values.map(() => `$${paramIndex++}`);
+    valuesSql.push(`(${placeholders.join(', ')})`);
+    params.push(...values);
+  }
+
+  const sql = `
+    INSERT INTO ${table} (${columns.join(', ')})
+    VALUES ${valuesSql.join(', ')}
+    RETURNING id
+  `;
+
+  return client.query(sql, params);
+}
+
+// O agente agora envia o ENVELOPE COMPLETO (depois da correção de
+// serialização no lado Python), no formato:
+//
+// {
+//   id: "...",
+//   type: "RESULT_DATA" | "RESULT_DONE" | "RESULT_ERROR" | ...,
+//   payload: { ... conteúdo específico de cada tipo ... },
+//   timestamp: "...",
+//   correlation_id: "...",
+//   agent_id: "..."
+// }
+//
+// Para RESULT_DATA, payload é { execution_id, page_number, columns, rows, ... }.
+// Para RESULT_DONE, payload é { execution_id, total_rows, total_pages }.
+// Para RESULT_ERROR, payload é { execution_id, message }.
+//
+// Mantemos compatibilidade com corpos "nus" (sem envelope) também, caso
+// algum chamador antigo ainda mande direto um array ou { columns, rows }.
+function extractEnvelope(body) {
+  if (body && typeof body === 'object' && typeof body.type === 'string' && body.payload) {
+    return { type: body.type.toUpperCase(), payload: body.payload };
+  }
+  return { type: null, payload: body };
+}
+
+// `columns`/`rows` -> lista de objetos { nome: valor }. Aceita também um
+// array de objetos já pronto.
+function normalizeBatchPayload(payload) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (payload && Array.isArray(payload.columns) && Array.isArray(payload.rows)) {
+    return payload.rows.map((row) => {
+      const obj = {};
+      payload.columns.forEach((colName, i) => {
+        obj[colName] = row[i];
+      });
+      return obj;
+    });
+  }
+
+  return null;
+}
+
+// ---- POST /api/sales_data ----
+app.post('/api/sales_data', async (req, res) => {
+  // Log temporário para confirmar o formato exato recebido em produção.
+  // Remova depois de validar (ou condicione a um DEBUG=true).
+  console.log('[sales_data] body recebido:', JSON.stringify(req.body).slice(0, 2000));
+
+  const { type, payload } = extractEnvelope(req.body);
+
+  // Mensagens de controle do agente: apenas confirmar recebimento,
+  // não há nada a inserir nelas.
+  if (type && type.includes('DONE')) {
+    return res.status(200).json({
+      message: 'Execução concluída (recebido).',
+      total_rows: payload?.total_rows,
+    });
+  }
+
+  if (type && type.includes('ERROR')) {
+    console.error('[sales_data] Agente reportou erro de execução:', payload?.message);
+    return res.status(200).json({ message: 'Erro do agente registrado nos logs.' });
+  }
+
+  const records = normalizeBatchPayload(payload);
+
+  if (!records) {
+    console.error('[sales_data] 400 - formato não reconhecido. payload recebido:', payload);
+    return res.status(400).json({
+      error: 'Formato de payload não reconhecido. Esperado array de objetos ou { columns, rows }.',
+    });
+  }
+
+  // Página vazia é situação normal (ex.: query sem resultados, ou página
+  // final sem linhas) — não é erro do cliente.
+  if (records.length === 0) {
+    return res.status(200).json({ message: 'Nenhum registro nesta página.', inserted: 0 });
+  }
+
+  // Validação básica de cada registro antes de tocar no banco.
+  // Atenção: usar === undefined/null em vez de !valor, porque hora=0 e
+  // clientes=0 são valores válidos (e "falsy" em JS).
+  const errors = [];
+  records.forEach((r, idx) => {
+    if (r.data === undefined || r.data === null) errors.push(`Item ${idx}: campo "data" é obrigatório.`);
+    if (r.hora === undefined || r.hora === null) errors.push(`Item ${idx}: campo "hora" é obrigatório.`);
+    if (r.clientes === undefined || r.clientes === null) errors.push(`Item ${idx}: campo "clientes" é obrigatório.`);
+    if (r.itens === undefined || r.itens === null) errors.push(`Item ${idx}: campo "itens" é obrigatório.`);
+    if (r.valor_total === undefined || r.valor_total === null) errors.push(`Item ${idx}: campo "valor_total" é obrigatório.`);
+  });
+
+  if (errors.length > 0) {
+    // Antes, esse motivo só ia pro agente (na resposta), nunca aparecia
+    // aqui no terminal do backend — por isso o 400 parecia "sem causa".
+    console.error('[sales_data] 400 - registros inválidos:', errors);
+    return res.status(400).json({ error: 'Registros inválidos.', details: errors });
+  }
+
+  // A query SQL usa EXTRACT(HOUR FROM ...), que retorna um número (0-23),
+  // não um horário. A coluna no banco é TIME, então convertemos aqui.
+  // Se "hora" já vier como string "HH:MM:SS" (outro formato de query),
+  // passamos direto sem alterar.
+  function toTimeValue(hora) {
+    if (typeof hora === 'number') {
+      const h = String(Math.trunc(hora)).padStart(2, '0');
+      return `${h}:00:00`;
+    }
+    return hora;
+  }
+
+  // SUM(quantidade) na query pode vir fracionário (ex: "436.233", itens
+  // vendidos por peso), mas a coluna "itens" no banco é INTEGER.
+  // Por decisão de negócio: truncar pra baixo (sempre arredondar para menos).
+  function toItensInteger(itens) {
+    const num = typeof itens === 'string' ? parseFloat(itens) : itens;
+    return Math.floor(num);
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const result = await bulkInsert(
+      client,
+      'sales_data',
+      ['user_id', 'data', 'hora', 'clientes', 'itens', 'valor_total'],
+      records,
+      (r) => [
+        r.user_id ?? DEFAULT_USER_ID,
+        r.data,
+        toTimeValue(r.hora),
+        r.clientes,
+        toItensInteger(r.itens),
+        r.valor_total,
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    res.status(201).json({
+      message: `${result.rowCount} registro(s) de vendas inserido(s) com sucesso.`,
+      inserted: result.rowCount,
+      ids: result.rows.map((row) => row.id),
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Erro ao inserir sales_data em lote:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ---- POST /api/employees (lote) ----
+// Body esperado: array de objetos
+// [{ user_id, name, cargo, setor, turno, proficiencia, pode_domingo,
+//    folga_preferencial, desempenho }, ...]
+//
+// Observação: já existe um POST /api/employees acima para inserção
+// individual via usuário autenticado (JWT). Como o agente interno envia
+// LOTES e não tem token, usamos uma rota separada para não conflitar
+// com aquele fluxo.
+app.post('/api/employees/batch', async (req, res) => {
+  // Log temporário para confirmar o formato exato recebido em produção.
+  console.log('[employees/batch] body recebido:', JSON.stringify(req.body).slice(0, 2000));
+
+  const { type, payload } = extractEnvelope(req.body);
+
+  if (type && type.includes('DONE')) {
+    return res.status(200).json({
+      message: 'Execução concluída (recebido).',
+      total_rows: payload?.total_rows,
+    });
+  }
+
+  if (type && type.includes('ERROR')) {
+    console.error('[employees/batch] Agente reportou erro de execução:', payload?.message);
+    return res.status(200).json({ message: 'Erro do agente registrado nos logs.' });
+  }
+
+  const records = normalizeBatchPayload(payload);
+
+  if (!records) {
+    console.error('[employees/batch] 400 - formato não reconhecido. payload recebido:', payload);
+    return res.status(400).json({
+      error: 'Formato de payload não reconhecido. Esperado array de objetos ou { columns, rows }.',
+    });
+  }
+
+  if (records.length === 0) {
+    return res.status(200).json({ message: 'Nenhum registro nesta página.', inserted: 0 });
+  }
+
+  const errors = [];
+  records.forEach((r, idx) => {
+    if (!r.name) errors.push(`Item ${idx}: campo "name" é obrigatório.`);
+    if (!r.cargo) errors.push(`Item ${idx}: campo "cargo" é obrigatório.`);
+    if (!r.setor) errors.push(`Item ${idx}: campo "setor" é obrigatório.`);
+    if (!r.turno) errors.push(`Item ${idx}: campo "turno" é obrigatório.`);
+  });
+
+  if (errors.length > 0) {
+    console.error('[employees/batch] 400 - registros inválidos:', errors);
+    return res.status(400).json({ error: 'Registros inválidos.', details: errors });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const result = await bulkInsert(
+      client,
+      'employees',
+      [
+        'user_id',
+        'name',
+        'cargo',
+        'setor',
+        'proficiencia',
+        'turno',
+        'pode_domingo',
+        'folga_preferencial',
+        'desempenho',
+      ],
+      records,
+      (r) => [
+        r.user_id ?? DEFAULT_USER_ID,
+        r.name,
+        r.cargo,
+        r.setor,
+        r.proficiencia ?? null,
+        r.turno,
+        r.pode_domingo ?? false,
+        r.folga_preferencial ?? null,
+        r.desempenho ?? null,
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    res.status(201).json({
+      message: `${result.rowCount} colaborador(es) inserido(s) com sucesso.`,
+      inserted: result.rowCount,
+      ids: result.rows.map((row) => row.id),
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Erro ao inserir employees em lote:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
