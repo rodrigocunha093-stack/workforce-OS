@@ -478,7 +478,7 @@ app.post('/api/setores/batch', async (req, res) => {
       (r) => [
         r.nome,
         r.corredor ?? null,
-        r.id ?? null,
+        r.erp_id ?? null,
       ]
     );
 
