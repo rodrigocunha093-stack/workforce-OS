@@ -293,7 +293,7 @@ app.post('/api/sales_data', async (req, res) => {
     const result = await bulkInsert(
       client,
       'sales_data',
-      ['user_id', 'data', 'hora', 'clientes', 'itens', 'valor_total'],
+      ['user_id', 'data', 'hora', 'clientes', 'itens', 'valor_total', 'erp_id'],
       records,
       (r) => [
         r.user_id ?? DEFAULT_USER_ID,
@@ -302,6 +302,7 @@ app.post('/api/sales_data', async (req, res) => {
         r.clientes,
         toItensInteger(r.itens),
         r.valor_total,
+        r.erp_id ?? null,
       ]
     );
 
@@ -472,11 +473,12 @@ app.post('/api/setores/batch', async (req, res) => {
     const result = await bulkInsert(
       client,
       'setores',
-      ['nome', 'corredor'],
+      ['nome', 'corredor', 'erp_id'],
       records,
       (r) => [
         r.nome,
         r.corredor ?? null,
+        r.id ?? null,
       ]
     );
 
@@ -546,9 +548,9 @@ app.post('/api/mercadologicos/batch', async (req, res) => {
     const result = await bulkInsert(
       client,
       'mercadologicos',
-      ['nome'],
+      ['nome', 'erp_id'],
       records,
-      (r) => [r.nome]
+      (r) => [r.nome, r.id ?? null]
     );
 
     await client.query('COMMIT');
@@ -664,6 +666,26 @@ app.post('/api/config/store-hours', async (req, res) => {
     );
 
     res.json({ success: true, message: 'Configuração da loja salva com sucesso' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/indices', async (req, res) => {
+  try {
+    const [vendas, setoresResult, mercadologicosResult] = await Promise.all([
+      pool.query('SELECT MAX(erp_id) AS max FROM sales_data'),
+      pool.query('SELECT MAX(erp_id) AS max FROM setores'),
+      pool.query('SELECT MAX(erp_id) AS max FROM mercadologicos'),
+    ]);
+
+    res.json({
+      indices: {
+        'ultima-venda': vendas.rows[0].max,
+        'ultimo-setor': setoresResult.rows[0].max,
+        'ultimo-mercadologico': mercadologicosResult.rows[0].max,
+      },
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

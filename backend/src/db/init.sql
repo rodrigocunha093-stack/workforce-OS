@@ -12,8 +12,9 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS setores (
   id SERIAL PRIMARY KEY,
   nome VARCHAR(55) NOT NULL,
-  corredor INTEGER
-)
+  corredor INTEGER,
+  erp_id INTEGER
+);
 
 -- Tabela de colaboradores
 CREATE TABLE IF NOT EXISTS employees (
@@ -34,14 +35,15 @@ CREATE TABLE IF NOT EXISTS employees (
 CREATE TABLE IF NOT EXISTS mercadologicos (
   id SERIAL PRIMARY KEY,
   nome VARCHAR(55) NOT NULL,
-)
+  erp_id INTEGER
+);
 
 --Tabela de vinculo empregados_mercadologico
 CREATE TABLE IF NOT EXISTS empregado_mercadologico (
   id SERIAL PRIMARY KEY,
   id_employee INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
   id_mercadologico INTEGER NOT NULL REFERENCES mercadologicos(id) ON DELETE CASCADE
-)
+);
 
 -- Tabela de horários da loja
 CREATE TABLE IF NOT EXISTS store_hours (
@@ -62,7 +64,8 @@ CREATE TABLE IF NOT EXISTS sales_data (
   clientes INTEGER,
   itens INTEGER,
   valor_total DECIMAL(10,2),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  erp_id INTEGER
 );
 
 -- Tabela de escalas geradas
