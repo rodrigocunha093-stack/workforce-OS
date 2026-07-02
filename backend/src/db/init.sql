@@ -1,16 +1,24 @@
+CREATE TABLE IF NOT EXISTS companies (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) UNIQUE NOT NULL,
+  api_key_hash VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Tabela de usuários
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   name VARCHAR(100) NOT NULL,
   email VARCHAR(100) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
-  org_name VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 --Tabela de setores
 CREATE TABLE IF NOT EXISTS setores (
   id SERIAL PRIMARY KEY,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   nome VARCHAR(55) NOT NULL,
   corredor INTEGER,
   erp_id INTEGER
@@ -19,7 +27,7 @@ CREATE TABLE IF NOT EXISTS setores (
 -- Tabela de colaboradores
 CREATE TABLE IF NOT EXISTS employees (
   id SERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   name VARCHAR(100) NOT NULL,
   cargo VARCHAR(100),
   id_setor INTEGER REFERENCES setores(id),
@@ -34,6 +42,7 @@ CREATE TABLE IF NOT EXISTS employees (
 --Tabela de mercadologicos
 CREATE TABLE IF NOT EXISTS mercadologicos (
   id SERIAL PRIMARY KEY,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   nome VARCHAR(55) NOT NULL,
   erp_id INTEGER
 );
@@ -48,7 +57,7 @@ CREATE TABLE IF NOT EXISTS empregado_mercadologico (
 -- Tabela de horários da loja
 CREATE TABLE IF NOT EXISTS store_hours (
   id SERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   day_name VARCHAR(20),
   open_time TIME,
   close_time TIME,
@@ -58,7 +67,7 @@ CREATE TABLE IF NOT EXISTS store_hours (
 -- Tabela de dados de vendas (VRSoft)
 CREATE TABLE IF NOT EXISTS sales_data (
   id SERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   data DATE,
   hora TIME,
   clientes INTEGER,
@@ -71,7 +80,7 @@ CREATE TABLE IF NOT EXISTS sales_data (
 -- Tabela de escalas geradas
 CREATE TABLE IF NOT EXISTS schedules (
   id SERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   week_start DATE,
   schedule_data JSONB,
   status VARCHAR(20) DEFAULT 'draft',
@@ -82,7 +91,7 @@ CREATE TABLE IF NOT EXISTS schedules (
 -- Tabela de workflow de escala (status, revisão, fechamento)
 CREATE TABLE IF NOT EXISTS schedule_workflow (
   id SERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   status VARCHAR(20) DEFAULT 'rascunho',  -- rascunho, revisado, publicado, realizado
   reviewed_at TIMESTAMP,
   reviewed_by VARCHAR(255),
@@ -97,7 +106,7 @@ CREATE TABLE IF NOT EXISTS schedule_workflow (
 -- Tabela para períodos fechados (snapshots imutáveis)
 CREATE TABLE IF NOT EXISTS schedule_closed_period (
   id SERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   label VARCHAR(100),
   data_inicio DATE,
   data_fim DATE,
@@ -110,8 +119,11 @@ CREATE TABLE IF NOT EXISTS schedule_closed_period (
 
 -- Índices
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_employees_user_id ON employees(user_id);
-CREATE INDEX IF NOT EXISTS idx_sales_data_user_id ON sales_data(user_id);
-CREATE INDEX IF NOT EXISTS idx_schedules_user_id ON schedules(user_id);
-CREATE INDEX IF NOT EXISTS idx_schedule_workflow_user_id ON schedule_workflow(user_id);
-CREATE INDEX IF NOT EXISTS idx_schedule_closed_period_user_id ON schedule_closed_period(user_id);
+CREATE INDEX IF NOT EXISTS idx_employees_company_id ON employees(company_id);
+CREATE INDEX IF NOT EXISTS idx_sales_data_company_id ON sales_data(company_id);
+CREATE INDEX IF NOT EXISTS idx_schedules_company_id ON schedules(company_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_workflow_company_id ON schedule_workflow(company_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_closed_period_company_id ON schedule_closed_period(company_id);
+
+-- Constraints adicionais para ON CONFLICT
+ALTER TABLE schedule_workflow ADD CONSTRAINT unique_company_workflow UNIQUE (company_id);

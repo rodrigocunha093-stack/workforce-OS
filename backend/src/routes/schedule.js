@@ -14,22 +14,26 @@ router.get('/', async (req, res) => {
     }
 
     try {
+      // Pegar o company_id do usuário
+      const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+      const companyId = userResult.rows[0]?.company_id;
+
       // Buscar colaboradores
       const employeesResult = await pool.query(
-        'SELECT * FROM employees WHERE user_id = $1',
-        [userId]
+        'SELECT * FROM employees WHERE company_id = $1',
+        [companyId]
       );
 
       // Buscar configuração completa da loja
       const setupResult = await pool.query(
-        'SELECT * FROM store_setup WHERE user_id = $1',
-        [userId]
+        'SELECT * FROM store_setup WHERE company_id = $1',
+        [companyId]
       );
 
       // Buscar dados de vendas
       const salesResult = await pool.query(
-        'SELECT * FROM sales_data WHERE user_id = $1 ORDER BY data DESC LIMIT 168',
-        [userId]
+        'SELECT * FROM sales_data WHERE company_id = $1 ORDER BY data DESC LIMIT 168',
+        [companyId]
       );
 
       const employees = employeesResult.rows;
@@ -103,9 +107,13 @@ router.post('/save', async (req, res) => {
 
     const weekStart = getWeekStart();
 
+    // Pegar o company_id do usuário
+    const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+    const companyId = userResult.rows[0]?.company_id;
+
     await pool.query(
-      'INSERT INTO schedules (user_id, week_start, schedule_data, status) VALUES ($1, $2, $3, $4)',
-      [userId, weekStart, JSON.stringify(schedule), status || 'draft']
+      'INSERT INTO schedules (company_id, week_start, schedule_data, status) VALUES ($1, $2, $3, $4)',
+      [companyId, weekStart, JSON.stringify(schedule), status || 'draft']
     );
 
     res.json({ success: true, message: 'Escala salva' });
@@ -122,18 +130,22 @@ router.get('/demand', async (req, res) => {
     const { day } = req.query;
 
     try {
+      // Pegar o company_id do usuário
+      const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+      const companyId = userResult.rows[0]?.company_id;
+
       const salesResult = await pool.query(
         `SELECT * FROM sales_data
-         WHERE user_id = $1
+         WHERE company_id = $1
          AND EXTRACT(DOW FROM data) = $2
          ORDER BY data DESC LIMIT 7`,
-        [userId, day || 6] // 6 = Saturday
+        [companyId, day || 6] // 6 = Saturday
       );
 
       // Buscar PDVs da configuração da loja
       const setupResult = await pool.query(
-        'SELECT pdvs FROM store_setup WHERE user_id = $1',
-        [userId]
+        'SELECT pdvs FROM store_setup WHERE company_id = $1',
+        [companyId]
       );
       const pdvs = setupResult.rows[0]?.pdvs || 3;
 
@@ -219,18 +231,22 @@ router.post('/status', async (req, res) => {
     const now = new Date().toISOString();
     const email = req.user.email;
 
+    // Pegar o company_id do usuário
+    const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+    const companyId = userResult.rows[0]?.company_id;
+
     const result = await pool.query(
-      `INSERT INTO schedule_workflow (user_id, status, updated_at)
+      `INSERT INTO schedule_workflow (company_id, status, updated_at)
        VALUES ($1, $2, $3)
-       ON CONFLICT (user_id) DO UPDATE SET status = $2, updated_at = $3
+       ON CONFLICT (company_id) DO UPDATE SET status = $2, updated_at = $3
        RETURNING *`,
-      [userId, status, now]
+      [companyId, status, now]
     );
 
     if (status === 'revisado') {
       await pool.query(
-        `UPDATE schedule_workflow SET reviewed_at = $1, reviewed_by = $2 WHERE user_id = $3`,
-        [now, email, userId]
+        `UPDATE schedule_workflow SET reviewed_at = $1, reviewed_by = $2 WHERE company_id = $3`,
+        [now, email, companyId]
       );
     }
 
@@ -253,10 +269,14 @@ router.post('/fechar', async (req, res) => {
       return res.status(400).json({ error: 'Informe data início e fim' });
     }
 
+    // Pegar o company_id do usuário
+    const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+    const companyId = userResult.rows[0]?.company_id;
+
     // Busca escala atual para capturar snapshot
     const scheduleResult = await pool.query(
-      'SELECT * FROM schedules WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
-      [userId]
+      'SELECT * FROM schedules WHERE company_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [companyId]
     );
 
     const now = new Date().toISOString();
@@ -264,8 +284,8 @@ router.post('/fechar', async (req, res) => {
 
     // Atualiza workflow para publicado
     await pool.query(
-      `UPDATE schedule_workflow SET status = 'publicado', published_at = $1, published_by = $2 WHERE user_id = $3`,
-      [now, email, userId]
+      `UPDATE schedule_workflow SET status = 'publicado', published_at = $1, published_by = $2 WHERE company_id = $3`,
+      [now, email, companyId]
     );
 
     res.json({ ok: true, message: 'Escala publicada com sucesso' });

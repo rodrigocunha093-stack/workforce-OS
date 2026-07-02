@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const pool = require('./db/postgres');
 
 const app = express();
@@ -12,7 +13,7 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json({ limit: '10mb' })); // payloads em lote podem ser maiores
 
-// Middleware de autenticação
+// Middleware de autenticação (JWT)
 app.use((req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
 
@@ -28,6 +29,33 @@ app.use((req, res, next) => {
   next();
 });
 
+// Middleware de verificação de API Key
+async function verifyApiKey(req, res, next) {
+  const apiKey = req.body.client_identifier || req.headers['x-api-key'];
+
+  if (!apiKey) {
+    return res.status(403).json({ error: 'Ação proibida: API Key não fornecida.' });
+  }
+
+  try {
+    const hash = crypto.createHash('sha256').update(apiKey).digest('hex');
+    const result = await pool.query(
+      'SELECT id FROM companies WHERE api_key_hash = $1',
+      [hash]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(403).json({ error: 'Ação proibida: API Key inválida.' });
+    }
+
+    req.company = result.rows[0];
+    next();
+  } catch (err) {
+    console.error('Erro na verificação da API Key:', err.message);
+    res.status(500).json({ error: 'Erro interno na verificação de segurança.' });
+  }
+}
+
 // ===== ROTAS DE AUTENTICAÇÃO =====
 
 app.post('/api/auth/register', async (req, res) => {
@@ -36,9 +64,17 @@ app.post('/api/auth/register', async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // No registro, criamos uma empresa para o usuário se orgName for fornecido
+    let companyId;
+    const companyResult = await pool.query(
+      'INSERT INTO companies (name, api_key_hash) VALUES ($1, $2) RETURNING id',
+      [orgName || `${name}'s Company`, crypto.createHash('sha256').update(crypto.randomBytes(32).toString('hex')).digest('hex')]
+    );
+    companyId = companyResult.rows[0].id;
+
     const result = await pool.query(
-      'INSERT INTO users (name, email, password_hash, org_name) VALUES ($1, $2, $3, $4) RETURNING id, name, email',
-      [name, email, hashedPassword, orgName]
+      'INSERT INTO users (name, email, password_hash, company_id) VALUES ($1, $2, $3, $4) RETURNING id, name, email, company_id',
+      [name, email, hashedPassword, companyId]
     );
 
     const user = result.rows[0];
@@ -80,11 +116,16 @@ app.post('/api/auth/login', async (req, res) => {
       { expiresIn: '24h' }
     );
 
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, company_id: user.company_id } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ===== ROTAS ADMINISTRATIVAS =====
+
+const adminRouter = require('./routes/admin');
+app.use('/api/admin', adminRouter);
 
 // ===== ROTAS DE ESCALA =====
 
@@ -101,9 +142,13 @@ app.get('/api/employees', async (req, res) => {
       return res.status(401).json({ error: 'Token expirado ou inválido. Faça login novamente.' });
     }
 
+    // Pegar o company_id do usuário
+    const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+    const companyId = userResult.rows[0]?.company_id;
+
     const result = await pool.query(
-      'SELECT * FROM employees WHERE user_id = $1',
-      [userId]
+      'SELECT * FROM employees WHERE company_id = $1',
+      [companyId]
     );
 
     res.json(result.rows);
@@ -121,9 +166,13 @@ app.post('/api/employees', async (req, res) => {
       return res.status(401).json({ error: 'Não autenticado' });
     }
 
+    // Pegar o company_id do usuário
+    const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+    const companyId = userResult.rows[0]?.company_id;
+
     const result = await pool.query(
-      'INSERT INTO employees (user_id, name, cargo, setor, turno, desempenho, pode_domingo) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-      [userId, name, cargo, setor, turno, desempenho, pode_domingo !== false]
+      'INSERT INTO employees (company_id, name, cargo, id_setor, turno, desempenho, pode_domingo) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [companyId, name, cargo, setor, turno, desempenho, pode_domingo !== false]
     );
 
     res.json(result.rows[0]);
@@ -211,7 +260,7 @@ function normalizeBatchPayload(payload) {
 }
 
 // ---- POST /api/sales_data ----
-app.post('/api/sales_data', async (req, res) => {
+app.post('/api/sales_data', verifyApiKey, async (req, res) => {
   // Log temporário para confirmar o formato exato recebido em produção.
   // Remova depois de validar (ou condicione a um DEBUG=true).
   console.log('[sales_data] body recebido:', JSON.stringify(req.body).slice(0, 2000));
@@ -293,10 +342,10 @@ app.post('/api/sales_data', async (req, res) => {
     const result = await bulkInsert(
       client,
       'sales_data',
-      ['user_id', 'data', 'hora', 'clientes', 'itens', 'valor_total', 'erp_id'],
+      ['company_id', 'data', 'hora', 'clientes', 'itens', 'valor_total', 'erp_id'],
       records,
       (r) => [
-        r.user_id ?? DEFAULT_USER_ID,
+        req.company.id,
         r.data,
         toTimeValue(r.hora),
         r.clientes,
@@ -425,7 +474,7 @@ app.post('/api/employees/batch', async (req, res) => {
 
 // ---- POST /api/setores/batch ----
 // Body esperado: array de objetos [{ nome, corredor }, ...]
-app.post('/api/setores/batch', async (req, res) => {
+app.post('/api/setores/batch', verifyApiKey, async (req, res) => {
   // Log temporário para confirmar o formato exato recebido em produção.
   console.log('[setores/batch] body recebido:', JSON.stringify(req.body).slice(0, 2000));
 
@@ -473,9 +522,10 @@ app.post('/api/setores/batch', async (req, res) => {
     const result = await bulkInsert(
       client,
       'setores',
-      ['nome', 'corredor', 'erp_id'],
+      ['company_id', 'nome', 'corredor', 'erp_id'],
       records,
       (r) => [
+        req.company.id,
         r.nome,
         r.corredor ?? null,
         r.erp_id ?? null,
@@ -500,7 +550,7 @@ app.post('/api/setores/batch', async (req, res) => {
 
 // ---- POST /api/mercadologicos/batch ----
 // Body esperado: array de objetos [{ nome }, ...]
-app.post('/api/mercadologicos/batch', async (req, res) => {
+app.post('/api/mercadologicos/batch', verifyApiKey, async (req, res) => {
   // Log temporário para confirmar o formato exato recebido em produção.
   console.log('[mercadologicos/batch] body recebido:', JSON.stringify(req.body).slice(0, 2000));
 
@@ -548,9 +598,9 @@ app.post('/api/mercadologicos/batch', async (req, res) => {
     const result = await bulkInsert(
       client,
       'mercadologicos',
-      ['nome', 'erp_id'],
+      ['company_id', 'nome', 'erp_id'],
       records,
-      (r) => [r.nome, r.erp_id ?? null]
+      (r) => [req.company.id, r.nome, r.erp_id ?? null]
     );
 
     await client.query('COMMIT');
@@ -578,9 +628,13 @@ app.get('/api/config/store-hours', async (req, res) => {
       return res.status(401).json({ error: 'Não autenticado' });
     }
 
+    // Pegar o company_id do usuário
+    const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+    const companyId = userResult.rows[0]?.company_id;
+
     const result = await pool.query(
-      'SELECT * FROM store_setup WHERE user_id = $1',
-      [userId]
+      'SELECT * FROM store_setup WHERE company_id = $1',
+      [companyId]
     );
 
     if (result.rows.length === 0) {
@@ -632,7 +686,7 @@ app.post('/api/config/store-hours', async (req, res) => {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS store_setup (
         id SERIAL PRIMARY KEY,
-        user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        company_id INTEGER NOT NULL UNIQUE REFERENCES companies(id) ON DELETE CASCADE,
         empresa VARCHAR(255),
         loja VARCHAR(255),
         regime_tributario VARCHAR(50),
@@ -648,10 +702,14 @@ app.post('/api/config/store-hours', async (req, res) => {
     `);
 
     // Salvar todos os dados em uma única tabela
+    // Pegar o company_id do usuário
+    const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+    const companyId = userResult.rows[0]?.company_id;
+
     await pool.query(
-      `INSERT INTO store_setup (user_id, empresa, loja, regime_tributario, corredores, pdvs, weekday_hours, saturday_hours, sunday_hours, sunday_operation)
+      `INSERT INTO store_setup (company_id, empresa, loja, regime_tributario, corredores, pdvs, weekday_hours, saturday_hours, sunday_hours, sunday_operation)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       ON CONFLICT (user_id) DO UPDATE SET
+       ON CONFLICT (company_id) DO UPDATE SET
          empresa = $2,
          loja = $3,
          regime_tributario = $4,
@@ -662,7 +720,7 @@ app.post('/api/config/store-hours', async (req, res) => {
          sunday_hours = $9,
          sunday_operation = $10,
          updated_at = CURRENT_TIMESTAMP`,
-      [userId, empresa, loja, regimeTributario, corredores || 1, pdvs || 3, weekdayHours, saturdayHours, sundayHours, sundayOperation]
+      [companyId, empresa, loja, regimeTributario, corredores || 1, pdvs || 3, weekdayHours, saturdayHours, sundayHours, sundayOperation]
     );
 
     res.json({ success: true, message: 'Configuração da loja salva com sucesso' });
@@ -673,10 +731,17 @@ app.post('/api/config/store-hours', async (req, res) => {
 
 app.get('/api/indices', async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Não autenticado' });
+
+    // Pegar o company_id do usuário
+    const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+    const companyId = userResult.rows[0]?.company_id;
+
     const [vendas, setoresResult, mercadologicosResult] = await Promise.all([
-      pool.query('SELECT MAX(erp_id) AS max FROM sales_data'),
-      pool.query('SELECT MAX(erp_id) AS max FROM setores'),
-      pool.query('SELECT MAX(erp_id) AS max FROM mercadologicos'),
+      pool.query('SELECT MAX(erp_id) AS max FROM sales_data WHERE company_id = $1', [companyId]),
+      pool.query('SELECT MAX(erp_id) AS max FROM setores WHERE company_id = $1', [companyId]),
+      pool.query('SELECT MAX(erp_id) AS max FROM mercadologicos WHERE company_id = $1', [companyId]),
     ]);
 
     res.json({
