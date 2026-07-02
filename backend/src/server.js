@@ -302,7 +302,7 @@ app.post('/api/sales_data', async (req, res) => {
         r.clientes,
         toItensInteger(r.itens),
         r.valor_total,
-        r.erp_id ?? null,
+        r.erp_id,
       ]
     );
 
@@ -311,7 +311,7 @@ app.post('/api/sales_data', async (req, res) => {
     res.status(201).json({
       message: `${result.rowCount} registro(s) de vendas inserido(s) com sucesso.`,
       inserted: result.rowCount,
-      ids: result.rows.map((row) => row.id),
+      ids: result.rows.map((row) => row.erp_id),
     });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -412,7 +412,7 @@ app.post('/api/employees/batch', async (req, res) => {
     res.status(201).json({
       message: `${result.rowCount} colaborador(es) inserido(s) com sucesso.`,
       inserted: result.rowCount,
-      ids: result.rows.map((row) => row.id),
+      ids: result.rows.map((row) => row.erp_id),
     });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -487,7 +487,7 @@ app.post('/api/setores/batch', async (req, res) => {
     res.status(201).json({
       message: `${result.rowCount} setor(es) inserido(s) com sucesso.`,
       inserted: result.rowCount,
-      ids: result.rows.map((row) => row.id),
+      ids: result.rows.map((row) => row.erp_id),
     });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -550,7 +550,7 @@ app.post('/api/mercadologicos/batch', async (req, res) => {
       'mercadologicos',
       ['nome', 'erp_id'],
       records,
-      (r) => [r.nome, r.id ?? null]
+      (r) => [r.nome, r.erp_id ?? null]
     );
 
     await client.query('COMMIT');
@@ -558,7 +558,7 @@ app.post('/api/mercadologicos/batch', async (req, res) => {
     res.status(201).json({
       message: `${result.rowCount} mercadológico(s) inserido(s) com sucesso.`,
       inserted: result.rowCount,
-      ids: result.rows.map((row) => row.id),
+      ids: result.rows.map((row) => row.erp_id),
     });
   } catch (err) {
     await client.query('ROLLBACK');
