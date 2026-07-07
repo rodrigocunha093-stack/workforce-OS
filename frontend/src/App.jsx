@@ -167,21 +167,6 @@ export default function App() {
           {activeTab === 'escala' && <Escala token={token} />}
           {activeTab === 'implantacao' && <Implantacao />}
 
-          {activeTab !== 'escala' && activeTab !== 'implantacao' && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: 'calc(100vh - 76px)',
-              color: '#94a3b8',
-              fontSize: '16px'
-            }}>
-              <div style={{ textAlign: 'center' }}>
-                <p>Esta página ainda não foi implementada</p>
-              </div>
-            </div>
-          )}
-
           <footer style={{
           background: '#0d171e',
           borderTop: '1px solid rgba(255,255,255,0.08)',

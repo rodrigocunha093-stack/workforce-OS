@@ -5,6 +5,13 @@ export default function Sidebar({ activeTab, onTabChange, onToggle }) {
   const isMobile = window.innerWidth < 768;
   const [isExpanded, setIsExpanded] = useState(window.innerWidth >= 768);
 
+  // Definir aba padrão como 'escala' se nenhuma aba estiver ativa
+  React.useEffect(() => {
+    if (activeTab !== 'escala' && activeTab !== 'implantacao') {
+      onTabChange('escala');
+    }
+  }, []);
+
   const handleToggle = () => {
     const newState = !isExpanded;
     setIsExpanded(newState);
@@ -12,16 +19,8 @@ export default function Sidebar({ activeTab, onTabChange, onToggle }) {
   };
 
   const tabs = [
-    { id: 'diagnostico', label: 'Diagnostico', number: '01' },
-    { id: 'escala', label: 'Escala', number: '02' },
-    { id: 'domingos', label: 'Domingos', number: '03' },
-    { id: 'auditoria', label: 'Auditoria', number: '04' },
-    { id: 'controlador', label: 'Controlador', number: '05' },
-    { id: 'financeiro', label: 'Financeiro', number: '06' },
-    { id: 'resiliencia', label: 'Resiliencia', number: '07' },
-    { id: 'setores', label: 'Setores', number: '08' },
-    { id: 'memoria', label: 'Memoria', number: '09' },
-    { id: 'implantacao', label: 'Implantacao', number: '10' }
+    { id: 'escala', label: 'Escala', number: '01' },
+    { id: 'implantacao', label: 'Implantacao', number: '02' }
   ];
 
   return (
