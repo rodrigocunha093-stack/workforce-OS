@@ -478,15 +478,17 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     let h = `<rect width="860" height="480" fill="#1a3a4a"/>`;
 
     // Piso e paredes (base)
-    for (let gx = 0; gx < 15; gx++) {
+    for (let gx = 0; gx < 12; gx++) {
       for (let gy = 0; gy < 12; gy++) {
         h += isoRect(gx, gy, 1, 1, (gx + gy) % 2 === 0 ? flA : flB, 'rgba(255,255,255,.03)');
       }
     }
 
     // Paredes
-    h += `<polygon points="${isoX(0, 0)},${isoY(0, 0) - 40} ${isoX(15, 0)},${isoY(15, 0) - 40} ${isoX(15, 0)},${isoY(15, 0)} ${isoX(0, 0)},${isoY(0, 0)}" fill="${wC}" stroke="${wD}" stroke-width="0.5"/>`;
-    h += `<polygon points="${isoX(0, 0)},${isoY(0, 0) - 40} ${isoX(0, 12)},${isoY(0, 12) - 40} ${isoX(0, 12)},${isoY(0, 12)} ${isoX(0, 0)},${isoY(0, 0)}" fill="${wD}" stroke="${wC}" stroke-width="0.5"/>`;
+    const wTL = `${isoX(0, 0)},${isoY(0, 0)}`;
+    const wTR = `${isoX(12, 0)},${isoY(12, 0)}`;
+    h += `<polygon points="${isoX(0, 0)},${isoY(0, 0) - 40} ${isoX(12, 0)},${isoY(12, 0) - 40} ${wTR} ${wTL}" fill="${wC}" stroke="${wD}" stroke-width="0.5"/>`;
+    h += `<polygon points="${isoX(0, 0)},${isoY(0, 0) - 40} ${wTL} ${isoX(0, 12)},${isoY(0, 12)} ${isoX(0, 12)},${isoY(0, 12) - 40}" fill="${wD}" stroke="${wD}" stroke-width="0.5"/>`;
 
     // Setores destacados - renderiza todos os boxes
     conf.boxes.forEach(box => {

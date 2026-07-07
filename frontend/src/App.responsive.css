@@ -190,9 +190,7 @@
 }
 
 @media (orientation: landscape) {
-  main {
-    max-height: calc(100vh - 120px);
-  }
+  /* main must not be height-constrained or content overflows past footer */
 }
 
 /* Scrollbar styling for all devices */
