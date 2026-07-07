@@ -76,6 +76,14 @@ export default function App() {
     setActiveTab(tabId);
   };
 
+  useEffect(() => {
+    const handleCustomTabChange = (e) => {
+      if (e.detail) setActiveTab(e.detail);
+    };
+    window.addEventListener('changeTab', handleCustomTabChange);
+    return () => window.removeEventListener('changeTab', handleCustomTabChange);
+  }, []);
+
   const handleSidebarToggle = (isExpanded) => {
     setSidebarExpanded(isExpanded);
   };

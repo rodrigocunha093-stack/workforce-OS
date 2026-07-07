@@ -682,24 +682,7 @@ app.post('/api/config/store-hours', async (req, res) => {
       return res.status(401).json({ error: 'Não autenticado' });
     }
 
-    // Criar tabela store_setup se não existir
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS store_setup (
-        id SERIAL PRIMARY KEY,
-        company_id INTEGER NOT NULL UNIQUE REFERENCES companies(id) ON DELETE CASCADE,
-        empresa VARCHAR(255),
-        loja VARCHAR(255),
-        regime_tributario VARCHAR(50),
-        corredores INTEGER DEFAULT 1,
-        pdvs INTEGER DEFAULT 3,
-        weekday_hours VARCHAR(11),
-        saturday_hours VARCHAR(11),
-        sunday_hours VARCHAR(11),
-        sunday_operation VARCHAR(20),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+
 
     // Salvar todos os dados em uma única tabela
     // Pegar o company_id do usuário

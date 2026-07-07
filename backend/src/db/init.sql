@@ -125,5 +125,22 @@ CREATE INDEX IF NOT EXISTS idx_schedules_company_id ON schedules(company_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_workflow_company_id ON schedule_workflow(company_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_closed_period_company_id ON schedule_closed_period(company_id);
 
+-- Tabela de configuração da loja
+CREATE TABLE IF NOT EXISTS store_setup (
+  id SERIAL PRIMARY KEY,
+  company_id INTEGER NOT NULL UNIQUE REFERENCES companies(id) ON DELETE CASCADE,
+  empresa VARCHAR(255),
+  loja VARCHAR(255),
+  regime_tributario VARCHAR(50),
+  corredores INTEGER DEFAULT 1,
+  pdvs INTEGER DEFAULT 3,
+  weekday_hours VARCHAR(11),
+  saturday_hours VARCHAR(11),
+  sunday_hours VARCHAR(11),
+  sunday_operation VARCHAR(20),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Constraints adicionais para ON CONFLICT
 ALTER TABLE schedule_workflow ADD CONSTRAINT unique_company_workflow UNIQUE (company_id);

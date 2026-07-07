@@ -41,12 +41,11 @@ export default function Escala({ token }) {
       console.log('Dados carregados com sucesso');
     } catch (err) {
       console.error('Erro ao carregar dados:', err.response?.status, err.response?.data);
-      if (err.response?.status === 400) {
-        setError('Configure a loja em Implantação antes de gerar a escala');
-      } else if (err.response?.status === 500) {
+      const errorMsg = err.response?.data?.error || err.message;
+      if (err.response?.status === 400 || errorMsg.includes('Configure a loja')) {
         setError('Configure a loja em Implantação antes de gerar a escala');
       } else {
-        setError(err.response?.data?.error || 'Erro ao carregar dados');
+        setError(errorMsg || 'Erro ao carregar dados');
       }
     } finally {
       setLoading(false);
@@ -92,8 +91,8 @@ export default function Escala({ token }) {
           <p style={{ margin: '0 0 16px', color: '#94a3b8', fontSize: '14px', lineHeight: '1.5' }}>
             {error}
           </p>
-          <a
-            href="/"
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'implantacao' }))}
             style={{
               display: 'inline-block',
               padding: '10px 16px',
@@ -106,7 +105,7 @@ export default function Escala({ token }) {
             }}
           >
             Ir para Implantação
-          </a>
+          </button>
         </div>
       </div>
     );
