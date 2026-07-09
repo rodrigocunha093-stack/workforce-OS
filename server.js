@@ -5164,9 +5164,12 @@ async function applyClientState(summary, user, weekFilter = null) {
       });
     }
     summary.escalaOverrides = overrides;
-    summary.complianceCLT = {};
+    summary.complianceCLT = {};   // violações BLOQUEANTES por cenário
+    summary.complianceAvisos = {}; // avisos (informativos) por cenário
     Object.entries(summary.fullSchedule).forEach(([key, sc]) => {
-      summary.complianceCLT[key] = checkComplianceCLT(sc.people, { employees: state.employees, cctRules: state.cctRules, calendarWeek: summary.calendarioSemana });
+      const res = motorRegras.separarViolacoes(sc.people, { employees: state.employees, cctRules: state.cctRules, calendarWeek: summary.calendarioSemana });
+      summary.complianceCLT[key] = res.violacoes;
+      summary.complianceAvisos[key] = res.avisos;
     });
     summary.bancoHoras = buildBancoHoras(summary.fullSchedule, state.employees);
   }
@@ -5937,7 +5940,8 @@ const requestHandler = async (req, res) => {
           nominal: full.nominal || null,
           setorMap: summary.employeeSetorMap || {},
           cargoMap: summary.employeeCargoMap || {},
-          compliance: (summary.complianceCLT && summary.complianceCLT[cenario]) || []
+          compliance: (summary.complianceCLT && summary.complianceCLT[cenario]) || [],
+          avisos: (summary.complianceAvisos && summary.complianceAvisos[cenario]) || []
         };
 
         // Move a vigente anterior (se houver) para o histórico

@@ -104,7 +104,8 @@ function intrajornadaMin(ctx, params) {
     if (a.shiftId == null) continue;
     const turno = turnoPorId.get(a.shiftId);
     if (!turno) continue;
-    const horas = duracaoHoras(a.data, turno.inicio, turno.fim);
+    // Jornada TRABALHADA (art. 71 fala do tempo de trabalho, não da duração com a pausa dentro).
+    const horas = duracaoHoras(a.data, turno.inicio, turno.fim) - turno.intervaloMin / 60;
     if (horas > acimaDeHoras && turno.intervaloMin < minMinutos) {
       violacoes.push({
         ruleTypeId: 'intrajornada_min', severidade: 'bloqueante', funcionarioId: a.employeeId, data: a.data,
@@ -474,22 +475,34 @@ function contextoDeEscala(people, opts) {
   return { regras, funcionarios, turnos, alocacoes, periodo: { inicio, fim } };
 }
 
-// Substitui a antiga função do server.js, mantendo o MESMO formato de saída:
-// [{ nome, violacoes: [mensagens] }] — uma entrada por colaborador com alerta.
-function checkComplianceCLT(people, opts) {
+// Avalia a escala e SEPARA por severidade: `violacoes` (bloqueante) e `avisos` (aviso).
+// Cada lista mantém o formato [{ nome, violacoes: [mensagens] }] — uma entrada por colaborador.
+function separarViolacoes(people, opts) {
   const ctx = contextoDeEscala(people, opts);
-  const violacoes = validar(ctx);
-  const porNome = new Map();
-  for (const v of violacoes) {
-    const nome = v.funcionarioId || '—';
-    if (!porNome.has(nome)) porNome.set(nome, []);
-    porNome.get(nome).push(v.mensagem);
-  }
-  const resultado = [];
-  Object.keys(people || {}).forEach((nome) => {
-    if (porNome.has(nome)) resultado.push({ nome, violacoes: porNome.get(nome) });
-  });
-  return resultado;
+  const todas = validar(ctx);
+  const agrupar = (lista) => {
+    const porNome = new Map();
+    for (const v of lista) {
+      const nome = v.funcionarioId || '—';
+      if (!porNome.has(nome)) porNome.set(nome, []);
+      porNome.get(nome).push(v.mensagem);
+    }
+    const out = [];
+    Object.keys(people || {}).forEach((nome) => {
+      if (porNome.has(nome)) out.push({ nome, violacoes: porNome.get(nome) });
+    });
+    return out;
+  };
+  return {
+    violacoes: agrupar(todas.filter((v) => v.severidade === 'bloqueante')),
+    avisos: agrupar(todas.filter((v) => v.severidade === 'aviso')),
+  };
+}
+
+// Compat: retorna só as violações BLOQUEANTES (uma entrada por colaborador com alerta real).
+// Avisos (ex.: ajuda de custo) saem por `separarViolacoes(...).avisos`.
+function checkComplianceCLT(people, opts) {
+  return separarViolacoes(people, opts).violacoes;
 }
 
 // ======================= PARTE C — CATÁLOGO PARA A UI =======================
@@ -574,7 +587,7 @@ module.exports = {
   dataHora, fimTurno, duracaoHoras, somaDias, diaSemana, ehDomingo, segundaFeiraDaSemana, diasEntre,
   diasTrabalhadosPorFuncionario, registry, validar, validarEscala, defaultCctRules,
   // adaptador workforce-OS
-  parseWorkedBlocks, turnoParaMotor, semanaPadrao, normalizarRegras, contextoDeEscala, checkComplianceCLT,
+  parseWorkedBlocks, turnoParaMotor, semanaPadrao, normalizarRegras, contextoDeEscala, checkComplianceCLT, separarViolacoes,
   // catálogo / edição (Passo 2)
   catalogoRegras, sanitizarRegras,
 };

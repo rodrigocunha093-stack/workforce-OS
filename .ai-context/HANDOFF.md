@@ -39,6 +39,16 @@
 **Decisões:** edita o **admin da empresa** (mesma permissão de fechar período). `ativaPadrao` deixa só as 5 regras federais ativas por default (as de domingo/PEC entram desligadas, pra não mudar o comportamento atual nem poluir com avisos). Regras inativas seguem salvas (params preservados) e são filtradas por `normalizarRegras` em runtime.
 **Próximo passo:** presets de CCT por região (clonar); regras por loja; escala mensal datada (ativa as regras `escopo:'mes'`).
 
+## 🩹 Correções pós-teste (2026-06-18, Opus) — Passo 4
+
+Teste real (14 funcionários) revelou 3 inconsistências + 1 falso positivo. Corrigidos:
+- **`intrajornada_min`** (bug do Passo 1): comparava a duração BRUTA (com a pausa dentro) vs 6h → falso *"6.3h exige 60min"* em turno legal de 6h+15min. Agora usa a jornada **TRABALHADA** (bruta − intervalo). Casos de borda testados.
+- **Avisos separados de violações** (`separarViolacoes` em `motor-regras.js`): `checkComplianceCLT` volta **só as BLOQUEANTES** (não infla o "N com alerta" nem penaliza o otimizador); avisos (ex.: ajuda de custo de domingo) saem em `summary.complianceAvisos` e aparecem numa **linha azul informativa** na caixa (não vermelha). Snapshot de período fechado também guarda `avisos`.
+- **Cartão "Conformidade CLT" (weekComparison)**: lia `summary.complianceCLT` antes de ele existir (bug antigo → sempre "Ok"). Agora o cartão usa o mesmo `compliance.length` da caixa (no frontend) → nunca mais divergem.
+- **Selo "X/Y conformes"**: renomeado para **"X/Y na meta de horas"** (mede meta de horas+folgas, não CLT) + tooltip.
+
+Testes: **27/27 verdes**. Arquivos: `motor-regras.js`, `server.js`, `public/app.js`, `public/futuristic.css`, `test/motor-regras.test.js`.
+
 ## 🔎 Auditoria de consistência de dados (2026-06-13, Opus) — planta + motores
 
 Foco: garantir que dados dependentes/cálculos/regras estão corretos e interligados. Bugs encontrados e corrigidos em `public/app.js` (`renderStoreFloorMap`):

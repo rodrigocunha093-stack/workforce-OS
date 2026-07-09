@@ -2068,7 +2068,7 @@ function renderWeeklySchedule(data) {
     : '';
   document.getElementById('weeklyScheduleNote').innerHTML = `${source.label}: meta de ${source.targetHours}h e ${source.targetDaysOff} folga${source.targetDaysOff > 1 ? 's' : ''} a cada 7 dias.${source.optimized ? ' &nbsp;<span style="color:#f59e0b">⚡ semana individual ajustada pela rotina Tá Ótimo</span>' : ''} &nbsp;<span style="opacity:.8">🔓 abre · 🔒 fecha</span>${jvTxt}${dbfTxt}`;
   document.getElementById('weeklyAuditSummary').innerHTML = `
-    <span class="${valid === audits.length ? 'weekly-ok' : 'weekly-bad'}">${valid}/${audits.length} conformes</span>
+    <span class="${valid === audits.length ? 'weekly-ok' : 'weekly-bad'}" title="Colaboradores que batem exatamente a meta de horas e folgas (não é conformidade CLT)">${valid}/${audits.length} na meta de horas</span>
   `;
 
   // Chips de filtro por setor
@@ -2130,11 +2130,13 @@ function renderWeeklySchedule(data) {
 
   // FASE 1: Compliance CLT
   const compliance = usarFechada ? (fechada.compliance || []) : ((data.complianceCLT && data.complianceCLT[currentCoverageScenario]) || []);
+  const avisos = usarFechada ? (fechada.avisos || []) : ((data.complianceAvisos && data.complianceAvisos[currentCoverageScenario]) || []);
   const complianceBox = `
     <div class="clt-box ${compliance.length ? 'clt-bad' : 'clt-ok'}">
       <strong>${compliance.length ? '⚠️ ' + compliance.length + ' colaborador(es) com alerta CLT' : '✅ Escala em conformidade CLT'}</strong>
       ${compliance.length ? `<div class="clt-list">${compliance.slice(0, 8).map(c => `<div><b>${c.nome}:</b> ${c.violacoes.join(' · ')}</div>`).join('')}${compliance.length > 8 ? `<div>+${compliance.length - 8} outros</div>` : ''}</div>` : '<span>Validados: interjornada 11h · DSR · máx 44h/sem · máx 10h/dia · máx 6h contínuas (art. 71) · 6 dias consecutivos.</span>'}
       <small style="display:block;margin-top:6px;opacity:.65">Auditoria baseada na CLT federal. Convenções coletivas locais (CCT dos comerciários) podem ter regras adicionais — valide com seu contador/sindicato.</small>
+      ${avisos.length ? `<div class="clt-avisos"><b>ℹ️ ${avisos.length} colaborador(es) com aviso</b> (não bloqueiam a publicação) — ex.: ${avisos[0].violacoes[0]}</div>` : ''}
       ${data.cctConfig && data.cctConfig.podeEditar ? `<div class="clt-config-row"><button id="cctEditorBtn" class="optimize-button" type="button">⚙️ Regras CLT/CCT</button><small class="clt-config-note">${data.cctConfig.usandoPadrao ? 'Usando o padrão CLT federal.' : 'Usando regras personalizadas da empresa.'}</small></div>` : ''}
     </div>`;
 
@@ -2179,8 +2181,8 @@ function renderWeeklySchedule(data) {
       + '<span class="wc-detail">' + sc.totalHours + 'h total · ' + sc.horasPerCapita + 'h/pessoa</span></div>'
       + '<div class="wc-card"><small>Folgas na semana</small><strong>' + sc.totalFolgas + ' folgas</strong>'
       + '<span class="wc-detail">' + (sc.headcount > 0 ? (sc.totalFolgas / sc.headcount).toFixed(1) : 0) + ' por pessoa</span></div>'
-      + '<div class="wc-card"><small>Conformidade CLT</small><strong>' + (wc.compliance.violations === 0 ? '✅ Ok' : '⚠️ ' + wc.compliance.violations + ' alerta' + (wc.compliance.violations > 1 ? 's' : '')) + '</strong>'
-      + '<span class="wc-detail">' + (wc.compliance.violations === 0 ? 'Todos conformes' : 'Revisar antes de fechar') + '</span></div>';
+      + '<div class="wc-card"><small>Conformidade CLT</small><strong>' + (compliance.length === 0 ? '✅ Ok' : '⚠️ ' + compliance.length + ' alerta' + (compliance.length > 1 ? 's' : '')) + '</strong>'
+      + '<span class="wc-detail">' + (compliance.length === 0 ? 'Todos conformes' : 'Revisar antes de fechar') + '</span></div>';
     if (data.adherence && data.adherence.summary) {
       const ad = data.adherence.summary;
       const adClass = ad.aderencia >= 90 ? 'wc-up' : ad.aderencia >= 70 ? 'wc-flat' : 'wc-down';

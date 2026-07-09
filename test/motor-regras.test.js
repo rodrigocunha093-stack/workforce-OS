@@ -131,3 +131,28 @@ test('config data-driven: max_horas 40 acusa escala de 44h; como aviso não bloq
   const ctxAviso = m.contextoDeEscala(people, { calendarWeek: SEMANA, cctRules: [{ ruleTypeId: 'limite_jornada_semanal', params: { max_horas: 40 }, severidade: 'aviso', ativa: true }] });
   assert.equal(m.validarEscala(ctxAviso).bloqueada, false);
 });
+
+// Passo 4 (correções) — intrajornada por horas trabalhadas + separação de avisos
+test('intrajornada_min: 6h trabalhadas + pausa de 15min NÃO viola (art. 71)', () => {
+  // 08:00-14:15 = 6h15 bruta; menos 15min de pausa = 6h trabalhadas → legal com 15min
+  const ctx = umContexto({ turnos: [umTurno({ id: 't', inicio: '08:00', fim: '14:15', intervaloMin: 15 })], alocacoes: [umaAlocacao({ shiftId: 't' })] });
+  assert.equal(m.registry.intrajornada_min(ctx, { min_minutos: 60, acima_de_horas: 6 }).length, 0);
+});
+test('intrajornada_min: 7h trabalhadas + pausa de 15min VIOLA (precisa 60min)', () => {
+  const ctx = umContexto({ turnos: [umTurno({ id: 't', inicio: '08:00', fim: '15:15', intervaloMin: 15 })], alocacoes: [umaAlocacao({ shiftId: 't' })] });
+  assert.equal(m.registry.intrajornada_min(ctx, { min_minutos: 60, acima_de_horas: 6 }).length, 1);
+});
+
+test('separarViolacoes: separa bloqueante de aviso; checkComplianceCLT devolve só bloqueante', () => {
+  const SEMANA = { dias: ['2026-06-15', '2026-06-16', '2026-06-17', '2026-06-18', '2026-06-19', '2026-06-20', '2026-06-21'].map(d => ({ data: d })) };
+  const N = '06:00-13:20 · 7h20';
+  const people = { Ana: ['06:00-18:00 · 12h', N, N, N, N, N, N] }; // dia de 12h + trabalha no domingo
+  const regras = [
+    { ruleTypeId: 'limite_jornada_diaria', params: { max_horas: 10 }, severidade: 'bloqueante', ativa: true },
+    { ruleTypeId: 'ajuda_custo_domingo', params: { valor: 67 }, severidade: 'aviso', ativa: true },
+  ];
+  const res = m.separarViolacoes(people, { calendarWeek: SEMANA, cctRules: regras });
+  assert.equal(res.violacoes.length, 1); // 12h/dia = bloqueante
+  assert.equal(res.avisos.length, 1);    // domingo trabalhado = aviso (ajuda de custo)
+  assert.equal(m.checkComplianceCLT(people, { calendarWeek: SEMANA, cctRules: regras }).length, 1);
+});
