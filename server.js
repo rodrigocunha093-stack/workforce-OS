@@ -6518,7 +6518,7 @@ const server = http.createServer(requestHandler);
 
 if (require.main === module) {
   server.listen(PORT, () => {
-    console.log(`Workforce OS rodando em http://localhost:${PORT}`);
+    console.log(`EscalaON rodando em http://localhost:${PORT}`);
   });
 }
 

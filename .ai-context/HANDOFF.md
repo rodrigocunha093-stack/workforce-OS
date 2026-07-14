@@ -1,6 +1,20 @@
 # HANDOFF
 
-> Última sessão: 2026-06-18 (Opus). Leia antes de agir.
+> Última sessão: 2026-07-14 (Opus). Leia antes de agir.
+
+## 🏷️ Rebrand: TáÓtimo! → EscalaON (2026-07-14, Opus) — Fase 1 de design
+
+**Por quê:** testes com clientes reais começam em dias; "TáÓtimo!" não sustentava um posicionamento comercial.
+
+**Marca:** `EscalaON` — *uma solução Contagil*. Tagline: "A escala da sua loja sempre no ar — e sempre dentro da lei."
+- **Nome vs funcionalidade:** a marca saiu dos nomes de recurso. O motor de otimização virou **"Otimização inteligente"** (neutro); "Motor TáÓtimo" → "Motor de dimensionamento".
+- **Identidade:** gradientes teal→azul (visual "SaaS genérico") **eliminados**. Um acento só: **verde-sinal `--on: #00C271`** (= no ar / conforme), + `--alerta` (violação CLT) e `--atencao` (rascunho). Como os tokens `--fx-*` são centralizados, trocar os VALORES re-skinou o produto inteiro sem reescrever os 62KB de CSS.
+- **Logo:** o ✓ de "Tá Ótimo" perdeu o sentido. Novo símbolo: ícone de *power* cuja barra são **dois blocos de turno empilhados** (funde ON + escala). Favicon atualizado.
+- **Assinatura (`renderBrandStatus` em app.js + `.brand-status` no CSS):** selo no topo que reporta o **estado real** da escala — `Rascunho` (âmbar) · `No ar` (verde, pulsa) · `Bloqueada` (vermelho, quando há violação bloqueante). A marca diz a verdade do sistema.
+- **Tipografia:** descoberto que `'Space Grotesk'` é declarada mas **nunca carregada** (sem `<link>`, e o CSP bloqueia fontes externas) → hoje roda no fallback do sistema. Aplicados **numerais tabulares** na grade (horários alinham em coluna). Fonte própria exigiria self-host + ajuste de CSP.
+
+**Arquivos:** `public/index.html`, `public/app.js`, `public/futuristic.css`, `public/colaborador.html`, `server.js` (log), docs.
+**Próximo (Fases 2-4 de design):** tela de entrada/login, grade da Escala, repaginada dos demais painéis.
 
 ## 🧩 Motor de regras CLT/CCT data-driven (2026-06-18, Opus) — Passo 1
 
@@ -79,7 +93,7 @@ Foco: garantir que dados dependentes/cálculos/regras estão corretos e interlig
 
 - Produto vivo em `https://escala.contagilpb.com.br` (Vercel `mvp-web-proprio`, push em `main` faz deploy).
 - Persistência/auth em **Supabase via REST** (`db-supabase.js`). `db.js` é stub (`mode:'rest'`).
-- **O `.ai-context/` estava DEFASADO**: descrevia "Workforce OS" provando frente de caixa, com suspeita de demo. O código real já é **TáÓtimo! (solução Contagil)** com multiempresa, gestor de módulos, ICOS por mercadológico, 3 jornadas, compliance CLT, forecast, banco de horas, what-if, self-service, painel operacional. `SYSTEM_CONTEXT.md` foi reescrito para a realidade nesta sessão.
+- **O `.ai-context/` estava DEFASADO**: descrevia "Workforce OS" provando frente de caixa, com suspeita de demo. O código real já é **EscalaON (solução Contagil)** com multiempresa, gestor de módulos, ICOS por mercadológico, 3 jornadas, compliance CLT, forecast, banco de horas, what-if, self-service, painel operacional. `SYSTEM_CONTEXT.md` foi reescrito para a realidade nesta sessão.
 
 ## O que foi feito nesta sessão
 
@@ -95,7 +109,7 @@ Foco: garantir que dados dependentes/cálculos/regras estão corretos e interlig
 - `public/app.js` — toggle de tema (IIFE no topo) + correção do badge de fonte de dados (2 pontos: linha ~362 e ~2433).
 - `public/index.html` — botão `#themeToggle` no header; co-branding/footer (sessão anterior).
 - `public/futuristic.css` — `.theme-toggle` + bloco completo do tema claro.
-- `AGENTS.md` — atualizado (TáÓtimo!/Contagil, ordem de leitura, regras, deploy).
+- `AGENTS.md` — atualizado (EscalaON/Contagil, ordem de leitura, regras, deploy).
 - `.ai-context/SYSTEM_CONTEXT.md` — reescrito para o estado real.
 - `.ai-context/HANDOFF.md` — este registro.
 - `.ai-context/CODEMAP.md` — **NOVO**: mapa completo de funções/endpoints + receita de feature.
@@ -165,7 +179,7 @@ Criado `CODEMAP.md` para que qualquer dev/IA ache as funções no `server.js` (3
   - `public/app.js`: o cabeçalho do colaborador na grade semanal passou a exibir horas trabalhadas com precisão (`44h`, `43h20`) em vez de arredondamento inteiro;
   - `public/app.js`: a grade semanal da aba Escala passou a usar a mesma base da cobertura de caixa (não a escala completa de todos os setores);
   - `public/app.js`: a cobertura da aba Escala passou a recalcular `Caixas ativos` a partir da mesma escala selecionada na tela (rascunho ou período fechado), evitando divergência visual entre cards e heatmap;
-  - `public/app.js`: quando a rotina de otimização Tá Ótimo entra em ação, a semana individual das operadoras passa a gerar um preview sincronizado, realocando intervalos de 1h para sustentar a cobertura otimizada;
+  - `public/app.js`: quando a rotina de otimização EscalaON entra em ação, a semana individual das operadoras passa a gerar um preview sincronizado, realocando intervalos de 1h para sustentar a cobertura otimizada;
   - `public/app.js`: ao salvar otimização, a semana individual volta consistente no próximo acesso porque o preview é reconstruído a partir das horas otimizadas salvas.
   - a regra operacional de posicionamento evita intervalo na abertura ou colado no encerramento, puxando a pausa para o miolo da jornada.
 - Pendência futura importante:

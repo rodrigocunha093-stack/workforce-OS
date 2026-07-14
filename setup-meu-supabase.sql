@@ -1,5 +1,5 @@
 -- ============================================================
--- TáÓtimo! — Setup do banco no SEU Supabase (rodar 1 vez só)
+-- EscalaON — Setup do banco no SEU Supabase (rodar 1 vez só)
 -- Como usar: abra o Supabase → menu "SQL Editor" → "New query"
 --            cole TUDO isto e clique no botão verde "Run".
 -- Cria as 4 tabelas usadas pelo sistema (users, sessions, clients, audit)

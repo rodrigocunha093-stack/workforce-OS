@@ -1,5 +1,5 @@
 /* ============================================================
-   TEMA FUTURISTA — Workforce OS 2026
+   TEMA — EscalaON 2026
    Camada visual: glassmorphism, gradientes, animações.
    (O contraste base já vem do styles.css com tema escuro nativo)
    ============================================================ */
@@ -7,12 +7,17 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap');
 
 :root {
-  --fx-grad-primary: linear-gradient(135deg, #2dd4bf 0%, #3b82f6 100%);
-  --fx-grad-violet: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%);
-  --fx-grad-warm: linear-gradient(135deg, #fbbf24 0%, #f87171 100%);
+  /* EscalaON — um acento só: o verde-sinal "no ar". Sem gradientes decorativos. */
+  --on: #00C271;         /* no ar · conforme */
+  --on-ink: #05150E;     /* texto sobre o verde */
+  --alerta: #E0483A;     /* violação CLT — inconfundível */
+  --atencao: #E9A23B;    /* rascunho · aviso */
+  --fx-grad-primary: var(--on);
+  --fx-grad-violet: #4C6FF0;
+  --fx-grad-warm: var(--atencao);
   --fx-border: rgba(255, 255, 255, 0.10);
-  --fx-border-glow: rgba(45, 212, 191, 0.35);
-  --fx-glow-teal: 0 0 0 1px rgba(45,212,191,0.2), 0 8px 32px -8px rgba(45,212,191,0.4);
+  --fx-border-glow: rgba(0, 194, 113, 0.45);
+  --fx-glow-teal: 0 0 0 1px rgba(0,194,113,0.22), 0 8px 28px -10px rgba(0,194,113,0.35);
   --fx-shadow-soft: 0 4px 24px -6px rgba(0,0,0,0.5);
   --fx-shadow-card: 0 8px 32px -12px rgba(0,0,0,0.6);
 }
@@ -485,13 +490,13 @@ body {
 }
 
 .optimize-button {
-  background: rgba(45,212,191,0.12) !important;
-  border: 1px solid rgba(45,212,191,0.4) !important;
-  color: #5eead4 !important;
+  background: rgba(0,194,113,0.12) !important;
+  border: 1px solid rgba(0,194,113,0.42) !important;
+  color: #5ee6a8 !important;
 }
 .optimize-button.active {
   background: var(--fx-grad-primary) !important;
-  color: #051014 !important;
+  color: var(--on-ink) !important;
 }
 .optimize-button.save-optimization {
   background: linear-gradient(135deg, #3b82f6, #1e40af) !important;
@@ -822,15 +827,15 @@ select option { background: #141b2e; color: #e8eef5; }
 .gestor-msg.success { color: #6ee7b7; }
 .gestor-msg.error { color: #fca5a5; }
 
-/* ---------- LOGOMARCA TáÓtimo! ---------- */
+/* ---------- LOGOMARCA EscalaON ---------- */
 .brand { gap: 14px; }
 .brand-logo {
   display: grid;
   place-items: center;
-  filter: drop-shadow(0 4px 14px rgba(45,212,191,0.4));
+  filter: drop-shadow(0 4px 14px rgba(0,194,113,0.35));
   transition: transform 0.3s ease;
 }
-.brand-logo:hover { transform: scale(1.05) rotate(-3deg); }
+.brand-logo:hover { transform: scale(1.04); }
 .brand-logo svg { display: block; }
 
 .topbar h1 {
@@ -842,12 +847,39 @@ select option { background: #141b2e; color: #e8eef5; }
   background: none;
 }
 .brand-accent {
-  background: linear-gradient(90deg, #34d399, #2dd4bf, #3b82f6);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--on);
+  -webkit-text-fill-color: var(--on);
   font-weight: 800;
 }
+
+/* ASSINATURA: o selo de estado. A marca reporta o estado real da escala. */
+.brand-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-left: 8px; padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  font-family: inherit; font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  vertical-align: middle;
+  -webkit-text-fill-color: currentColor;
+}
+.brand-status::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor;
+}
+.brand-status[data-state="rascunho"] { color: var(--atencao); background: rgba(233,162,59,0.12); border: 1px solid rgba(233,162,59,0.35); }
+.brand-status[data-state="no-ar"]    { color: var(--on);      background: rgba(0,194,113,0.12); border: 1px solid rgba(0,194,113,0.4); }
+.brand-status[data-state="bloqueada"]{ color: var(--alerta);  background: rgba(224,72,58,0.12); border: 1px solid rgba(224,72,58,0.4); }
+.brand-status[data-state="no-ar"]::before { animation: escalaon-pulse 2.4s ease-in-out infinite; }
+@keyframes escalaon-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0,194,113,0.55); }
+  50%      { box-shadow: 0 0 0 4px rgba(0,194,113,0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-status[data-state="no-ar"]::before { animation: none; }
+}
+
+/* Horários alinhados em coluna, como um quadro de horários de verdade. */
+#weeklySchedule, #coverageTable, .weekly-row, .coverage-row { font-variant-numeric: tabular-nums; }
 .topbar .brand p {
   color: #94a3b8;
   font-size: 12px;

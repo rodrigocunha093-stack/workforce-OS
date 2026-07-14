@@ -5,9 +5,10 @@
 
 ## Produto
 
-- **Nome de marca:** `TáÓtimo!` — *uma solução Contagil* (co-branding aplicado no header/footer).
+- **Nome de marca:** `EscalaON` — *uma solução Contagil* (co-branding aplicado no header/footer).
 - **Nome técnico/legado:** Workforce OS para Supermercados.
-- **Tagline:** "Inteligência de escala para o varejo".
+- **Tagline:** "A escala da sua loja sempre no ar — e sempre dentro da lei."
+- **Renomeado em 2026-07-14** (era `TáÓtimo!`). O motor de otimização deixou de usar a marca e virou "Otimização inteligente" (nome neutro).
 - **Posicionamento:** o "Blue Yonder do supermercado regional brasileiro" — 80% do valor por 5% da complexidade. Foco em CLT/CCT, jornada partida, mercadológico, cultura operacional nacional.
 
 ## Publicação e infraestrutura
@@ -83,7 +84,7 @@ Importação **mercadológico** (m1/m2) → **ICOS por mercadológico** (Açougu
 - **ICOS** (aba Setores): venda × equipe por mercadológico, produtividade, status de carga, curva por dia da semana, matriz de benchmarks.
 - **Compliance CLT** (aba Escala): agora via **motor de regras data-driven** (`motor-regras.js`, portado do EscalaDP) — interjornada 11h, intra art.71, DSR, máx 44h/sem, máx 10h/dia, e regras de domingo/PEC prontas no registry para configuração por CCT. Catálogo default = CLT federal; campo `clientState.cctRules` (vazio = default) **editável pelo admin da empresa** via aba Escala → ⚙️ Regras CLT/CCT (`POST /api/cct/save`, modal `renderCctEditor`). A trava de publicação (`escala/fechar`) bloqueia se houver violação `bloqueante`, com override auditado. Testado em `test/` (`npm test`).
 - **Export** imprimível da escala + **self-service** do colaborador (`/colaborador.html`).
-- **Otimização TáÓtimo!** (ex-"Blue Yonder"): cobre déficit respeitando PDVs/equipe, salvável.
+- **Otimização EscalaON** (ex-"Blue Yonder"): cobre déficit respeitando PDVs/equipe, salvável.
 - Tema **claro/escuro** (toggle, alinhado à Contagil).
 
 ## Estado técnico importante

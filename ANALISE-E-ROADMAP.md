@@ -1,4 +1,4 @@
-# TáÓtimo! — Análise Profunda e Roadmap de Evolução
+# EscalaON — Análise Profunda e Roadmap de Evolução
 
 **Domínio:** escala.contagilpb.com.br · **Base:** React-free SPA + Node HTTP + Supabase
 **Referência de benchmark:** Blue Yonder (líder mundial em Workforce Management para varejo)
@@ -25,7 +25,7 @@
 ### Inteligência e dashboards
 - **Painel Operacional** (abertura): faturamento dia/semana/mês, dimensionamento por benchmark (1 colab/R$36,5k), pico de fluxo, perdas (ruptura, validade, abandono), multifuncionalidade, tendência
 - **ICOS** por mercadológico: venda × equipe, produtividade, curva por dia da semana, matriz de benchmarks (caixas/h, margem, foco)
-- **Otimização TáÓtimo!**: cobre déficits respeitando PDVs/equipe, salvável
+- **Otimização EscalaON**: cobre déficits respeitando PDVs/equipe, salvável
 - Economia comprovada (operação real vs otimizada)
 
 ### Plataforma / SaaS
@@ -56,7 +56,7 @@
 
 ## 3. BENCHMARK — OS 7 PILARES DO BLUE YONDER
 
-| # | Pilar Blue Yonder | TáÓtimo! hoje | Gap |
+| # | Pilar Blue Yonder | EscalaON hoje | Gap |
 |---|-------------------|---------------|-----|
 | 1 | **Demand Forecasting (ML)** | Heurístico (médias, benchmarks) | Alto |
 | 2 | **Auto-Scheduling otimizado** | Geração por regras + cobertura | Médio |
@@ -104,4 +104,4 @@
 - **Preço e simplicidade** — implantação em dias, não meses
 - **"Economia comprovada"** como gancho comercial — mostrar R$ que o cliente perde hoje
 
-> **Tese:** o TáÓtimo! é o "Blue Yonder do supermercado regional brasileiro" — 80% do valor por 5% da complexidade e custo.
+> **Tese:** o EscalaON é o "Blue Yonder do supermercado regional brasileiro" — 80% do valor por 5% da complexidade e custo.

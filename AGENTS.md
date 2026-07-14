@@ -10,7 +10,7 @@ Antes de propor ou alterar código neste projeto, leia NESTA ORDEM:
 
 ## Produto (resumo)
 
-- **TáÓtimo!** — *uma solução Contagil*. Inteligência de escala para o varejo.
+- **EscalaON** — *uma solução Contagil*. Inteligência de escala para o varejo.
 - Publicado em `https://escala.contagilpb.com.br` (Vercel `mvp-web-proprio`; push em `main` = deploy).
 - Persistência e auth em **Supabase via REST** (`db-supabase.js`).
 - Foco principal do MVP: **frente de caixa**. Já expandido para setores via mercadológico (ICOS).

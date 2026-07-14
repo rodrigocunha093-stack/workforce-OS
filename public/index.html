@@ -3,32 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TáÓtimo! · Inteligência de escala para o varejo</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 46 46'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='46' y2='46' gradientUnits='userSpaceOnUse'%3E%3Cstop stop-color='%2334d399'/%3E%3Cstop offset='.55' stop-color='%232dd4bf'/%3E%3Cstop offset='1' stop-color='%233b82f6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='46' height='46' rx='13' fill='url(%23g)'/%3E%3Cpath d='M16 23.5L21 28.5L31 17.5' stroke='%23fff' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <title>EscalaON · A escala da sua loja no ar, e dentro da lei</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 46 46'%3E%3Crect width='46' height='46' rx='13' fill='%2300C271'/%3E%3Cpath d='M15.2 15.2 A11 11 0 1 0 30.8 15.2' stroke='%2305150E' stroke-width='3.2' stroke-linecap='round' fill='none'/%3E%3Crect x='21.4' y='8.6' width='3.2' height='6' rx='1.6' fill='%2305150E'/%3E%3Crect x='21.4' y='16.2' width='3.2' height='6.2' rx='1.6' fill='%2305150E'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="futuristic.css">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="brand-logo" aria-label="TáÓtimo">
+      <span class="brand-logo" aria-label="EscalaON">
         <svg width="46" height="46" viewBox="0 0 46 46" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="taoGrad" x1="0" y1="0" x2="46" y2="46" gradientUnits="userSpaceOnUse">
-              <stop offset="0" stop-color="#34d399"/>
-              <stop offset="0.55" stop-color="#2dd4bf"/>
-              <stop offset="1" stop-color="#3b82f6"/>
-            </linearGradient>
-          </defs>
-          <rect width="46" height="46" rx="13" fill="url(#taoGrad)"/>
-          <circle cx="23" cy="23" r="13.5" stroke="#ffffff" stroke-opacity="0.45" stroke-width="2"/>
-          <path d="M16 23.5L21 28.5L31 17.5" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="23" cy="23" r="2.4" fill="#ffffff" fill-opacity="0.9"/>
+          <rect width="46" height="46" rx="13" fill="#00C271"/>
+          <path d="M15.2 15.2 A11 11 0 1 0 30.8 15.2" stroke="#05150E" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+          <rect x="21.4" y="8.6" width="3.2" height="6" rx="1.6" fill="#05150E"/>
+          <rect x="21.4" y="16.2" width="3.2" height="6.2" rx="1.6" fill="#05150E"/>
         </svg>
       </span>
       <div>
-        <h1>Tá<span class="brand-accent">Ótimo!</span> <a href="https://www.contagilpb.com.br" target="_blank" rel="noopener" class="by-contagil">uma solução Contagil</a></h1>
-        <p>Inteligência de escala para o varejo — demanda, jornada, folgas e custos no ponto certo.</p>
+        <h1>Escala<span class="brand-accent">ON</span> <span id="brandStatus" class="brand-status" data-state="rascunho">Rascunho</span> <a href="https://www.contagilpb.com.br" target="_blank" rel="noopener" class="by-contagil">uma solução Contagil</a></h1>
+        <p>A escala da sua loja sempre no ar — e sempre dentro da lei.</p>
       </div>
     </div>
     <div class="top-status">
@@ -119,7 +112,7 @@
         <article class="panel benchmark-panel">
           <div class="panel-head">
             <div>
-              <h3>Referência TáÓtimo!</h3>
+              <h3>Referência EscalaON</h3>
               <p class="note">Régua de maturidade: o que a implantação já cobre e o que precisa evoluir antes de virar produto robusto.</p>
             </div>
           </div>
@@ -214,7 +207,7 @@
               <p id="coverageNote" class="note"></p>
             </div>
             <div class="scenario-filter">
-              <button id="optimizeCoverage" type="button" class="optimize-button" title="Otimização inteligente do TáÓtimo!: aloca caixas nos horários críticos respeitando PDVs e equipe disponível.">Otimização IA · TáÓtimo!</button>
+              <button id="optimizeCoverage" type="button" class="optimize-button" title="Aloca caixas nos horários críticos respeitando os PDVs e a equipe disponível.">Otimização inteligente</button>
               <button id="saveOptimization" type="button" class="optimize-button save-optimization" hidden title="Persistir a escala otimizada no banco de dados">Salvar otimização</button>
               <button class="scenario-filter-button active" data-scenario="atual">6x1 44h</button>
               <button class="scenario-filter-button" data-scenario="transicao">5x2 42h</button>
@@ -361,7 +354,7 @@
         </div>
 
         <div class="panel optimization-savings-panel">
-          <div class="panel-head"><div><h3>💰 Economia com otimização TáÓtimo!</h3><p class="note">Comparação: como a loja operou vs. operação otimizada baseada na demanda real importada.</p></div></div>
+          <div class="panel-head"><div><h3>💰 Economia com a otimização</h3><p class="note">Comparação: como a loja operou vs. operação otimizada baseada na demanda real importada.</p></div></div>
           <div id="optimizationSavings"></div>
         </div>
 
@@ -407,7 +400,7 @@
       <section id="setores" class="tab">
         <div class="section-head">
           <div>
-            <p class="eyebrow">Motor TáÓtimo!</p>
+            <p class="eyebrow">Motor de dimensionamento</p>
             <h2>Dimensionamento por setor e producao por hora</h2>
           </div>
           <span class="soft-pill">Benchmark inicial calibravel</span>
@@ -463,7 +456,7 @@
             <p class="eyebrow">Decisões explicáveis</p>
             <h2>Cada recomendação mostra dados, fórmula, confiança e limitação</h2>
           </div>
-          <span class="soft-pill">Inteligência TáÓtimo! · adaptação regional</span>
+          <span class="soft-pill">Inteligência EscalaON · adaptação regional</span>
         </div>
         <div id="operatingPrinciples" class="operating-principles"></div>
         <div id="decisionMemories" class="decision-memories"></div>
@@ -690,7 +683,7 @@
         <svg width="22" height="22" viewBox="0 0 46 46" fill="none"><defs><linearGradient id="fg" x1="0" y1="0" x2="46" y2="46" gradientUnits="userSpaceOnUse"><stop stop-color="#34d399"/><stop offset=".55" stop-color="#2dd4bf"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs><rect width="46" height="46" rx="13" fill="url(#fg)"/><path d="M16 23.5L21 28.5L31 17.5" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </span>
       <div>
-        <strong>TáÓtimo!</strong> · uma solução <a href="https://www.contagilpb.com.br" target="_blank" rel="noopener">Contagil</a>
+        <strong>EscalaON</strong> · uma solução <a href="https://www.contagilpb.com.br" target="_blank" rel="noopener">Contagil</a>
         <span>Especialistas em Contabilidade para o Varejo</span>
       </div>
     </div>

@@ -3,7 +3,8 @@ let authState = { authenticated: false, user: null };
 
 // Toggle de tema claro/escuro (alinhado à Contagil). Persiste em localStorage.
 (function initTheme() {
-  const saved = localStorage.getItem('taotimo-theme') || 'dark';
+  // Lê a chave nova; cai na antiga (pré-rebrand) para não perder a preferência de quem já usava.
+  const saved = localStorage.getItem('escalaon-theme') || localStorage.getItem('taotimo-theme') || 'dark';
   document.documentElement.setAttribute('data-theme', saved);
   function applyIcon() {
     const btn = document.getElementById('themeToggle');
@@ -16,7 +17,7 @@ let authState = { authenticated: false, user: null };
     btn.onclick = () => {
       const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
       document.documentElement.setAttribute('data-theme', next);
-      localStorage.setItem('taotimo-theme', next);
+      localStorage.setItem('escalaon-theme', next);
       applyIcon();
     };
   }
@@ -2066,7 +2067,7 @@ function renderWeeklySchedule(data) {
   const dbfTxt = (dbf && dbf.length)
     ? ` &nbsp;<span style="color:#f87171">🚫 folga bloqueada: ${dbf.map(d => d.dia).join('/')} (faturamento acima da média)</span>`
     : '';
-  document.getElementById('weeklyScheduleNote').innerHTML = `${source.label}: meta de ${source.targetHours}h e ${source.targetDaysOff} folga${source.targetDaysOff > 1 ? 's' : ''} a cada 7 dias.${source.optimized ? ' &nbsp;<span style="color:#f59e0b">⚡ semana individual ajustada pela rotina Tá Ótimo</span>' : ''} &nbsp;<span style="opacity:.8">🔓 abre · 🔒 fecha</span>${jvTxt}${dbfTxt}`;
+  document.getElementById('weeklyScheduleNote').innerHTML = `${source.label}: meta de ${source.targetHours}h e ${source.targetDaysOff} folga${source.targetDaysOff > 1 ? 's' : ''} a cada 7 dias.${source.optimized ? ' &nbsp;<span style="color:#f59e0b">⚡ semana individual ajustada pela otimização</span>' : ''} &nbsp;<span style="opacity:.8">🔓 abre · 🔒 fecha</span>${jvTxt}${dbfTxt}`;
   document.getElementById('weeklyAuditSummary').innerHTML = `
     <span class="${valid === audits.length ? 'weekly-ok' : 'weekly-bad'}" title="Colaboradores que batem exatamente a meta de horas e folgas (não é conformidade CLT)">${valid}/${audits.length} na meta de horas</span>
   `;
@@ -2427,7 +2428,7 @@ function renderWeeklySchedule(data) {
           @media print{button{display:none}}
         </style></head><body>
         <h1>Escala de Trabalho — ${empresa}${loja ? ' · ' + loja : ''}</h1>
-        <h2>${source.label} · gerado pelo TáÓtimo! em ${new Date().toLocaleDateString('pt-BR')}</h2>
+        <h2>${source.label} · gerado pelo EscalaON em ${new Date().toLocaleDateString('pt-BR')}</h2>
         <table><thead><tr><th>Colaborador</th>${dias2.map(d => `<th>${d}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>
         <p class="ft">🔓 abre · 🔒 fecha · Folga = descanso. Documento gerado automaticamente — confira a conformidade CLT antes de afixar.</p>
         <button onclick="window.print()" style="margin-top:16px;padding:10px 20px;background:#0d7d6f;color:#fff;border:none;border-radius:6px;cursor:pointer">Imprimir / Salvar PDF</button>
@@ -4337,6 +4338,31 @@ async function loadGestorOrgs() {
   }
 }
 
+// ASSINATURA EscalaON — o selo no topo reporta o estado REAL da escala:
+// Bloqueada (violação CLT) · No ar (publicada e conforme) · Rascunho (ainda não publicada).
+function renderBrandStatus(data) {
+  const el = document.getElementById('brandStatus');
+  if (!el) return;
+  if (!data.fullSchedule || !Object.keys(data.fullSchedule).length) { el.style.display = 'none'; return; }
+  el.style.display = '';
+
+  const cenario = data.complianceCLT ? Object.keys(data.complianceCLT)[0] : null;
+  const violacoes = (cenario && data.complianceCLT[cenario]) || [];
+  const publicada = !!data.escalaFechada || (data.escalaWorkflow && data.escalaWorkflow.status === 'publicado');
+
+  let state = 'rascunho', label = 'Rascunho', title = 'Escala em rascunho — ainda não publicada.';
+  if (violacoes.length) {
+    state = 'bloqueada'; label = 'Bloqueada';
+    title = violacoes.length + ' colaborador(es) com violação CLT — a publicação está bloqueada.';
+  } else if (publicada) {
+    state = 'no-ar'; label = 'No ar';
+    title = 'Escala publicada e em conformidade.';
+  }
+  el.dataset.state = state;
+  el.textContent = label;
+  el.title = title;
+}
+
 function safeRender(label, renderFn) {
   try {
     renderFn();
@@ -4359,6 +4385,7 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     sourceStatus.textContent = dadosReais ? 'Supabase · dados reais da empresa' : 'Base demonstrativa (faça login para ver seus dados)';
     sourceStatus.className = dadosReais ? 'source-connected' : 'source-demo';
     safeRender('estado de login', renderAuthState);
+    safeRender('selo de estado', () => renderBrandStatus(data));
     safeRender('modulos', () => applyEnabledModules(data));
     safeRender('gestor', () => renderGestorPanel(data));
     if (!authState.authenticated) {
@@ -4515,7 +4542,7 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
       optimizeButton.onclick = async () => {
         coverageAdjustmentMode = !coverageAdjustmentMode;
         optimizeButton.classList.toggle('active', coverageAdjustmentMode);
-        optimizeButton.textContent = coverageAdjustmentMode ? 'Voltar à escala original' : 'Otimização IA · TáÓtimo!';
+        optimizeButton.textContent = coverageAdjustmentMode ? 'Voltar à escala original' : 'Otimização inteligente';
         if (saveOptimizationButton) saveOptimizationButton.hidden = !coverageAdjustmentMode;
         renderCoverage(data);
         renderWeeklySchedule(data);

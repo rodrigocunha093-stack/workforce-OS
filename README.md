@@ -1,4 +1,4 @@
-# TáÓtimo! — Inteligência de escala para o varejo
+# EscalaON — Inteligência de escala para o varejo
 
 *uma solução **Contagil***
 
