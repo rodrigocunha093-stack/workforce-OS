@@ -1053,6 +1053,8 @@ function renderStaffSchedule(data) {
   const weeklyHours = Object.fromEntries(Object.keys(scenario.people).map((nome) => [nome, scenario.targetHours]));
   const working = staff.filter((person) => person.status === 'Trabalhando');
   const off = staff.filter((person) => person.status === 'Folga');
+  // "Formação individual do dia" saiu do layout: se os elementos não existem, não há o que pintar.
+  if (!document.getElementById('staffSchedule')) return;
   document.getElementById('staffScheduleNote').textContent = currentCoverageScenario === 'atual'
     ? `${data.dailyCoverage[currentCoverageDay].label} - formacao-base atual 6x1 44h${scenario.optimized ? ' · com intervalos realocados pela otimizacao' : ''}.`
     : `${data.dailyCoverage[currentCoverageDay].label} · formacao individual ${scenario.label}${scenario.optimized ? ' · sincronizada com a otimizacao' : ''}; intervalos aplicados pela regra CLT e ajuste operacional.`;
@@ -2135,10 +2137,12 @@ function renderWeeklySchedule(data) {
   const complianceBox = `
     <div class="clt-box ${compliance.length ? 'clt-bad' : 'clt-ok'}">
       <strong>${compliance.length ? '⚠️ ' + compliance.length + ' colaborador(es) com alerta CLT' : '✅ Escala em conformidade CLT'}</strong>
-      ${compliance.length ? `<div class="clt-list">${compliance.slice(0, 8).map(c => `<div><b>${c.nome}:</b> ${c.violacoes.join(' · ')}</div>`).join('')}${compliance.length > 8 ? `<div>+${compliance.length - 8} outros</div>` : ''}</div>` : '<span>Validados: interjornada 11h · DSR · máx 44h/sem · máx 10h/dia · máx 6h contínuas (art. 71) · 6 dias consecutivos.</span>'}
-      <small style="display:block;margin-top:6px;opacity:.65">Auditoria baseada na CLT federal. Convenções coletivas locais (CCT dos comerciários) podem ter regras adicionais — valide com seu contador/sindicato.</small>
+      ${compliance.length
+        ? `<details class="clt-detalhes"><summary>Ver os ${compliance.length} alerta(s)</summary><div class="clt-list">${compliance.map(c => `<div><b>${c.nome}:</b> ${c.violacoes.join(' · ')}</div>`).join('')}</div></details>`
+        : '<span>Jornada semanal, jornada diária, intervalo, interjornada e descanso semanal: tudo dentro da regra.</span>'}
       ${avisos.length ? `<div class="clt-avisos"><b>ℹ️ ${avisos.length} colaborador(es) com aviso</b> (não bloqueiam a publicação) — ex.: ${avisos[0].violacoes[0]}</div>` : ''}
       ${data.cctConfig && data.cctConfig.podeEditar ? `<div class="clt-config-row"><button id="cctEditorBtn" class="optimize-button" type="button">⚙️ Regras CLT/CCT</button><small class="clt-config-note">${data.cctConfig.usandoPadrao ? 'Usando o padrão CLT federal.' : 'Usando regras personalizadas da empresa.'}</small></div>` : ''}
+      <small class="clt-nota">Auditoria pela CLT federal. Convenções coletivas locais podem ter regras a mais — confirme com seu contador.</small>
     </div>`;
 
   // Índice do dia de HOJE na semana exibida (p/ destaque visual)
@@ -2654,7 +2658,7 @@ function renderEventos(eventos, eventMap) {
   if (!futuro.length) { el.innerHTML = '<p style="color:#64748b;font-size:12px;">Nenhum evento cadastrado. Feriados nacionais são gerados automaticamente.</p>'; return; }
   const tipoColors = { feriado: 'rgba(239,68,68,.15)', vespera: 'rgba(251,191,36,.15)', promocao: 'rgba(168,85,247,.15)', data_comemorativa: 'rgba(236,72,153,.15)', pagamento: 'rgba(34,197,94,.15)' };
   el.innerHTML = futuro.map(([data, ev]) => `<div class="evento-row">
-    <span class="ev-data">${data.slice(5).replace('-','/')}</span>
+    <span class="ev-data">${data.slice(8, 10)}/${data.slice(5, 7)}</span>
     <span class="ev-tipo" style="background:${tipoColors[ev.tipo] || 'rgba(255,255,255,.05)'};">${ev.tipo}</span>
     <span class="ev-nome">${ev.nome || '—'}</span>
     <span class="ev-fator">×${(ev.fator || 1).toFixed(2)}</span>
@@ -2722,7 +2726,9 @@ function renderEscalaSugerida(esc) {
 }
 
 function renderCommission(review) {
-  document.getElementById('commissionSummary').innerHTML = `
+  const commissionEl = document.getElementById('commissionSummary');
+  if (!commissionEl) return; // painel da comissão saiu do layout do Controlador
+  commissionEl.innerHTML = `
     <article class="commission-score">
       <small>Índice de prontidão</small>
       <strong>${review.score}</strong>
@@ -2816,8 +2822,10 @@ function renderControllerCaixa(data) {
 }
 
 function renderActions(actions, priority = 'all') {
+  const actionsEl = document.getElementById('actions');
+  if (!actionsEl) return; // cards de ação saíram do layout do Controlador
   const visible = priority === 'all' ? actions : actions.filter((action) => action.prioridade === priority);
-  document.getElementById('actions').innerHTML = visible.map((action, index) => `
+  actionsEl.innerHTML = visible.map((action, index) => `
     <article class="action-card ${action.prioridade}">
       <div class="action-top">
         <span>${action.prioridade}</span>
@@ -4219,7 +4227,7 @@ function configureAuth() {
 configureAuth();
 
 const MODULE_TAB_MAP = {
-  1: 'diagnostico', 2: 'cenarios', 3: 'domingo', 4: 'auditoria', 5: 'acoes',
+  1: 'diagnostico', 2: 'cenarios', 3: 'domingo', 4: 'simulador', 5: 'acoes',
   6: 'financeiro', 7: 'resiliencia', 8: 'setores', 9: 'memoria', 10: 'implantacao'
 };
 
@@ -4382,10 +4390,26 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     // Só é "demonstrativa" quando não há login (dados-modelo).
     const dadosReais = authState.authenticated && source.mode !== 'demo';
     const sourceStatus = document.getElementById('dataSourceStatus');
-    sourceStatus.textContent = dadosReais ? 'Supabase · dados reais da empresa' : 'Base demonstrativa (faça login para ver seus dados)';
-    sourceStatus.className = dadosReais ? 'source-connected' : 'source-demo';
+    if (sourceStatus) {
+      sourceStatus.textContent = dadosReais ? 'Dados da sua loja' : 'Base demonstrativa (faça login para ver seus dados)';
+      sourceStatus.className = dadosReais ? 'source-connected' : 'source-demo';
+    }
     safeRender('estado de login', renderAuthState);
     safeRender('selo de estado', () => renderBrandStatus(data));
+
+    // Auditoria: painel recolhível dentro da aba Escala (era uma aba própria).
+    const auditBtn = document.getElementById('toggleAuditoria');
+    const auditPanel = document.getElementById('auditoriaPanel');
+    if (auditBtn && auditPanel) {
+      auditBtn.onclick = () => {
+        const abrindo = auditPanel.hasAttribute('hidden');
+        if (abrindo) auditPanel.removeAttribute('hidden');
+        else auditPanel.setAttribute('hidden', '');
+        auditBtn.setAttribute('aria-expanded', String(abrindo));
+        auditBtn.classList.toggle('active', abrindo);
+        auditBtn.textContent = abrindo ? '📋 Ocultar auditoria' : '📋 Auditoria';
+      };
+    }
     safeRender('modulos', () => applyEnabledModules(data));
     safeRender('gestor', () => renderGestorPanel(data));
     if (!authState.authenticated) {

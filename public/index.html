@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>EscalaON · A escala da sua loja no ar, e dentro da lei</title>
+  <title>EscalaON · A escala da sua loja no ar e dentro da lei</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 46 46'%3E%3Crect width='46' height='46' rx='13' fill='%2300C271'/%3E%3Cpath d='M15.2 15.2 A11 11 0 1 0 30.8 15.2' stroke='%2305150E' stroke-width='3.2' stroke-linecap='round' fill='none'/%3E%3Crect x='21.4' y='8.6' width='3.2' height='6' rx='1.6' fill='%2305150E'/%3E%3Crect x='21.4' y='16.2' width='3.2' height='6.2' rx='1.6' fill='%2305150E'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="futuristic.css">
@@ -21,11 +21,10 @@
       </span>
       <div>
         <h1>Escala<span class="brand-accent">ON</span> <span id="brandStatus" class="brand-status" data-state="rascunho">Rascunho</span> <a href="https://www.contagilpb.com.br" target="_blank" rel="noopener" class="by-contagil">uma solução Contagil</a></h1>
-        <p>A escala da sua loja sempre no ar — e sempre dentro da lei.</p>
+        <p>A escala da sua loja sempre no ar e sempre dentro da lei.</p>
       </div>
     </div>
     <div class="top-status">
-      <span id="dataSourceStatus">Verificando fonte de dados...</span>
       <strong>Junho/2026</strong>
       <button id="themeToggle" class="theme-toggle" title="Alternar tema claro/escuro" type="button">🌙</button>
       <button id="openLogin" class="auth-button">Entrar</button>
@@ -39,16 +38,16 @@
 
   <div class="layout">
     <aside class="sidebar">
-      <button class="active" data-tab="diagnostico"><span>01</span> Diagnostico</button>
+      <button class="active" data-tab="diagnostico"><span>01</span> Diagnóstico</button>
       <button data-tab="cenarios"><span>02</span> Escala</button>
       <button data-tab="domingo"><span>03</span> Domingos</button>
-      <button data-tab="auditoria"><span>04</span> Auditoria</button>
+      <button data-tab="simulador"><span>04</span> Simulador</button>
       <button data-tab="acoes"><span>05</span> Controlador</button>
       <button data-tab="financeiro"><span>06</span> Financeiro</button>
-      <button data-tab="resiliencia"><span>07</span> Resiliencia</button>
+      <button data-tab="resiliencia"><span>07</span> Resiliência</button>
       <button data-tab="setores"><span>08</span> Setores</button>
-      <button data-tab="memoria"><span>09</span> Memoria</button>
-      <button data-tab="implantacao"><span>10</span> Implantacao</button>
+      <button data-tab="memoria"><span>09</span> Recomendações</button>
+      <button data-tab="implantacao"><span>10</span> Implantação</button>
     </aside>
 
     <main>
@@ -159,31 +158,20 @@
       <section id="cenarios" class="tab">
         <div class="section-head">
           <div>
-            <p class="eyebrow">Comparativo de cenários</p>
-            <h2>Impacto da jornada na capacidade da equipe</h2>
+            <p class="eyebrow">Escala da semana</p>
+            <h2>Quem trabalha, quando, e se está tudo dentro da lei</h2>
           </div>
-          <span class="soft-pill">4 operadoras de caixa</span>
+          <button id="toggleAuditoria" class="optimize-button" type="button" aria-expanded="false">📋 Auditoria</button>
         </div>
 
-        <div class="week-selector-panel">
-          <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-            <label for="weekSelector" style="margin: 0; font-weight: 600;">Analisar por semana do mês:</label>
-            <select id="weekSelector" style="padding: 8px 12px; border-radius: 8px; font-size: 14px;">
-              <option value="">Todos os dados importados (padrão)</option>
-              <option value="1">Semana 1 (1-7) - Normal</option>
-              <option value="2">Semana 2 (8-14) - Normal</option>
-              <option value="3">Semana 3 (15-21) - Normal</option>
-              <option value="4">Semana 4 (22-28) - Promoção Iniciando</option>
-              <option value="5">Semana 5 (29-05) - Pico de Promoção</option>
-            </select>
-            <small id="weekInfo" style="min-width: 200px;"></small>
+        <!-- Auditoria (recolhível) -->
+        <div id="auditoriaPanel" class="panel auditoria-panel" hidden>
+          <div class="panel-head">
+            <div><h3>Auditoria do mês</h3><p class="note">Horas, folgas e domingos por colaborador. Clique num dia do calendário para ver cobertura e riscos.</p></div>
+            <div class="calendar-legend"><span class="legend-good">Adequado</span><span class="legend-warn">Atenção</span><span class="legend-bad">Déficit</span><span class="legend-unknown">Sem dados</span></div>
           </div>
-        </div>
-
-        <div id="scenarioCards" class="scenario-grid"></div>
-
-        <div class="panel" style="overflow:hidden">
-          <div id="storeFloorMap"></div>
+          <div id="auditCards" class="audit-grid"></div>
+          <div id="monthCalendar" class="month-calendar"></div>
         </div>
 
         <div class="panel weekly-panel">
@@ -198,6 +186,10 @@
             </div>
           </div>
           <div id="weeklySchedule" class="weekly-schedule"></div>
+        </div>
+
+        <div class="panel" style="overflow:hidden">
+          <div id="storeFloorMap"></div>
         </div>
 
         <div class="panel visual-panel">
@@ -226,13 +218,6 @@
           <div id="coverageSummary" class="coverage-summary"></div>
           <div id="coverageHeatmap" class="heatmap"></div>
           <div id="cashierLoadPanel" class="cashier-load-panel"></div>
-          <div class="staff-section">
-            <div class="staff-section-head">
-              <div><h3>Formação individual do dia</h3><p id="staffScheduleNote" class="note"></p></div>
-              <div id="staffDaySummary" class="staff-day-summary"></div>
-            </div>
-            <div id="staffSchedule" class="staff-schedule"></div>
-          </div>
         </div>
       </section>
 
@@ -247,22 +232,31 @@
         <div id="sundayGrid" class="sunday-grid"></div>
       </section>
 
-      <section id="auditoria" class="tab">
+      <section id="simulador" class="tab">
         <div class="section-head">
           <div>
-            <p class="eyebrow">Auditoria mensal e calendário</p>
-            <h2>Horas, folgas e domingos por colaboradora</h2>
+            <p class="eyebrow">Simulador</p>
+            <h2>Impacto da mudança de jornada na capacidade da equipe</h2>
           </div>
-          <span class="soft-pill">Junho/2026</span>
+          <span class="soft-pill">Projeção 6x1 → 5x2</span>
         </div>
-        <div id="auditCards" class="audit-grid"></div>
-        <div class="panel calendar-panel">
-          <div class="panel-head">
-            <div><h3>Calendário operacional de junho</h3><p class="note">Clique em um dia para analisar cobertura, riscos e sugestões.</p></div>
-            <div class="calendar-legend"><span class="legend-good">Adequado</span><span class="legend-warn">Atenção</span><span class="legend-bad">Déficit</span><span class="legend-unknown">Sem dados</span></div>
+
+        <div class="week-selector-panel">
+          <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+            <label for="weekSelector" style="margin: 0; font-weight: 600;">Analisar por semana do mês:</label>
+            <select id="weekSelector" style="padding: 8px 12px; border-radius: 8px; font-size: 14px;">
+              <option value="">Todos os dados importados (padrão)</option>
+              <option value="1">Semana 1 (1-7) - Normal</option>
+              <option value="2">Semana 2 (8-14) - Normal</option>
+              <option value="3">Semana 3 (15-21) - Normal</option>
+              <option value="4">Semana 4 (22-28) - Promoção Iniciando</option>
+              <option value="5">Semana 5 (29-05) - Pico de Promoção</option>
+            </select>
+            <small id="weekInfo" style="min-width: 200px;"></small>
           </div>
-          <div id="monthCalendar" class="month-calendar"></div>
         </div>
+
+        <div id="scenarioCards" class="scenario-grid"></div>
       </section>
 
       <section id="acoes" class="tab">
@@ -310,14 +304,6 @@
           <div id="controllerCaixaContainer"></div>
         </article>
 
-        <div id="commissionSummary" class="commission-summary"></div>
-        <div class="controller-toolbar">
-          <button class="action-filter active" data-priority="all">Todas</button>
-          <button class="action-filter" data-priority="Crítica">Críticas</button>
-          <button class="action-filter" data-priority="Alta">Altas</button>
-          <button class="action-filter" data-priority="Média">Médias</button>
-        </div>
-        <div id="actions" class="action-grid"></div>
       </section>
 
       <section id="financeiro" class="tab">

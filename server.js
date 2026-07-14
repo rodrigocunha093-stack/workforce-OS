@@ -417,12 +417,12 @@ const MODULE_CATALOG = [
   { id: 1, key: 'diagnostico', nome: 'Diagnóstico' },
   { id: 2, key: 'cenarios', nome: 'Escala' },
   { id: 3, key: 'domingo', nome: 'Domingos' },
-  { id: 4, key: 'auditoria', nome: 'Auditoria' },
+  { id: 4, key: 'simulador', nome: 'Simulador' },
   { id: 5, key: 'acoes', nome: 'Controlador' },
   { id: 6, key: 'financeiro', nome: 'Financeiro' },
   { id: 7, key: 'resiliencia', nome: 'Resiliência' },
   { id: 8, key: 'setores', nome: 'Setores' },
-  { id: 9, key: 'memoria', nome: 'Memória' },
+  { id: 9, key: 'memoria', nome: 'Recomendações' },
   { id: 10, key: 'implantacao', nome: 'Implantação' }
 ];
 
