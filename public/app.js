@@ -348,8 +348,46 @@ function renderScenarios(scenarios, metadata) {
   const maxCapacity = Math.max(...scenarios.map((scenario) => scenario.capacidade));
   const pdvs = window.currentSummary?.storeConfig?.pdvs || scenarios[0]?.pdvs || 0;
 
+  // PROJEÇÃO DE CUSTO — a premissa honesta: reduzir a jornada NÃO reduz o salário.
+  // Para manter a mesma capacidade com jornada menor, é preciso mais gente. Aí o custo sobe.
+  const fin = window.currentSummary?.financial?.assumptions || {};
+  const salario = Number(fin.salarioBaseMensal) || 0;
+  const beneficios = Number(fin.beneficiosMensais) || 0;
+  const encargos = (Number(fin.encargosPercentual) || 0) / 100;
+  const custoPorContratacao = Number(fin.custoContratacao) || 0;
+  const custoPessoaMes = salario * (1 + encargos) + beneficios;
+
+  const base = scenarios[0] || null;              // cenário atual (6x1 44h)
+  const capacidadeAlvo = base ? base.capacidade : 0;
+  const equipeBase = base ? base.operadores : 0;
+  const folhaBase = equipeBase * custoPessoaMes;
+  const temCusto = custoPessoaMes > 0 && capacidadeAlvo > 0;
+
   document.getElementById('scenarioCards').innerHTML = scenarios.map((scenario) => {
     const auxiliary = scenario.capacidade - scenario.caixaNecessario;
+
+    const pessoas = scenario.horasSemanais > 0
+      ? Math.ceil(capacidadeAlvo / scenario.horasSemanais)
+      : scenario.operadores;
+    const contratacoes = Math.max(0, pessoas - equipeBase);
+    const folhaMes = pessoas * custoPessoaMes;
+    const delta = folhaMes - folhaBase;
+    const entrada = contratacoes * custoPorContratacao;
+
+    const blocoCusto = temCusto ? `
+        <div class="scenario-custo">
+          <div class="metric-row">
+            <span>Equipe p/ manter a capacidade</span>
+            <strong>${pessoas} ${pessoas === 1 ? 'pessoa' : 'pessoas'}${contratacoes ? ` <em class="custo-alta">+${contratacoes}</em>` : ''}</strong>
+          </div>
+          <div class="metric-row"><span>Folha por mês</span><strong>${money(folhaMes)}</strong></div>
+          <div class="metric-row">
+            <span>Impacto no custo</span>
+            <strong class="${delta > 0 ? 'custo-alta' : delta < 0 ? 'custo-baixa' : ''}">${delta === 0 ? '—' : (delta > 0 ? '+' : '') + money(delta) + '/mês'}</strong>
+          </div>
+          ${contratacoes ? `<div class="metric-row"><span>Contratação (uma vez)</span><strong>${money(entrada)}</strong></div>` : ''}
+        </div>` : '';
+
     return `
       <article class="scenario-card">
         <div class="scenario-top">
@@ -365,9 +403,19 @@ function renderScenarios(scenarios, metadata) {
           <div><small>Caixa · semana referência</small><strong>${scenario.caixaNecessario}h</strong></div>
           <div><small>Auxiliares</small><strong>${auxiliary}h</strong></div>
         </div>
+        ${blocoCusto}
       </article>
     `;
   }).join('');
+
+  // Premissas: o cliente precisa saber de onde saiu o número.
+  const notaEl = document.getElementById('simuladorPremissas');
+  if (notaEl) {
+    notaEl.innerHTML = temCusto
+      ? `Premissas: salário-base <b>${money(salario)}</b> + encargos <b>${fin.encargosPercentual}%</b> + benefícios <b>${money(beneficios)}</b> = <b>${money(custoPessoaMes)}</b> por pessoa/mês. Contratação: <b>${money(custoPorContratacao)}</b> por vaga.
+         <br>A jornada menor <b>não reduz o salário</b> de quem já está na equipe — o custo sobe porque manter a mesma cobertura exige mais gente. Ajuste os valores na aba Financeiro.`
+      : 'Cadastre a equipe com salário e importe o faturamento para ver a projeção de custo.';
+  }
 }
 
 function renderBenchmark(data) {
