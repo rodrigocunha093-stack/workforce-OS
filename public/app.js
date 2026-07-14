@@ -356,12 +356,20 @@ function renderScenarios(scenarios, metadata) {
   const encargos = (Number(fin.encargosPercentual) || 0) / 100;
   const custoPorContratacao = Number(fin.custoContratacao) || 0;
   const custoPessoaMes = salario * (1 + encargos) + beneficios;
+  const faturamentoSemana = Number(fin.faturamentoSemanaReferencia) || 0;
+  const margemBruta = (Number(fin.margemBrutaPercentual) || 0) / 100;
+  const semanasMes = Number(fin.semanasPorMes) || 4.33;
+  const TAXA_ABANDONO = 0.03; // mesma premissa do painel operacional (fila sem caixa → ~3% da venda)
 
   const base = scenarios[0] || null;              // cenário atual (6x1 44h)
   const capacidadeAlvo = base ? base.capacidade : 0;
   const equipeBase = base ? base.operadores : 0;
+  const caixaBase = base ? base.caixaNecessario : 0;
   const folhaBase = equipeBase * custoPessoaMes;
   const temCusto = custoPessoaMes > 0 && capacidadeAlvo > 0;
+  const temReceita = temCusto && faturamentoSemana > 0 && caixaBase > 0;
+  const receitaPorHoraCaixa = caixaBase > 0 ? faturamentoSemana / caixaBase : 0;
+  const fatiaCaixa = capacidadeAlvo > 0 ? caixaBase / capacidadeAlvo : 0;
 
   document.getElementById('scenarioCards').innerHTML = scenarios.map((scenario) => {
     const auxiliary = scenario.capacidade - scenario.caixaNecessario;
@@ -374,18 +382,40 @@ function renderScenarios(scenarios, metadata) {
     const delta = folhaMes - folhaBase;
     const entrada = contratacoes * custoPorContratacao;
 
+    // Saída B — NÃO contratar: a mesma equipe entrega menos horas. A cobertura cai,
+    // a fila cresce e o cliente abandona o carrinho. Isso é receita que não entra.
+    const capacidadeSemContratar = equipeBase * scenario.horasSemanais;
+    const horasQueSomem = Math.max(0, capacidadeAlvo - capacidadeSemContratar);
+    const horasCaixaPerdidas = horasQueSomem * fatiaCaixa;
+    const receitaPerdidaMes = horasCaixaPerdidas * receitaPorHoraCaixa * TAXA_ABANDONO * semanasMes;
+    const margemPerdidaMes = receitaPerdidaMes * margemBruta;
+
+    // Comparação neutra — de propósito. O custo da folha é certo; a perda de venda é
+    // estimada e conservadora (não mede ruptura, experiência nem cliente que não volta).
+    // Um veredito de "pode absorver" saindo de um modelo mole induziria o gestor ao erro.
+    const veredito = (delta > 0 || margemPerdidaMes > 0)
+      ? `Contratar custa <b>${money(delta)}/mês</b>. Não contratar custa <b>${money(margemPerdidaMes)}/mês</b> de margem — <b>mais</b> fila, ruptura e desgaste do cliente, que esta conta não mede.`
+      : '';
+
     const blocoCusto = temCusto ? `
         <div class="scenario-custo">
+          <p class="custo-titulo">Se contratar (mantém a cobertura)</p>
           <div class="metric-row">
-            <span>Equipe p/ manter a capacidade</span>
+            <span>Equipe necessária</span>
             <strong>${pessoas} ${pessoas === 1 ? 'pessoa' : 'pessoas'}${contratacoes ? ` <em class="custo-alta">+${contratacoes}</em>` : ''}</strong>
           </div>
           <div class="metric-row"><span>Folha por mês</span><strong>${money(folhaMes)}</strong></div>
           <div class="metric-row">
-            <span>Impacto no custo</span>
+            <span>Folha a mais</span>
             <strong class="${delta > 0 ? 'custo-alta' : delta < 0 ? 'custo-baixa' : ''}">${delta === 0 ? '—' : (delta > 0 ? '+' : '') + money(delta) + '/mês'}</strong>
           </div>
           ${contratacoes ? `<div class="metric-row"><span>Contratação (uma vez)</span><strong>${money(entrada)}</strong></div>` : ''}
+          ${temReceita ? `
+          <p class="custo-titulo">Se NÃO contratar (cobertura cai)</p>
+          <div class="metric-row"><span>Horas que somem</span><strong>${horasQueSomem === 0 ? '—' : '−' + Math.round(horasQueSomem) + 'h/sem'}</strong></div>
+          <div class="metric-row"><span>Receita em risco</span><strong class="${receitaPerdidaMes > 0 ? 'custo-alta' : ''}">${receitaPerdidaMes === 0 ? '—' : money(receitaPerdidaMes) + '/mês'}</strong></div>
+          <div class="metric-row"><span>Margem perdida</span><strong class="${margemPerdidaMes > 0 ? 'custo-alta' : ''}">${margemPerdidaMes === 0 ? '—' : money(margemPerdidaMes) + '/mês'}</strong></div>
+          ${veredito ? `<p class="custo-veredito">${veredito}</p>` : ''}` : ''}
         </div>` : '';
 
     return `
@@ -412,8 +442,10 @@ function renderScenarios(scenarios, metadata) {
   const notaEl = document.getElementById('simuladorPremissas');
   if (notaEl) {
     notaEl.innerHTML = temCusto
-      ? `Premissas: salário-base <b>${money(salario)}</b> + encargos <b>${fin.encargosPercentual}%</b> + benefícios <b>${money(beneficios)}</b> = <b>${money(custoPessoaMes)}</b> por pessoa/mês. Contratação: <b>${money(custoPorContratacao)}</b> por vaga.
-         <br>A jornada menor <b>não reduz o salário</b> de quem já está na equipe — o custo sobe porque manter a mesma cobertura exige mais gente. Ajuste os valores na aba Financeiro.`
+      ? `<b>Custo por pessoa:</b> salário ${money(salario)} + encargos ${fin.encargosPercentual}% + benefícios ${money(beneficios)} = <b>${money(custoPessoaMes)}</b>/mês. Contratação: <b>${money(custoPorContratacao)}</b> por vaga.
+         ${temReceita ? `<br><b>Receita perdida:</b> as horas que somem viram fila no caixa. Aplicamos <b>${Math.round(TAXA_ABANDONO * 100)}% de abandono</b> (mesma premissa do Painel Operacional) sobre a receita dessas horas, e a margem de <b>${fin.margemBrutaPercentual}%</b> sobre ela — porque o que sai do seu bolso é a <b>margem</b>, não o faturamento.` : ''}
+         <br>A jornada menor <b>não reduz o salário</b> de quem já está na equipe. Por isso só há duas saídas: pagar mais folha, ou perder venda no caixa. Ajuste as premissas na aba Financeiro.
+         <br><small style="opacity:.7">A folha é um custo <b>certo</b>. A receita perdida é uma estimativa <b>conservadora</b>: não mede ruptura por reposição não feita, experiência do cliente, nem quem deixa de voltar. Use para decidir, não como previsão contábil.</small>`
       : 'Cadastre a equipe com salário e importe o faturamento para ver a projeção de custo.';
   }
 }
