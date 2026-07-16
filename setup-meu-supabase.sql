@@ -56,10 +56,11 @@ CREATE INDEX IF NOT EXISTS idx_users_email       ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_orgcode     ON users(orgcode);
 CREATE INDEX IF NOT EXISTS idx_users_orgid       ON users(orgid);
 
--- 7) Desligar o RLS (cadeado de segurança por linha).
--- O projeto controla o acesso na própria aplicação (login/sessão), como na produção do Rodrigo.
--- Sem isto, projetos Supabase novos bloqueiam a gravação ("row-level security policy").
-ALTER TABLE users    DISABLE ROW LEVEL SECURITY;
-ALTER TABLE sessions DISABLE ROW LEVEL SECURITY;
-ALTER TABLE clients  DISABLE ROW LEVEL SECURITY;
-ALTER TABLE audit    DISABLE ROW LEVEL SECURITY;
+-- 7) LIGAR o RLS (cadeado de segurança por linha) — endurecimento 2026-07.
+-- Sem nenhuma política criada, as tabelas ficam FECHADAS para chaves públicas
+-- (anon/publishable). O servidor usa a chave SECRETA (sb_secret_...), que passa
+-- por cima do RLS. Portanto: o SUPABASE_KEY do .env DEVE ser a chave secreta.
+ALTER TABLE users    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clients  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit    ENABLE ROW LEVEL SECURITY;

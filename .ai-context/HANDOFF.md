@@ -16,6 +16,14 @@
 **Arquivos:** `public/index.html`, `public/app.js`, `public/futuristic.css`, `public/colaborador.html`, `server.js` (log), docs.
 **Próximo (Fases 2-4 de design):** tela de entrada/login, grade da Escala, repaginada dos demais painéis.
 
+## 🔐 Endurecimento Supabase: RLS ligado + chave secreta (2026-07-14, Opus)
+
+O verificador do Supabase acusou (com razão) `rls_disabled_in_public` e `sensitive_columns_exposed`. Correção estrutural no ambiente de teste:
+- **RLS LIGADO** nas 4 tabelas, **sem políticas** → chave pública fica cega (leitura enxerga 0) e bloqueada (escrita 42501). Verificado com teste real contra a chave publishable antiga.
+- Servidor passou a usar a **chave SECRETA** no `.env` — que ignora o RLS. **Zero mudança de código** (`db-supabase.js` usa o que estiver em `SUPABASE_KEY`).
+- `setup-meu-supabase.sql` agora **liga** o RLS (ambiente novo já nasce trancado) e o `.env.example` exige a chave secreta.
+- ⚠️ **PENDÊNCIA DE PRODUÇÃO (falar com o Rodrigo antes dos pilotos):** o projeto legado (`megimevuyjaevilogepe`) roda com RLS desligado + chave publishable — e essa chave está **hardcoded como fallback em `db-supabase.js`, commitada no repositório**. Endurecer igual: ligar RLS lá, trocar a env do Vercel pela secreta e remover o fallback do código.
+
 ## 🧩 Motor de regras CLT/CCT data-driven (2026-06-18, Opus) — Passo 1
 
 **Feito:** trazido o motor de regras do projeto-irmão **EscalaDP** para cá, substituindo o `checkComplianceCLT` heurístico (6 verificações chumbadas) por um motor configurável por dados.

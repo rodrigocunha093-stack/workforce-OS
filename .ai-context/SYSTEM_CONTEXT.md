@@ -31,7 +31,8 @@
 
 PostgreSQL converte identificadores não-aspeados para minúsculo. `db-supabase.js` mapeia:
 `passwordhash, passwordsalt, invitecode, orgid, orgcode, role, userid, expiresat, updatedat`.
-Tabelas: `users, sessions, clients (data JSONB), audit`. RLS **desabilitado** (acesso via service/anon key controlado na app).
+Tabelas: `users, sessions, clients (data JSONB), audit`.
+**Segurança (endurecido em 2026-07-14):** RLS **LIGADO** nas 4 tabelas, sem políticas → chaves públicas (anon/publishable) não leem nem escrevem nada; o servidor usa a **chave SECRETA** (`sb_secret_...`) em `SUPABASE_KEY`, que ignora o RLS. ⚠️ **Pendência de produção:** o projeto legado do Rodrigo ainda roda RLS desligado + chave publishable (inclusive hardcoded como fallback em `db-supabase.js`) — aplicar o mesmo endurecimento antes dos pilotos com clientes reais.
 
 ## Multiempresa e papéis
 
