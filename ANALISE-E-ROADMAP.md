@@ -23,7 +23,7 @@
 - Análise por semana do mês
 
 ### Inteligência e dashboards
-- **Painel Operacional** (abertura): faturamento dia/semana/mês, dimensionamento por benchmark (1 colab/R$36,5k), pico de fluxo, perdas (ruptura, validade, abandono), multifuncionalidade, tendência
+- **Painel Operacional** (abertura): faturamento dia/semana/mês, dimensionamento por benchmark (1 colab/R$40k, `BENCH.fatPorFuncionario`), pico de fluxo, perdas (ruptura, validade, abandono), multifuncionalidade, tendência
 - **ICOS** por mercadológico: venda × equipe, produtividade, curva por dia da semana, matriz de benchmarks (caixas/h, margem, foco)
 - **Otimização EscalaON**: cobre déficits respeitando PDVs/equipe, salvável
 - Economia comprovada (operação real vs otimizada)

@@ -232,49 +232,7 @@ function renderOpsDashboard(data) {
       </div>
     </div>` : ''}
 
-    <div class="ops-section-title">🎲 Simulador What-if</div>
-    <div class="ops-card ops-whatif">
-      <div class="whatif-controls">
-        <label>Variação de equipe <input type="number" id="wfEquipe" value="0" step="1"> colaborador(es)</label>
-        <label>Variação de faturamento <input type="number" id="wfFat" value="0" step="5">%</label>
-        <label>Custo/colaborador <input type="number" id="wfCusto" value="2700" step="100">R$/mês</label>
-        <button id="wfBtn" class="optimize-button save-optimization" type="button">Simular</button>
-      </div>
-      <div id="wfResult" class="whatif-result"></div>
-    </div>
   `;
-
-  // Handler What-if
-  const wfBtn = document.getElementById('wfBtn');
-  if (wfBtn) {
-    wfBtn.onclick = async () => {
-      const res = document.getElementById('wfResult');
-      res.innerHTML = '<span class="note">Calculando...</span>';
-      try {
-        const r = await fetch('/api/whatif', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-          deltaEquipe: Number(document.getElementById('wfEquipe').value) || 0,
-          deltaFatPct: Number(document.getElementById('wfFat').value) || 0,
-          custoColaborador: Number(document.getElementById('wfCusto').value) || 2700
-        }) });
-        const d = await r.json();
-        if (!d.ok) { res.innerHTML = `<span class="note">${d.error}</span>`; return; }
-        const s = d.simulado, b = d.base;
-        res.innerHTML = `
-          <div class="wf-cards">
-            <div class="wf-card"><small>Equipe</small><b>${b.equipe} → ${s.equipe}</b><span>ideal: ${s.ideal}</span></div>
-            <div class="wf-card"><small>Cobertura</small><b class="${s.cobertura<85?'wf-bad':s.cobertura>115?'wf-warn':'wf-ok'}">${s.cobertura}%</b><span>do dimensionamento</span></div>
-            <div class="wf-card"><small>Custo folha</small><b>${money(s.custoFolha)}</b><span>${s.deltaCusto>=0?'+':''}${money(s.deltaCusto)}</span></div>
-            <div class="wf-card"><small>Ruptura estimada</small><b class="${s.rupturaEstimada>7?'wf-bad':'wf-ok'}">${s.rupturaEstimada}%</b><span>perda ${money(s.perdaRuptura)}/mês</span></div>
-          </div>
-          <div class="wf-verdict">${s.cobertura >= 85 && s.cobertura <= 115
-            ? '✅ Dimensionamento equilibrado neste cenário.'
-            : s.cobertura < 85
-              ? `⚠️ Subdimensionado: faltam ~${s.ideal - s.equipe} colaboradores. Perda de ruptura sobe para ${money(s.perdaRuptura)}/mês.`
-              : `🔵 Superdimensionado: ${s.equipe - s.ideal} acima do ideal. Avaliar produtividade ou realocação.`}</div>
-        `;
-      } catch (e) { res.innerHTML = '<span class="note">Erro ao simular.</span>'; }
-    };
-  }
 
   // Seletor de período
   document.querySelectorAll('#opsPeriodSwitch .ops-period-btn').forEach(btn => {
@@ -1988,6 +1946,39 @@ function renderStoreFloorMap(data) {
   }
 
   render();
+}
+
+// Simulador What-if (aba Simulador): impacto de contratar/desligar e de variação de vendas.
+function initWhatIf() {
+  const wfBtn = document.getElementById('wfBtn');
+  if (!wfBtn) return;
+  wfBtn.onclick = async () => {
+    const res = document.getElementById('wfResult');
+    res.innerHTML = '<span class="note">Calculando...</span>';
+    try {
+      const r = await fetch('/api/whatif', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        deltaEquipe: Number(document.getElementById('wfEquipe').value) || 0,
+        deltaFatPct: Number(document.getElementById('wfFat').value) || 0,
+        custoColaborador: Number(document.getElementById('wfCusto').value) || 2700
+      }) });
+      const d = await r.json();
+      if (!d.ok) { res.innerHTML = `<span class="note">${d.error}</span>`; return; }
+      const s = d.simulado, b = d.base;
+      res.innerHTML = `
+        <div class="wf-cards">
+          <div class="wf-card"><small>Equipe</small><b>${b.equipe} → ${s.equipe}</b><span>ideal: ${s.ideal}</span></div>
+          <div class="wf-card"><small>Cobertura</small><b class="${s.cobertura<85?'wf-bad':s.cobertura>115?'wf-warn':'wf-ok'}">${s.cobertura}%</b><span>do dimensionamento</span></div>
+          <div class="wf-card"><small>Custo folha</small><b>${money(s.custoFolha)}</b><span>${s.deltaCusto>=0?'+':''}${money(s.deltaCusto)}</span></div>
+          <div class="wf-card"><small>Ruptura estimada</small><b class="${s.rupturaEstimada>7?'wf-bad':'wf-ok'}">${s.rupturaEstimada}%</b><span>perda ${money(s.perdaRuptura)}/mês</span></div>
+        </div>
+        <div class="wf-verdict">${s.cobertura >= 85 && s.cobertura <= 115
+          ? '✅ Dimensionamento equilibrado neste cenário.'
+          : s.cobertura < 85
+            ? `⚠️ Subdimensionado: faltam ~${s.ideal - s.equipe} colaboradores. Perda de ruptura sobe para ${money(s.perdaRuptura)}/mês.`
+            : `🔵 Superdimensionado: ${s.equipe - s.ideal} acima do ideal. Avaliar produtividade ou realocação.`}</div>
+      `;
+    } catch (e) { res.innerHTML = '<span class="note">Erro ao simular.</span>'; }
+  };
 }
 
 // Modal de lista CLT (alertas/avisos) — mesmo visual do editor de regras.
@@ -4522,6 +4513,7 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     }
     safeRender('estado de login', renderAuthState);
     safeRender('selo de estado', () => renderBrandStatus(data));
+    safeRender('simulador what-if', initWhatIf);
 
     // Painéis recolhíveis da aba Escala (antigas abas Auditoria e Domingos).
     const ligaPainelRecolhivel = (btnId, panelId, rotuloAberto, rotuloFechado) => {

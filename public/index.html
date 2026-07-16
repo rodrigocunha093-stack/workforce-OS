@@ -258,6 +258,19 @@
 
         <div id="scenarioCards" class="scenario-grid"></div>
         <p id="simuladorPremissas" class="simulador-premissas"></p>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div><h3>🎲 E se eu contratar ou desligar?</h3><p class="note">Simule mudanças de equipe e de faturamento: dimensionamento, folha e ruptura estimada.</p></div>
+          </div>
+          <div class="whatif-controls">
+            <label>Variação de equipe <input type="number" id="wfEquipe" value="0" step="1"> colaborador(es)</label>
+            <label>Variação de faturamento <input type="number" id="wfFat" value="0" step="5">%</label>
+            <label>Custo/colaborador <input type="number" id="wfCusto" value="2700" step="100">R$/mês</label>
+            <button id="wfBtn" class="optimize-button save-optimization" type="button">Simular</button>
+          </div>
+          <div id="wfResult" class="whatif-result"></div>
+        </article>
       </section>
 
       <section id="acoes" class="tab">

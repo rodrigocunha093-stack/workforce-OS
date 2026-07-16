@@ -5580,7 +5580,7 @@ const requestHandler = async (req, res) => {
         const deltaFatPct = Number(body.deltaFatPct || 0);   // % variação faturamento
         const equipeSim = Math.max(0, equipeBase + deltaEquipe);
         const fatMesSim = Math.round(fatMesBase * (1 + deltaFatPct / 100));
-        const idealSim = Math.round(fatMesSim / 40000);
+        const idealSim = Math.round(fatMesSim / BENCH.fatPorFuncionario); // régua única de dimensionamento
         const custoFolhaSim = equipeSim * custoColab;
         const custoFolhaBase = equipeBase * custoColab;
         // Ruptura estimada conforme gap equipe vs ideal
