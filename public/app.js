@@ -1990,6 +1990,40 @@ function renderStoreFloorMap(data) {
   render();
 }
 
+// Modal de lista CLT (alertas/avisos) — mesmo visual do editor de regras.
+// Recebe a lista [{ nome, violacoes: [mensagens] }] e mostra por colaborador.
+function abrirListaCLT(titulo, intro, lista, tipo) {
+  const antigo = document.getElementById('cltListaOverlay');
+  if (antigo) antigo.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'cltListaOverlay';
+  overlay.className = 'cct-modal-overlay';
+  overlay.innerHTML = `
+    <div class="cct-modal">
+      <div class="cct-modal-header">
+        <strong>${titulo}</strong>
+        <button class="cct-modal-close" type="button">&times;</button>
+      </div>
+      <div class="cct-modal-intro">${intro}</div>
+      <div class="cct-modal-body">
+        ${lista.length ? lista.map((item) => `
+          <div class="clt-lista-item ${tipo}">
+            <strong>${item.nome}</strong>
+            <ul>${item.violacoes.map((v) => `<li>${v}</li>`).join('')}</ul>
+          </div>`).join('') : '<p class="clt-lista-vazia">Nada por aqui.</p>'}
+      </div>
+      <div class="cct-modal-actions">
+        <span class="cct-spacer"></span>
+        <button class="cct-cancel" type="button">Fechar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const fechar = () => overlay.remove();
+  overlay.querySelector('.cct-modal-close').onclick = fechar;
+  overlay.querySelector('.cct-cancel').onclick = fechar;
+  overlay.onclick = (e) => { if (e.target === overlay) fechar(); };
+}
+
 // PASSO 2 — Editor de regras CLT/CCT da empresa (modal). Lê o catálogo e as regras
 // salvas de data.cctConfig, deixa o admin ajustar valores/severidade e salva via API.
 function renderCctEditor(cctConfig) {
@@ -2217,11 +2251,13 @@ function renderWeeklySchedule(data) {
   const complianceBox = `
     <div class="clt-box ${compliance.length ? 'clt-bad' : 'clt-ok'}">
       <strong>${compliance.length ? '⚠️ ' + compliance.length + ' colaborador(es) com alerta CLT' : '✅ Escala em conformidade CLT'}</strong>
-      ${compliance.length
-        ? `<details class="clt-detalhes"><summary>Ver os ${compliance.length} alerta(s)</summary><div class="clt-list">${compliance.map(c => `<div><b>${c.nome}:</b> ${c.violacoes.join(' · ')}</div>`).join('')}</div></details>`
-        : '<span>Jornada semanal, jornada diária, intervalo, interjornada e descanso semanal: tudo dentro da regra.</span>'}
-      ${avisos.length ? `<div class="clt-avisos"><b>ℹ️ ${avisos.length} colaborador(es) com aviso</b> (não bloqueiam a publicação) — ex.: ${avisos[0].violacoes[0]}</div>` : ''}
-      ${data.cctConfig && data.cctConfig.podeEditar ? `<div class="clt-config-row"><button id="cctEditorBtn" class="optimize-button" type="button">⚙️ Regras CLT/CCT</button><small class="clt-config-note">${data.cctConfig.usandoPadrao ? 'Usando o padrão CLT federal.' : 'Usando regras personalizadas da empresa.'}</small></div>` : ''}
+      ${compliance.length ? '' : '<span>Jornada semanal, jornada diária, intervalo, interjornada e descanso semanal: tudo dentro da regra.</span>'}
+      <div class="clt-config-row">
+        <button id="verAlertasBtn" class="optimize-button clt-btn-alertas" type="button" ${compliance.length ? '' : 'disabled'}>🚫 Alertas/Bloqueios (${compliance.length})</button>
+        <button id="verAvisosBtn" class="optimize-button clt-btn-avisos" type="button" ${avisos.length ? '' : 'disabled'}>ℹ️ Avisos (${avisos.length})</button>
+        ${data.cctConfig && data.cctConfig.podeEditar ? `<button id="cctEditorBtn" class="optimize-button" type="button">⚙️ Regras CLT/CCT</button>` : ''}
+        <small class="clt-config-note">${data.cctConfig && data.cctConfig.usandoPadrao === false ? 'Usando regras personalizadas da empresa.' : 'Usando o padrão CLT federal.'}</small>
+      </div>
       <small class="clt-nota">Auditoria pela CLT federal. Convenções coletivas locais podem ter regras a mais — confirme com seu contador.</small>
     </div>`;
 
@@ -2397,6 +2433,16 @@ function renderWeeklySchedule(data) {
   }
   const cctBtn = document.getElementById('cctEditorBtn');
   if (cctBtn) cctBtn.onclick = () => renderCctEditor(data.cctConfig);
+  const alertasBtn = document.getElementById('verAlertasBtn');
+  if (alertasBtn) alertasBtn.onclick = () => abrirListaCLT(
+    '🚫 Alertas que bloqueiam a publicação',
+    'Violações das regras ativas (CLT/CCT). Enquanto existirem, o fechamento do período exige confirmação com ressalva.',
+    compliance, 'alerta');
+  const avisosBtn = document.getElementById('verAvisosBtn');
+  if (avisosBtn) avisosBtn.onclick = () => abrirListaCLT(
+    'ℹ️ Avisos — não bloqueiam a publicação',
+    'Itens informativos gerados pelas regras marcadas como "só avisa" (ex.: ajuda de custo por domingo trabalhado).',
+    avisos, 'aviso');
   const reabrirBtn = document.getElementById('reabrirBtn');
   if (reabrirBtn) {
     reabrirBtn.onclick = async () => {
