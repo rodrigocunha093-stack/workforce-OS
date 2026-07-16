@@ -907,8 +907,9 @@ select option { background: #141b2e; color: #e8eef5; }
 .clt-detalhes .clt-list { margin-top: 8px; }
 .clt-nota { display: block; margin-top: 8px; font-size: 10.5px; opacity: 0.55; }
 
-/* Auditoria recolhível dentro da aba Escala */
+/* Auditoria e Domingos recolhíveis dentro da aba Escala */
 .auditoria-panel { margin-bottom: 14px; }
+.escala-acoes-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
 /* SIMULADOR — projeção de custo do 5x2 */
 .scenario-custo {

@@ -40,14 +40,13 @@
     <aside class="sidebar">
       <button class="active" data-tab="diagnostico"><span>01</span> Diagnóstico</button>
       <button data-tab="cenarios"><span>02</span> Escala</button>
-      <button data-tab="domingo"><span>03</span> Domingos</button>
-      <button data-tab="simulador"><span>04</span> Simulador</button>
-      <button data-tab="acoes"><span>05</span> Controlador</button>
-      <button data-tab="financeiro"><span>06</span> Financeiro</button>
-      <button data-tab="resiliencia"><span>07</span> Resiliência</button>
-      <button data-tab="setores"><span>08</span> Setores</button>
-      <button data-tab="memoria"><span>09</span> Recomendações</button>
-      <button data-tab="implantacao"><span>10</span> Implantação</button>
+      <button data-tab="simulador"><span>03</span> Simulador</button>
+      <button data-tab="acoes"><span>04</span> Controlador</button>
+      <button data-tab="financeiro"><span>05</span> Financeiro</button>
+      <button data-tab="resiliencia"><span>06</span> Resiliência</button>
+      <button data-tab="setores"><span>07</span> Setores</button>
+      <button data-tab="memoria"><span>08</span> Recomendações</button>
+      <button data-tab="implantacao"><span>09</span> Implantação</button>
     </aside>
 
     <main>
@@ -161,7 +160,19 @@
             <p class="eyebrow">Escala da semana</p>
             <h2>Quem trabalha, quando, e se está tudo dentro da lei</h2>
           </div>
-          <button id="toggleAuditoria" class="optimize-button" type="button" aria-expanded="false">📋 Auditoria</button>
+          <div class="escala-acoes-head">
+            <button id="toggleDomingos" class="optimize-button" type="button" aria-expanded="false">☀️ Domingos</button>
+            <button id="toggleAuditoria" class="optimize-button" type="button" aria-expanded="false">📋 Auditoria</button>
+          </div>
+        </div>
+
+        <!-- Domingos (recolhível) — antiga aba, agora aqui -->
+        <div id="domingosPanel" class="panel auditoria-panel" hidden>
+          <div class="panel-head">
+            <div><h3>Revezamento dominical</h3><p class="note">Folgas femininas e cobertura mínima no domingo.</p></div>
+            <span class="soft-pill amber-bg">Regra sujeita a CCT</span>
+          </div>
+          <div id="sundayGrid" class="sunday-grid"></div>
         </div>
 
         <!-- Auditoria (recolhível) -->
@@ -219,17 +230,6 @@
           <div id="coverageHeatmap" class="heatmap"></div>
           <div id="cashierLoadPanel" class="cashier-load-panel"></div>
         </div>
-      </section>
-
-      <section id="domingo" class="tab">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Revezamento dominical</p>
-            <h2>Folgas femininas e cobertura mínima no domingo</h2>
-          </div>
-          <span class="soft-pill amber-bg">Regra sujeita a CCT</span>
-        </div>
-        <div id="sundayGrid" class="sunday-grid"></div>
       </section>
 
       <section id="simulador" class="tab">

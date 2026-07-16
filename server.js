@@ -416,7 +416,7 @@ function groupBySetor(employees) {
 const MODULE_CATALOG = [
   { id: 1, key: 'diagnostico', nome: 'Diagnóstico' },
   { id: 2, key: 'cenarios', nome: 'Escala' },
-  { id: 3, key: 'domingo', nome: 'Domingos' },
+  // id 3 (Domingos) foi incorporado à aba Escala como painel recolhível (2026-07-14)
   { id: 4, key: 'simulador', nome: 'Simulador' },
   { id: 5, key: 'acoes', nome: 'Controlador' },
   { id: 6, key: 'financeiro', nome: 'Financeiro' },

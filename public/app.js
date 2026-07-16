@@ -4242,7 +4242,7 @@ function renderAuthState() {
   document.getElementById('accountMenu').hidden = !authState.authenticated;
   document.getElementById('accountName').textContent = authState.user?.name || '';
   const setup = document.querySelector('[data-tab="implantacao"]');
-  setup.textContent = authState.authenticated ? '10 Implantacao' : '10 Area do cliente';
+  setup.innerHTML = authState.authenticated ? '<span>09</span> Implantação' : '<span>09</span> Área do cliente';
 }
 
 function applyClientAccess(data) {
@@ -4307,7 +4307,7 @@ function configureAuth() {
 configureAuth();
 
 const MODULE_TAB_MAP = {
-  1: 'diagnostico', 2: 'cenarios', 3: 'domingo', 4: 'simulador', 5: 'acoes',
+  1: 'diagnostico', 2: 'cenarios', 4: 'simulador', 5: 'acoes', // 3 (Domingos) virou painel dentro da Escala
   6: 'financeiro', 7: 'resiliencia', 8: 'setores', 9: 'memoria', 10: 'implantacao'
 };
 
@@ -4477,19 +4477,22 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     safeRender('estado de login', renderAuthState);
     safeRender('selo de estado', () => renderBrandStatus(data));
 
-    // Auditoria: painel recolhível dentro da aba Escala (era uma aba própria).
-    const auditBtn = document.getElementById('toggleAuditoria');
-    const auditPanel = document.getElementById('auditoriaPanel');
-    if (auditBtn && auditPanel) {
-      auditBtn.onclick = () => {
-        const abrindo = auditPanel.hasAttribute('hidden');
-        if (abrindo) auditPanel.removeAttribute('hidden');
-        else auditPanel.setAttribute('hidden', '');
-        auditBtn.setAttribute('aria-expanded', String(abrindo));
-        auditBtn.classList.toggle('active', abrindo);
-        auditBtn.textContent = abrindo ? '📋 Ocultar auditoria' : '📋 Auditoria';
+    // Painéis recolhíveis da aba Escala (antigas abas Auditoria e Domingos).
+    const ligaPainelRecolhivel = (btnId, panelId, rotuloAberto, rotuloFechado) => {
+      const btn = document.getElementById(btnId);
+      const panel = document.getElementById(panelId);
+      if (!btn || !panel) return;
+      btn.onclick = () => {
+        const abrindo = panel.hasAttribute('hidden');
+        if (abrindo) panel.removeAttribute('hidden');
+        else panel.setAttribute('hidden', '');
+        btn.setAttribute('aria-expanded', String(abrindo));
+        btn.classList.toggle('active', abrindo);
+        btn.textContent = abrindo ? rotuloAberto : rotuloFechado;
       };
-    }
+    };
+    ligaPainelRecolhivel('toggleAuditoria', 'auditoriaPanel', '📋 Ocultar auditoria', '📋 Auditoria');
+    ligaPainelRecolhivel('toggleDomingos', 'domingosPanel', '☀️ Ocultar domingos', '☀️ Domingos');
     safeRender('modulos', () => applyEnabledModules(data));
     safeRender('gestor', () => renderGestorPanel(data));
     if (!authState.authenticated) {
