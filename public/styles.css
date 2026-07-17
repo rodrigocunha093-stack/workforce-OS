@@ -1528,7 +1528,7 @@ i.red { background: var(--red); }
   min-width: 160px;
   text-align: center;
 }
-.week-nav-label .today-tag { color: #34d399; font-style: normal; font-size: 11px; }
+.week-nav-label .today-tag { color: #fff; font-style: normal; font-size: 11px; }
 
 .weekly-forecast-row {
   border-bottom: 2px solid rgba(59,130,246,.25);
@@ -3533,7 +3533,7 @@ i.red { background: var(--red); }
 }
 
 .operating-principles article > span {
-  color: #65c9bd;
+  color: var(--marca, #65c9bd);
   font-size: 10px;
   font-weight: 800;
 }

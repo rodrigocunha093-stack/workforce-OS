@@ -1775,7 +1775,7 @@ html[data-theme="light"] .week-nav-bar { background: rgba(0,0,0,.03); border-col
 html[data-theme="light"] .week-nav-btn { background: rgba(37,99,235,.08); color: #2563eb; border-color: rgba(37,99,235,.2); }
 html[data-theme="light"] .week-nav-btn:hover { background: rgba(37,99,235,.15); }
 html[data-theme="light"] .week-nav-label { color: #1e293b; }
-html[data-theme="light"] .week-nav-label .today-tag { color: #059669; }
+html[data-theme="light"] .week-nav-label .today-tag { color: #fff; }
 
 /* ============================================================
    PASSO 2: Editor de regras CLT/CCT (modal)
@@ -1953,3 +1953,12 @@ html[data-theme="light"] .optimize-button.save-optimization {
 html[data-theme="light"] .optimize-button:disabled { color: #94a3b8 !important; border-color: rgba(15,23,42,0.15) !important; background: rgba(15,23,42,0.03) !important; }
 html[data-theme="light"] .clt-btn-alertas:not(:disabled) { background: rgba(194,53,40,0.08) !important; border-color: rgba(194,53,40,0.4) !important; color: #b91c1c !important; }
 html[data-theme="light"] .clt-btn-avisos:not(:disabled) { background: rgba(29,78,216,0.07) !important; border-color: rgba(29,78,216,0.35) !important; color: #1d4ed8 !important; }
+
+/* Cards de princípios (Recomendações): no claro viram cards claros — o fundo escuro
+   fixo + strong escurecido pela regra geral deixava o título invisível. */
+html[data-theme="light"] .operating-principles article {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+}
+html[data-theme="light"] .operating-principles p { color: #475569; }
+html[data-theme="light"] .operating-principles article > span { color: #2563EB; }
