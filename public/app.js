@@ -2755,7 +2755,7 @@ function renderForecast7(forecast7) {
     const evHtml = d.evento ? `<div class="fd-event ${d.evento.tipo}">${d.evento.nome} ×${d.evento.fator.toFixed(2)}</div>` : '';
     return `<div class="forecast-day ${cls}">
       <div class="fd-label">${dayNames[d.dow]}</div>
-      <div class="fd-date">${d.data.slice(5).replace('-','/')}</div>
+      <div class="fd-date">${d.data.slice(8, 10)}/${d.data.slice(5, 7)}</div>
       <div class="fd-value">R$ ${(d.previsao/1000).toFixed(0)}k</div>
       <div class="fd-factors">DOW ×${d.fatores.dow.toFixed(2)} · WOM ×${d.fatores.wom.toFixed(2)}${d.fatores.evento !== 1 ? ` · EV ×${d.fatores.evento.toFixed(2)}` : ''}</div>
       ${evHtml}

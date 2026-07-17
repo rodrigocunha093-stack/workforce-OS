@@ -26,6 +26,8 @@ Contraste do tema escuro recalibrado para sessões longas (medido por luminânci
 - Superfícies escuras do editor de turno e do modal CCT acompanharam (`#1d2532`).
 Arquivos: `public/styles.css`, `public/futuristic.css` (só CSS — sem mudança de JS/servidor).
 
+**Correção pós-teste (mesmo dia):** o tema claro tinha **cores do escuro vazando** (grade da escala `#b2bdcb`, nomes de eventos, valores da previsão, `.icos-bigval` teal, `.optimize-button` menta — tudo lavado sobre branco). Fixes: (1) tokens `--ink/--muted/--line` agora invertem no bloco `html[data-theme="light"]`; (2) bloco "TEMA CLARO: legibilidade" no fim de `futuristic.css` com as versões escuras dos elementos que carregam cor própria; (3) mutes por `opacity` (`.shift-meta`, `.clt-nota`) viraram cor sólida — opacity multiplica com o fundo e quebra no claro. **Bug junto:** `fd-date` do forecast-7-dias exibia MM/DD (mesma origem do bug do calendário de eventos); corrigido p/ DD/MM em `app.js`.
+
 ## 🔐 Endurecimento Supabase: RLS ligado + chave secreta (2026-07-14, Opus)
 
 O verificador do Supabase acusou (com razão) `rls_disabled_in_public` e `sensitive_columns_exposed`. Correção estrutural no ambiente de teste:
