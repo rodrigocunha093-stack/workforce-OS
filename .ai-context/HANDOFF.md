@@ -16,6 +16,16 @@
 **Arquivos:** `public/index.html`, `public/app.js`, `public/futuristic.css`, `public/colaborador.html`, `server.js` (log), docs.
 **Próximo (Fases 2-4 de design):** tela de entrada/login, grade da Escala, repaginada dos demais painéis.
 
+## 🎨 Paleta "A suave" — conforto para uso prolongado (2026-07-17, Fable)
+
+Contraste do tema escuro recalibrado para sessões longas (medido por luminância WCAG, não a olho):
+- **Tokens base (`styles.css`)**: `--canvas #0a0e1a → #151b26` (grafite azulado), `--ink #e8eef5 → #c2cbd8` (**10,5:1** — folga sobre o piso AAA de 7:1 sem vibrar), `--muted #94a3b8 → #8e9cb0` (**6,2:1**), `--sidebar → #111826`, `--teal legado → #00c271` (coerência de marca). `--panel` é translúcido e acompanha o canvas sozinho.
+- **Escada de contraste, não número único**: principal ~10,5:1 · secundário ~6,2:1 · dicas ~4,5:1. Decisão registrada: 7:1 exato foi rejeitado como padrão — em sala clara/monitor ruim (realidade do escritório de mercado) fica "lavado", e achata a hierarquia (o secundário cairia abaixo do piso).
+- **Ruído visual removido**: auroras de gradiente do body (azul/violeta/teal, off-brand), glow do logo, glow teal de hover (virou anel de 1px).
+- **Tema claro (paleta C)**: fundo `#eff2f6`, texto `#0f172a → #26313f` (~12:1), e sinais escurecem no claro (`--on #00A25E`, `--alerta #C23528`, `--atencao #A96F15`) para manter contraste sobre branco.
+- Superfícies escuras do editor de turno e do modal CCT acompanharam (`#1d2532`).
+Arquivos: `public/styles.css`, `public/futuristic.css` (só CSS — sem mudança de JS/servidor).
+
 ## 🔐 Endurecimento Supabase: RLS ligado + chave secreta (2026-07-14, Opus)
 
 O verificador do Supabase acusou (com razão) `rls_disabled_in_public` e `sensitive_columns_exposed`. Correção estrutural no ambiente de teste:
