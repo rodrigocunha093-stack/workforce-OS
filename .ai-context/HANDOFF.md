@@ -16,6 +16,17 @@
 **Arquivos:** `public/index.html`, `public/app.js`, `public/futuristic.css`, `public/colaborador.html`, `server.js` (log), docs.
 **Próximo (Fases 2-4 de design):** tela de entrada/login, grade da Escala, repaginada dos demais painéis.
 
+## 🔵 Azul vira a cor de marca/interação; verde fica SÓ para estados (2026-07-17, Fable)
+
+Decisão do usuário a partir do sistema fiscal da Contagil (azul `#3B82F6` já era o accent da marca-mãe, registrado no co-branding). Semântica melhorou: antes o verde era marca E sinal de "conforme" (papel duplo).
+- **Tokens novos**: `--marca: #3B82F6` (acento) e `--marca-forte: #2563EB` (preenchimento sólido). `--fx-grad-primary → var(--marca-forte)`. `--on` verde permanece **exclusivo** de estados (selo "No ar", conformidade, custo-baixa).
+- **Interação em azul**: abas ativas (texto branco), filtros de dia/cenário, `.optimize-button` (tinta azul), glow/borda de hover.
+- **Ação primária sólida**: `.optimize-button.save-optimization` agora é azul sólido com texto branco (estilo "Acessar" do sistema Contagil) — hierarquia: sólido = ação principal da tela, outline = secundárias.
+- **Assinatura de família**: sidebar **navy escura também no tema claro** (`#1D2940`), como no sistema da Contagil.
+- **Logo/favicon**: quadrado azul `#2563EB` com símbolo de power branco. Wordmark "ON" em azul.
+- `styles.css`: filtros ativos usam `var(--marca, var(--teal))`.
+Verificado nos dois temas via computed styles. Arquivos: `futuristic.css`, `styles.css`, `index.html`.
+
 ## 🎨 Paleta "A suave" — conforto para uso prolongado (2026-07-17, Fable)
 
 Contraste do tema escuro recalibrado para sessões longas (medido por luminância WCAG, não a olho):

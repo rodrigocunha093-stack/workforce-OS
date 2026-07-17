@@ -1695,7 +1695,7 @@ i.red { background: var(--red); }
 .scenario-filter-button.active,
 .optimize-button.active {
   color: #fff;
-  background: var(--teal);
+  background: var(--marca, var(--teal));
   border-color: var(--teal);
   font-weight: 700;
 }
