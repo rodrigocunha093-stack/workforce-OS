@@ -442,18 +442,8 @@ body {
   box-shadow: 0 16px 32px -24px rgba(2, 8, 23, 0.95);
   border-radius: 16px;
 }
-.ops-kpi.ops-primary {
-  background: linear-gradient(135deg, rgba(45,212,191,0.26), rgba(37,99,235,0.22), rgba(15,23,42,0.9)) !important;
-}
-.ops-kpi.ops-bad {
-  background: linear-gradient(135deg, rgba(248,113,113,0.18), rgba(15,23,42,0.88)) !important;
-}
-.ops-kpi.ops-warn {
-  background: linear-gradient(135deg, rgba(251,191,36,0.18), rgba(15,23,42,0.88)) !important;
-}
-.ops-kpi.ops-ok {
-  background: linear-gradient(135deg, rgba(52,211,153,0.16), rgba(15,23,42,0.88)) !important;
-}
+/* Cartões do Painel Operacional padronizados: sem fundos coloridos —
+   o status vem no texto (ex.: "Abaixo do ideal"), não na tinta. */
 
 .ops-kpi strong {
   font-size: 40px !important;
@@ -1713,18 +1703,7 @@ html[data-theme="light"] .kpi.amber {
 html[data-theme="light"] .kpi.red {
   background: linear-gradient(135deg, rgba(254, 226, 226, 0.98), rgba(255, 241, 242, 0.98)) !important;
 }
-html[data-theme="light"] .ops-kpi.ops-primary {
-  background: linear-gradient(135deg, rgba(204, 251, 241, 0.98), rgba(219, 234, 254, 0.98)) !important;
-}
-html[data-theme="light"] .ops-kpi.ops-bad {
-  background: linear-gradient(135deg, rgba(254, 226, 226, 0.98), rgba(255, 241, 242, 0.98)) !important;
-}
-html[data-theme="light"] .ops-kpi.ops-warn {
-  background: linear-gradient(135deg, rgba(254, 243, 199, 0.98), rgba(255, 251, 235, 0.98)) !important;
-}
-html[data-theme="light"] .ops-kpi.ops-ok {
-  background: linear-gradient(135deg, rgba(220, 252, 231, 0.98), rgba(240, 253, 244, 0.98)) !important;
-}
+/* Painel Operacional no claro: cartões brancos padrão (regra geral acima), sem tintas. */
 /* Inputs claros */
 html[data-theme="light"] input, html[data-theme="light"] select, html[data-theme="light"] textarea {
   background: #ffffff !important;

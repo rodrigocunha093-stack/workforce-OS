@@ -4542,7 +4542,6 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     safeRender('acesso do cliente', () => applyClientAccess(data));
     safeRender('painel operacional', () => renderOpsDashboard(data));
     safeRender('indicadores', () => renderKpis(data.scenarios, data.metadata));
-    safeRender('prontidao enterprise', () => renderEnterpriseReadiness(data));
     safeRender('forca semanal', () => renderMonthlyWeekAnalysis(data));
     safeRender('benchmark', () => renderBenchmark(data));
     safeRender('setores', () => renderSectorEngine(data));
