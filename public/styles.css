@@ -3779,7 +3779,7 @@ i.red { background: var(--red); }
 .data-management-panel {
   margin-bottom: 16px;
   padding: 16px;
-  background: var(--card);
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
 }
@@ -4262,7 +4262,7 @@ i.red { background: var(--red); }
 .controller-caixa-tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
 .ctrl-day-tab {
   padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line);
-  background: transparent; color: var(--text); cursor: pointer; font-size: 13px;
+  background: transparent; color: var(--ink); cursor: pointer; font-size: 13px;
 }
 .ctrl-day-tab.active { background: var(--accent, #3b82f6); color: #fff; border-color: var(--accent, #3b82f6); }
 .ctrl-day-panel { display: none; }

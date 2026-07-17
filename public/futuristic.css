@@ -1067,7 +1067,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
 }
 .icos-metrics small { display: block; color: #8e9cb0; font-size: 10px; }
 .icos-metrics b { color: #c2cbd8; font-size: 14px; }
-.icos-need { font-size: 11px; padding: 4px 0; color: var(--color-text-secondary); border-top: 1px solid rgba(255,255,255,.06); margin-top: 4px; }
+.icos-need { font-size: 11px; padding: 4px 0; color: var(--muted); border-top: 1px solid rgba(255,255,255,.06); margin-top: 4px; }
 .icos-team { display: flex; flex-wrap: wrap; gap: 5px; }
 .icos-team span { font-size: 10px; padding: 3px 7px; background: rgba(59,130,246,0.12); color: #93c5fd; border-radius: 8px; }
 .icos-team.empty { color: #64748b; font-size: 11px; font-style: italic; }
@@ -1083,7 +1083,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
   gap: 12px;
   margin-top: 18px;
   padding-top: 16px;
-  border-top: 1px solid var(--color-border-secondary);
+  border-top: 1px solid var(--fx-border);
 }
 .plant-inline-head small {
   display: block;
@@ -1887,7 +1887,7 @@ html[data-theme="light"] .adherence-extra { background: rgba(59,130,246,0.15); c
 .evento-form input[type="number"] { width: 80px; }
 .evento-form input[type="text"] { flex: 1; min-width: 140px; }
 .evento-form select { min-width: 160px; }
-.evento-form button { padding: 6px 16px; border-radius: 8px; background: var(--color-primary); color: #fff; border: none; cursor: pointer; font-weight: 600; }
+.evento-form button { padding: 6px 16px; border-radius: 8px; background: var(--marca-forte); color: #fff; border: none; cursor: pointer; font-weight: 600; }
 .eventos-lista { max-height: 260px; overflow-y: auto; }
 .eventos-lista .evento-row { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px; font-size: 12px; }
 .eventos-lista .evento-row:nth-child(odd) { background: rgba(255,255,255,.02); }
