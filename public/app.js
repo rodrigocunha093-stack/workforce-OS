@@ -4595,6 +4595,35 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
       sourceStatus.textContent = dadosReais ? 'Dados da sua loja' : 'Base demonstrativa (faça login para ver seus dados)';
       sourceStatus.className = dadosReais ? 'source-connected' : 'source-demo';
     }
+
+    // PORTÃO DE LOGIN — a página de entrada. Visível por padrão (faz papel de splash);
+    // some para quem está logado ou escolheu explorar a demonstração nesta sessão.
+    const gate = document.getElementById('loginGate');
+    if (gate) {
+      if (authState.authenticated || sessionStorage.getItem('escalaon-demo') === '1') {
+        gate.remove();
+      } else {
+        const gateForm = document.getElementById('gateForm');
+        gateForm.onsubmit = async (ev) => {
+          ev.preventDefault();
+          const erro = document.getElementById('gateErro');
+          const botao = gateForm.querySelector('.gate-entrar');
+          erro.textContent = '';
+          botao.disabled = true; botao.textContent = 'Entrando…';
+          try {
+            const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: document.getElementById('gateEmail').value, password: document.getElementById('gateSenha').value }) });
+            const d = await r.json();
+            if (!r.ok) { erro.textContent = d.error || 'Não foi possível entrar. Confira e tente de novo.'; botao.disabled = false; botao.textContent = 'Entrar'; return; }
+            window.location.reload();
+          } catch (e) {
+            erro.textContent = 'Erro de conexão. Tente novamente.';
+            botao.disabled = false; botao.textContent = 'Entrar';
+          }
+        };
+        document.getElementById('gateCriarConta').onclick = () => openAuthDialog('register');
+        document.getElementById('gateDemo').onclick = () => { sessionStorage.setItem('escalaon-demo', '1'); gate.remove(); };
+      }
+    }
     safeRender('estado de login', renderAuthState);
     safeRender('selo de estado', () => renderBrandStatus(data));
     safeRender('checklist de implantação', () => renderSetupChecklist(data));

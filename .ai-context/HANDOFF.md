@@ -28,6 +28,15 @@ Da revisão de design (persona: gerente 40-60 anos, monitor barato, sala clara),
 **Correção pós-teste do usuário:** o botão "Imprimir / Salvar PDF" da janela pop-up não respondia (handler inline em janela `document.write` + pop-up: ambos bloqueáveis pelo navegador). **Arquitetura trocada**: a impressão agora usa **iframe oculto na própria página** (`#escalaonPrintFrame`, `srcdoc`) — clicar em Exportar/Imprimir abre a caixa de impressão **direto** sobre o app (nela também se salva PDF); plano B (se o print do iframe falhar) abre a visualização em nova aba com toast "use Ctrl+P". Verificado com instrumentação no navegador: `print()` dispara ao clicar.
 **Pendências restantes**: ícones SVG no lugar de emojis, consulta mobile. Impressão real em A4 P&B ainda precisa de teste físico com dados reais.
 
+## 🚪 Página de login (2026-07-17, Fable)
+
+Antes, o visitante caía direto no painel **em modo demonstração** com um popup de auth — péssima primeira impressão para o piloto. Agora existe um **portão de entrada** (`#loginGate` em `index.html`, lógica no bootstrap do `app.js`, estilos `.login-gate`/`.gate-*`):
+- Tela cheia (`z-index: 200`) com logo, wordmark, tagline, e-mail/senha e erro inline. Some por `remove()` quando `authState.authenticated`.
+- **"Ver demonstração →"** grava `sessionStorage['escalaon-demo']` e dispensa o portão — a demo continua acessível, mas vira **escolha explícita**, não o padrão.
+- **"Criar conta"** reaproveita `openAuthDialog('register')` (nada duplicado); o submit reaproveita `POST /api/auth/login`.
+- Sem novas rotas no servidor — é um portão de cliente sobre a SPA existente.
+Verificado no navegador com conta temporária (criada e apagada): senha errada mostra "E-mail ou senha inválidos" e reabilita o botão; senha certa autentica; recarregando logado o portão não aparece e o checklist/topbar assumem.
+
 ## 🔵 Azul vira a cor de marca/interação; verde fica SÓ para estados (2026-07-17, Fable)
 
 Decisão do usuário a partir do sistema fiscal da Contagil (azul `#3B82F6` já era o accent da marca-mãe, registrado no co-branding). Semântica melhorou: antes o verde era marca E sinal de "conforme" (papel duplo).

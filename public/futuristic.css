@@ -1981,3 +1981,51 @@ button.setup-step:hover { transform: translateY(-1px); background: rgba(59,130,2
 @keyframes sk-pulsa { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .sk { animation: none; opacity: 0.6; } }
 html[data-theme="light"] .sk { background: rgba(15,23,42,0.07); }
+
+/* ============================================================
+   PORTÃO DE LOGIN — a página de entrada (splash + auth)
+   ============================================================ */
+.login-gate {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 22px; padding: 24px;
+  background: #151b26;
+}
+.gate-card {
+  width: min(400px, 100%);
+  background: #1d2532;
+  border: 1px solid rgba(148,163,184,0.16);
+  border-radius: 16px;
+  padding: 30px 28px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+}
+.gate-brand { display: flex; align-items: center; gap: 13px; margin-bottom: 18px; }
+.gate-nome { display: block; font-size: 21px; font-weight: 700; color: #d3dae5; letter-spacing: -0.01em; }
+.gate-nome b { color: var(--marca); font-weight: 800; }
+.gate-por { display: block; font-size: 11px; color: #8e9cb0; margin-top: 1px; }
+.gate-tagline { font-size: 13px; color: #98a5b8; margin: 0 0 22px; line-height: 1.5; }
+.gate-form { display: flex; flex-direction: column; gap: 14px; }
+.gate-form label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #98a5b8; font-weight: 500; }
+.gate-form input {
+  padding: 11px 12px; font-size: 14px; border-radius: 9px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(148,163,184,0.25); color: #d3dae5;
+}
+.gate-form input:focus { outline: none; border-color: var(--marca); box-shadow: 0 0 0 3px rgba(59,130,246,0.18); }
+.gate-erro { color: #fca5a5; font-size: 12px; min-height: 4px; }
+.gate-entrar {
+  margin-top: 2px; padding: 12px; border: none; border-radius: 9px; cursor: pointer;
+  background: var(--marca-forte); color: #fff; font-size: 14px; font-weight: 600;
+}
+.gate-entrar:hover { background: #1d4ed8; }
+.gate-entrar:disabled { opacity: 0.6; cursor: default; }
+.gate-acoes { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 18px; color: #64748b; font-size: 12px; }
+.gate-link { background: none; border: none; color: var(--marca); font-size: 13px; font-weight: 500; cursor: pointer; padding: 4px; }
+.gate-link:hover { text-decoration: underline; }
+.gate-rodape { font-size: 11px; color: #64748b; }
+.gate-rodape a { color: #8e9cb0; }
+
+html[data-theme="light"] .login-gate { background: #eff2f6; }
+html[data-theme="light"] .gate-card { background: #ffffff; border-color: rgba(15,23,42,0.10); }
+html[data-theme="light"] .gate-nome { color: #26313f; }
+html[data-theme="light"] .gate-tagline, html[data-theme="light"] .gate-por { color: #64748b; }
+html[data-theme="light"] .gate-form input { background: #f8fafc; border-color: rgba(15,23,42,0.15); color: #26313f; }

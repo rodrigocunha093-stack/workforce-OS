@@ -9,6 +9,35 @@
   <link rel="stylesheet" href="futuristic.css">
 </head>
 <body>
+  <section id="loginGate" class="login-gate" aria-label="Entrar no EscalaON">
+    <div class="gate-card">
+      <div class="gate-brand">
+        <svg width="52" height="52" viewBox="0 0 46 46" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect width="46" height="46" rx="13" fill="#2563EB"/>
+          <path d="M15.2 15.2 A11 11 0 1 0 30.8 15.2" stroke="#FFFFFF" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+          <rect x="21.4" y="8.6" width="3.2" height="6" rx="1.6" fill="#FFFFFF"/>
+          <rect x="21.4" y="16.2" width="3.2" height="6.2" rx="1.6" fill="#FFFFFF"/>
+        </svg>
+        <div>
+          <span class="gate-nome">Escala<b>ON</b></span>
+          <span class="gate-por">uma solução Contagil</span>
+        </div>
+      </div>
+      <p class="gate-tagline">A escala da sua loja sempre no ar e sempre dentro da lei.</p>
+      <form id="gateForm" class="gate-form">
+        <label>E-mail <input id="gateEmail" type="email" autocomplete="email" required placeholder="voce@sualoja.com.br"></label>
+        <label>Senha <input id="gateSenha" type="password" autocomplete="current-password" required></label>
+        <div id="gateErro" class="gate-erro" role="alert"></div>
+        <button type="submit" class="gate-entrar">Entrar</button>
+      </form>
+      <div class="gate-acoes">
+        <button type="button" id="gateCriarConta" class="gate-link">Criar conta</button>
+        <span aria-hidden="true">·</span>
+        <button type="button" id="gateDemo" class="gate-link">Ver demonstração →</button>
+      </div>
+    </div>
+    <p class="gate-rodape">EscalaON · uma solução <a href="https://www.contagilpb.com.br" target="_blank" rel="noopener">Contagil</a></p>
+  </section>
   <header class="topbar">
     <div class="brand">
       <span class="brand-logo" aria-label="EscalaON">
