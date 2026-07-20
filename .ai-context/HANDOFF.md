@@ -22,7 +22,10 @@ Da revisão de design (persona: gerente 40-60 anos, monitor barato, sala clara),
 1. **Planta 3D recolhível + lazy** — botão `🗺️ Planta da loja` na Escala (padrão Auditoria/Domingos); `renderStoreFloorMap` saiu do bootstrap e só roda **ao abrir o painel** (sempre de `window.currentSummary`, então nunca fica stale). Era o maior peso de renderização da página.
 2. **Primeira meia hora**: badge fixo `PILOTO-CX-2026` removido do popup de conta (código real vem do env `PILOT_INVITE_CODE` — o badge causava "Dados inválidos"); vazios principais (painel ops, setores, forecast-7) ganharam **botão de ação** `irParaAba('implantacao')`; novo **checklist "Primeiros passos"** no topo do Diagnóstico (`renderSetupChecklist`, lê `summary.onboarding` + `escalaFechada`, some quando completo ou sem login).
 3. **Piso tipográfico**: 8px→10px (só chips), 9px/10px/10.5px→11px em `styles.css`, `futuristic.css` e inline do `app.js` (118 ocorrências); horário da grade 12.5→13px. Não sobrou nada abaixo de 10px.
-**Pendências da revisão (não feitas)**: auditoria de impressão (zero `@media print`; export gera página própria — testar em A4 P&B), skeleton de carga, ícones SVG no lugar de emojis, consulta mobile.
+**Bloco 2 da revisão (2026-07-17, mesmo dia):**
+4. **Impressão reescrita** (handler do `exportSchedule` em app.js): a página antiga tinha cabeçalho verde com texto branco — e navegadores **não imprimem fundos por padrão** → cabeçalho saía invisível. Agora: `@page A4 landscape`, `print-color-adjust: exact`, cabeçalho P&B-safe (texto preto + borda forte + fundo claro), **datas reais nos dias** (via `calendarioSemana`), selo **ESCALA OFICIAL vs RASCUNHO** (`usarFechada`/`fechada.fechadoPor`), nota de conformidade CLT na emissão, **linhas de assinatura** (responsável/emitido por), marca EscalaON·Contagil. Legenda de emojis 🔓🔒 removida (não apareciam nas células).
+5. **Skeleton de carga**: placeholders `.sk` pulsantes pré-renderizados no HTML de `#opsDashboard`, `#kpis` e `#weeklySchedule` — os renders sobrescrevem o innerHTML e o skeleton some sozinho (zero JS). `prefers-reduced-motion` respeitado; tema claro coberto.
+**Pendências restantes**: ícones SVG no lugar de emojis, consulta mobile. Impressão real em A4 P&B ainda precisa de teste físico com dados reais.
 
 ## 🔵 Azul vira a cor de marca/interação; verde fica SÓ para estados (2026-07-17, Fable)
 

@@ -1966,3 +1966,18 @@ button.setup-step:hover { transform: translateY(-1px); background: rgba(59,130,2
 }
 .setup-step.done .setup-mark { background: rgba(0,194,113,0.18); color: var(--on); }
 .summary-empty .optimize-button { margin-top: 10px; }
+
+/* Skeleton de carga: a página parece viva enquanto o /api/summary chega.
+   Os renders substituem o innerHTML — o skeleton some sozinho. */
+.sk {
+  border-radius: 10px;
+  background: rgba(255,255,255,0.06);
+  animation: sk-pulsa 1.4s ease-in-out infinite;
+}
+.sk-linha { height: 18px; max-width: 420px; margin-bottom: 14px; }
+.sk-bloco { height: 220px; }
+.sk-cartao { height: 96px; }
+.sk-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+@keyframes sk-pulsa { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sk { animation: none; opacity: 0.6; } }
+html[data-theme="light"] .sk { background: rgba(15,23,42,0.07); }

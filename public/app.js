@@ -2567,6 +2567,17 @@ function renderWeeklySchedule(data) {
       const empresa = (data.client && data.client.profile && data.client.profile.empresa) || 'Loja';
       const loja = (data.client && data.client.profile && data.client.profile.loja) || '';
       const dias2 = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+      // Datas reais no cabeçalho: na parede, o funcionário precisa saber DE QUAL semana é.
+      const cal = (data.calendarioSemana && data.calendarioSemana.dias) || [];
+      const cabecalhos = dias2.map((d, i) => `<th>${d}${cal[i] ? `<small>${cal[i].label}</small>` : ''}</th>`).join('');
+      const periodo = usarFechada && fechada.label ? fechada.label
+        : (cal.length ? `${cal[0].label} a ${cal[6].label}` : source.label);
+      const statusDoc = usarFechada
+        ? `ESCALA OFICIAL · fechada por ${fechada.fechadoPor || '—'}`
+        : 'RASCUNHO — sujeito a alteração até a publicação';
+      const cltNota = compliance.length === 0
+        ? 'Conformidade CLT verificada: nenhum alerta na data de emissão.'
+        : `Atenção: ${compliance.length} colaborador(es) com alerta CLT na data de emissão.`;
       const rows = Object.entries(source.people).map(([nome, shifts]) => {
         const setor = setorMap[nome] || '';
         return `<tr><td class="nm">${nome}<small>${setor}</small></td>${shifts.map(s => `<td class="${s === 'Folga' ? 'fg' : ''}">${s.replace(' · ', '<br>')}</td>`).join('')}</tr>`;
@@ -2574,22 +2585,38 @@ function renderWeeklySchedule(data) {
       const win = window.open('', '_blank');
       win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Escala — ${empresa}</title>
         <style>
+          @page{size:A4 landscape;margin:12mm}
+          *{print-color-adjust:exact;-webkit-print-color-adjust:exact}
           body{font-family:Arial,sans-serif;margin:24px;color:#111}
-          h1{font-size:20px;margin:0}h2{font-size:13px;color:#555;margin:4px 0 16px;font-weight:400}
-          table{width:100%;border-collapse:collapse;font-size:11px}
-          th,td{border:1px solid #ccc;padding:6px 4px;text-align:center}
-          th{background:#0d7d6f;color:#fff}
+          .doc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+          h1{font-size:20px;margin:0}
+          h2{font-size:13px;color:#444;margin:4px 0 4px;font-weight:400}
+          .status{display:inline-block;margin:2px 0 14px;padding:3px 10px;border:1.5px solid #111;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:.04em}
+          .marca{font-size:12px;font-weight:700;color:#2563EB;white-space:nowrap}
+          table{width:100%;border-collapse:collapse;font-size:12px}
+          th,td{border:1px solid #555;padding:6px 4px;text-align:center}
+          th{background:#e8ecf3;color:#111;border-bottom:2px solid #111}
+          th small{display:block;font-weight:400;color:#333}
           td.nm{text-align:left;font-weight:700;white-space:nowrap}
-          td.nm small{display:block;font-weight:400;color:#777;font-size:11px}
-          td.fg{background:#f1f1f1;color:#999}
-          .ft{margin-top:16px;font-size:11px;color:#888}
+          td.nm small{display:block;font-weight:400;color:#555;font-size:11px}
+          td.fg{background:#f1f1f1;color:#666}
+          .ft{margin-top:14px;font-size:11px;color:#333}
+          .assina{margin-top:28px;display:flex;gap:48px;font-size:11px;color:#111}
+          .assina span{flex:1;border-top:1px solid #111;padding-top:4px;text-align:center}
           @media print{button{display:none}}
         </style></head><body>
-        <h1>Escala de Trabalho — ${empresa}${loja ? ' · ' + loja : ''}</h1>
-        <h2>${source.label} · gerado pelo EscalaON em ${new Date().toLocaleDateString('pt-BR')}</h2>
-        <table><thead><tr><th>Colaborador</th>${dias2.map(d => `<th>${d}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>
-        <p class="ft">🔓 abre · 🔒 fecha · Folga = descanso. Documento gerado automaticamente — confira a conformidade CLT antes de afixar.</p>
-        <button onclick="window.print()" style="margin-top:16px;padding:10px 20px;background:#0d7d6f;color:#fff;border:none;border-radius:6px;cursor:pointer">Imprimir / Salvar PDF</button>
+        <div class="doc-head">
+          <div>
+            <h1>Escala de Trabalho — ${empresa}${loja ? ' · ' + loja : ''}</h1>
+            <h2>Período: ${periodo} · emitida em ${new Date().toLocaleDateString('pt-BR')}</h2>
+            <span class="status">${statusDoc}</span>
+          </div>
+          <span class="marca">EscalaON · Contagil</span>
+        </div>
+        <table><thead><tr><th>Colaborador</th>${cabecalhos}</tr></thead><tbody>${rows}</tbody></table>
+        <p class="ft">Folga = descanso semanal. ${cltNota}</p>
+        <div class="assina"><span>Responsável pela loja</span><span>Emitido por</span></div>
+        <button onclick="window.print()" style="margin-top:16px;padding:10px 20px;background:#2563EB;color:#fff;border:none;border-radius:6px;cursor:pointer">Imprimir / Salvar PDF</button>
         </body></html>`);
       win.document.close();
     };
