@@ -28,6 +28,14 @@ Da revisão de design (persona: gerente 40-60 anos, monitor barato, sala clara),
 **Correção pós-teste do usuário:** o botão "Imprimir / Salvar PDF" da janela pop-up não respondia (handler inline em janela `document.write` + pop-up: ambos bloqueáveis pelo navegador). **Arquitetura trocada**: a impressão agora usa **iframe oculto na própria página** (`#escalaonPrintFrame`, `srcdoc`) — clicar em Exportar/Imprimir abre a caixa de impressão **direto** sobre o app (nela também se salva PDF); plano B (se o print do iframe falhar) abre a visualização em nova aba com toast "use Ctrl+P". Verificado com instrumentação no navegador: `print()` dispara ao clicar.
 **Pendências restantes**: ícones SVG no lugar de emojis, consulta mobile. Impressão real em A4 P&B ainda precisa de teste físico com dados reais.
 
+## ☁️ `vercel.json` criado para o ambiente de piloto (2026-07-17, Fable)
+
+Objetivo: publicar um **ambiente de piloto isolado** (projeto Vercel próprio, apontando para o Supabase do Jiancarlos), para o cliente testar de fora **sem tocar** em `escala.contagilpb.com.br`.
+- O `server.js` **já era compatível** (`module.exports = requestHandler` no fim, para `@vercel/node`).
+- **Faltava `vercel.json`**: a produção atual funciona por configuração feita no **painel** da Vercel, que um projeto novo não herda — sem o arquivo, o deploy sobe mas as rotas `/api/*` não respondem. Criado com `builds: [server.js → @vercel/node]` + `routes: [/(.*) → /server.js]` (o próprio server.js já serve `public/`).
+- ⚠️ **Atenção no PR**: ao entrar na `main`, este arquivo passa a **reger a produção do Rodrigo**, que hoje depende do painel. O resultado esperado é o mesmo (tudo → server.js), mas é mudança de origem da configuração e precisa da revisão dele.
+- Deploy do piloto: importar o repo na Vercel, **fixar a branch de produção em `feature/motor-regras-clt`** e definir `SUPABASE_URL`, `SUPABASE_KEY` (chave **secreta**) e `PILOT_INVITE_CODE` nas env vars do projeto.
+
 ## 🔁 Loop de login: portão acoplado ao summary + zero cache-control (2026-07-17, Fable)
 
 Usuário reportou: F5 volta pra tela de login; loga, entra e volta pro login. Backend estava **íntegro** (testado por API: `/api/auth/status` com cookie → `authenticated:true`; `/api/summary` autenticado → 200, inclusive com 14 funcionários). Duas causas estruturais no cliente:
