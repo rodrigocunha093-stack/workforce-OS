@@ -548,11 +548,11 @@
           </form>
 
           <article class="panel import-panel">
-            <div class="panel-head"><div><h3>2. Importar equipe</h3><p class="note">A implantação atual analisa inicialmente as operadoras de caixa.</p></div></div>
+            <div class="panel-head"><div><h3>2. Importar equipe</h3><p class="note">Baixe o modelo, preencha no Excel e importe — sem cadastrar um a um.</p></div></div>
             <div class="import-instructions">
-              <strong>Colunas aceitas</strong>
-              <code>nome;sexo;cargo;setor;horas_semanais;salario</code>
-              <span>Importe a quantidade de operadoras conforme cadastrado na sua operação. Cada operadora alimentará a escala individual.</span>
+              <strong>Colunas do modelo</strong>
+              <code>nome;cpf;cargo;setor;sexo;horas_semanais;salario</code>
+              <span>Só <b>nome</b> é obrigatório. O <b>CPF</b> identifica cada pessoa (evita duplicar quem tem nome parecido) e é validado na importação. Reimportar substitui a equipe atual.</span>
             </div>
             <input id="employeesCsvInput" type="file" accept=".csv,text/csv">
             <div id="employeesImportPreview" class="import-preview"><span>Nenhum arquivo selecionado.</span></div>

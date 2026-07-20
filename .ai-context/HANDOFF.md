@@ -28,6 +28,15 @@ Da revisão de design (persona: gerente 40-60 anos, monitor barato, sala clara),
 **Correção pós-teste do usuário:** o botão "Imprimir / Salvar PDF" da janela pop-up não respondia (handler inline em janela `document.write` + pop-up: ambos bloqueáveis pelo navegador). **Arquitetura trocada**: a impressão agora usa **iframe oculto na própria página** (`#escalaonPrintFrame`, `srcdoc`) — clicar em Exportar/Imprimir abre a caixa de impressão **direto** sobre o app (nela também se salva PDF); plano B (se o print do iframe falhar) abre a visualização em nova aba com toast "use Ctrl+P". Verificado com instrumentação no navegador: `print()` dispara ao clicar.
 **Pendências restantes**: ícones SVG no lugar de emojis, consulta mobile. Impressão real em A4 P&B ainda precisa de teste físico com dados reais.
 
+## 📋 Planilha modelo da equipe agora tem CPF (2026-07-17, Fable)
+
+A importação por planilha **já existia** (aba Implantação, painel "2. Importar equipe") — o pedido do usuário era o **CPF**, que faltava na cadeia inteira. Adicionado ponta a ponta:
+- **`server.js`** `normalizeEmployeeRecord`: novo campo `cpf` (só dígitos, 11 chars) — antes o backend nem persistia.
+- **`app.js`** `parseEmployeesCsv`: alias `cpf|documento|doc|cpf_funcionario`; nova função **`cpfValido()`** (dígitos verificadores, não só formato) + **detecção de CPF repetido** no mesmo arquivo, com mensagem citando o nome do dono anterior. CPF é **opcional**; se vier, precisa ser válido e único.
+- **Modelo** renomeado p/ `modelo-equipe-escalaon.csv`, agora com `nome;cpf;cargo;setor;sexo;horas_semanais;salario`, exemplos realistas (um deles sem CPF, mostrando que é opcional) e **BOM UTF-8** para o Excel não estragar acentos.
+- **Grade manual** (`renderEmployeesManager`) ganhou a coluna CPF; `grid-template-columns` do `.emp-row` atualizado (14 colunas).
+Verificado no navegador com 5 cenários: CPF formatado, sem formatação, ausente, inválido (rejeita) e duplicado (rejeita citando o primeiro dono). Ida e volta modelo→parser: 3 linhas, 0 erros, acentos e BOM ok.
+
 ## 🚪 Página de login (2026-07-17, Fable)
 
 Antes, o visitante caía direto no painel **em modo demonstração** com um popup de auth — péssima primeira impressão para o piloto. Agora existe um **portão de entrada** (`#loginGate` em `index.html`, lógica no bootstrap do `app.js`, estilos `.login-gate`/`.gate-*`):

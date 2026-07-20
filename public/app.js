@@ -3613,6 +3613,19 @@ function parseSalesCsv(text, fallbackDate = '', representedDays = 1) {
   return { rows, errors };
 }
 
+// Valida CPF pelos dígitos verificadores (não só o formato) — evita digitação errada
+// virar cadastro duplicado lá na frente.
+function cpfValido(digitos) {
+  if (!/^\d{11}$/.test(digitos) || /^(\d)\1{10}$/.test(digitos)) return false;
+  const calc = (ate) => {
+    let soma = 0;
+    for (let i = 0; i < ate; i++) soma += Number(digitos[i]) * (ate + 1 - i);
+    const resto = (soma * 10) % 11;
+    return resto === 10 ? 0 : resto;
+  };
+  return calc(9) === Number(digitos[9]) && calc(10) === Number(digitos[10]);
+}
+
 function parseEmployeesCsv(text) {
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) return { rows: [], errors: ['Arquivo sem colaboradores.'] };
@@ -3620,6 +3633,7 @@ function parseEmployeesCsv(text) {
   const headers = lines[0].split(delimiter).map(normalizeHeader);
   const _empAliases = {
     nome: ['nome', 'colaborador', 'funcionario', 'empregado', 'nome_completo', 'nome_funcionario'],
+    cpf: ['cpf', 'documento', 'doc', 'cpf_funcionario'],
     sexo: ['sexo', 'genero'],
     cargo: ['cargo', 'funcao', 'ocupacao'],
     setor: ['setor', 'departamento', 'area', 'lotacao', 'secao'],
@@ -3638,21 +3652,31 @@ function parseEmployeesCsv(text) {
   }
   const rows = [];
   const errors = [];
+  const cpfsVistos = new Map();
   lines.slice(1).forEach((line, index) => {
     const cells = line.split(delimiter).map((cell) => cell.trim().replace(/^"|"$/g, ''));
     const nome = (cells[positions.nome] || '').trim();
+    const linha = index + 2;
     let horas = positions.horas_semanais >= 0 ? _parseH(cells[positions.horas_semanais]) : 44;
     if (horas <= 0) horas = 44;
+    const cpf = positions.cpf >= 0 ? String(cells[positions.cpf] || '').replace(/\D/g, '') : '';
     const row = {
       nome,
+      cpf,
       sexo: positions.sexo >= 0 ? (cells[positions.sexo] || '') : '',
       cargo: positions.cargo >= 0 ? (cells[positions.cargo] || '') : '',
       setor: positions.setor >= 0 ? (cells[positions.setor] || '') : '',
       horasSemanais: horas,
       salario: positions.salario >= 0 ? Number(String(cells[positions.salario] || '0').replace(/\./g, '').replace(',', '.')) : 0
     };
-    if (!nome || nome.length < 2) errors.push(`Linha ${index + 2}: nome ausente ou curto.`);
-    else rows.push(row);
+    if (!nome || nome.length < 2) { errors.push(`Linha ${linha}: nome ausente ou curto.`); return; }
+    // CPF é opcional, mas se veio precisa ser válido e único — senão vira duplicata.
+    if (cpf) {
+      if (!cpfValido(cpf)) { errors.push(`Linha ${linha} (${nome}): CPF inválido.`); return; }
+      if (cpfsVistos.has(cpf)) { errors.push(`Linha ${linha} (${nome}): CPF repetido — já usado por ${cpfsVistos.get(cpf)}.`); return; }
+      cpfsVistos.set(cpf, nome);
+    }
+    rows.push(row);
   });
   return { rows, errors };
 }
@@ -3877,7 +3901,7 @@ function renderEmployeesManager(data) {
     </div>
     <div class="emp-table">
       <div class="emp-row emp-head">
-        <span>Nome</span><span>Cargo</span><span>Setor</span><span>Horas</span><span>Salário</span>
+        <span>Nome</span><span>CPF</span><span>Cargo</span><span>Setor</span><span>Horas</span><span>Salário</span>
         <span>Turno</span><span>Papel</span><span>Proficiência</span><span>Setores aptos</span><span>Restrições</span><span>Folga pref.</span><span>Dom.</span><span></span>
       </div>
       ${filtered.map(({ e, originalIdx: i }) => {
@@ -3891,6 +3915,7 @@ function renderEmployeesManager(data) {
         return `
         <div class="emp-row">
           <input data-i="${i}" data-f="nome" value="${(e.nome||'').replace(/"/g,'&quot;')}" placeholder="Nome">
+          <input data-i="${i}" data-f="cpf" value="${(e.cpf||'').replace(/"/g,'&quot;')}" placeholder="CPF" inputmode="numeric" maxlength="14">
           <input data-i="${i}" data-f="cargo" value="${(e.cargo||'').replace(/"/g,'&quot;')}" placeholder="Cargo">
           ${setorCell}
           <input data-i="${i}" data-f="horasSemanais" type="number" min="1" max="168" value="${e.horasSemanais||44}">
@@ -5049,10 +5074,17 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     };
 
     document.getElementById('downloadEmployeesTemplate').onclick = () => {
-      const csv = 'nome;sexo;cargo;setor;horas_semanais;salario\nLucila;Feminino;Operadora de Caixa;Caixa;44;1650\nEdvania;Feminino;Operadora de Caixa;Caixa;44;1650\nSamara;Feminino;Operadora de Caixa;Caixa;44;1650\nJane;Feminino;Operadora de Caixa;Caixa;44;1650\n';
+      // BOM (﻿) faz o Excel abrir em UTF-8 e não estragar os acentos.
+      const csv = '﻿' + [
+        'nome;cpf;cargo;setor;sexo;horas_semanais;salario',
+        'Maria Aparecida da Silva;123.456.789-09;Operadora de Caixa;Caixa;Feminino;44;1650',
+        'João Carlos Souza;987.654.321-00;Repositor de Mercadorias;Reposição;Masculino;44;1650',
+        'Ana Paula Ferreira;;Açougueiro;Açougue;Feminino;44;1900',
+        ''
+      ].join('\n');
       const link = document.createElement('a');
       link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-      link.download = 'modelo-equipe-caixa.csv';
+      link.download = 'modelo-equipe-escalaon.csv';
       link.click();
       URL.revokeObjectURL(link.href);
     };

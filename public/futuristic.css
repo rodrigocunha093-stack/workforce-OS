@@ -683,7 +683,7 @@ select option { background: #141b2e; color: #c2cbd8; }
 .emp-table { overflow-x: auto; display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; -webkit-overflow-scrolling: touch; }
 .emp-row {
   display: grid;
-  grid-template-columns: 160px 120px 130px 60px 80px 100px 100px 100px 130px 140px 110px 42px 34px;
+  grid-template-columns: 160px 120px 120px 130px 60px 80px 100px 100px 100px 130px 140px 110px 42px 34px;
   gap: 6px;
   align-items: center;
   min-width: 1420px;

@@ -280,6 +280,7 @@ function normalizeEmployeeRecord(row) {
 
   return {
     nome: sanitizeString(String(row.nome || '')).slice(0, 100),
+    cpf: String(row.cpf || '').replace(/\D/g, '').slice(0, 11), // identidade única do colaborador
     sexo: ['masculino', 'feminino'].includes(String(row.sexo || '').toLowerCase()) ? String(row.sexo).toLowerCase() : 'feminino',
     cargo: sanitizeString(String(row.cargo || 'Operador de Caixa')).slice(0, 60),
     setor,
