@@ -37,6 +37,10 @@ Antes, o visitante caía direto no painel **em modo demonstração** com um popu
 - Sem novas rotas no servidor — é um portão de cliente sobre a SPA existente.
 Verificado no navegador com conta temporária (criada e apagada): senha errada mostra "E-mail ou senha inválidos" e reabilita o botão; senha certa autentica; recarregando logado o portão não aparece e o checklist/topbar assumem.
 
+**Correção "Not found" ao entrar (mesmo dia):** o usuário reportou tela `Not found` com URL `/?`. Duas causas somadas, ambas corrigidas:
+1. **Bug latente no `server.js` (afetava qualquer URL com parâmetro)**: o fallback estático comparava `req.url === '/'` com a **URL crua** — `'/?'` ou `'/?x=1'` não batiam e viravam busca por um arquivo chamado `?` → 404. Agora normaliza: `req.url.split('?')[0].split('#')[0]`. Verificado: `/`, `/?` e `/?teste=1` retornam 200 com o mesmo HTML.
+2. **Portão dependia do `/api/summary`**: o `onsubmit` era ligado dentro do `.then()` do bootstrap, então Enter antes da carga (ou falha da API) caía no submit nativo do navegador. Agora o portão é uma **IIFE `initLoginGate()`** que roda na hora, independente de dados; o bootstrap só decide se remove o portão. Defesa extra no HTML (`onsubmit="return false"`) e validação de campos vazios.
+
 ## 🔵 Azul vira a cor de marca/interação; verde fica SÓ para estados (2026-07-17, Fable)
 
 Decisão do usuário a partir do sistema fiscal da Contagil (azul `#3B82F6` já era o accent da marca-mãe, registrado no co-branding). Semântica melhorou: antes o verde era marca E sinal de "conforme" (papel duplo).

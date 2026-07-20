@@ -1948,6 +1948,48 @@ function renderStoreFloorMap(data) {
   render();
 }
 
+// PORTÃO DE LOGIN — ligado IMEDIATAMENTE, sem esperar o /api/summary.
+// Se o formulário só ganhasse o handler depois da carga dos dados, um Enter
+// antecipado (ou uma falha na API) faria o navegador submeter para /? → "Not found".
+(function initLoginGate() {
+  const gate = document.getElementById('loginGate');
+  if (!gate) return;
+  const form = document.getElementById('gateForm');
+  const erro = document.getElementById('gateErro');
+  const botao = gate.querySelector('.gate-entrar');
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const email = document.getElementById('gateEmail').value.trim();
+    const senha = document.getElementById('gateSenha').value;
+    if (!email || !senha) { erro.textContent = 'Preencha e-mail e senha.'; return; }
+    erro.textContent = '';
+    botao.disabled = true; botao.textContent = 'Entrando…';
+    try {
+      const r = await fetch('/api/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: senha })
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        erro.textContent = d.error || 'Não foi possível entrar. Confira e tente de novo.';
+        botao.disabled = false; botao.textContent = 'Entrar';
+        return;
+      }
+      window.location.reload();
+    } catch (e) {
+      erro.textContent = 'Erro de conexão. Tente novamente.';
+      botao.disabled = false; botao.textContent = 'Entrar';
+    }
+  });
+
+  document.getElementById('gateCriarConta').onclick = () => openAuthDialog('register');
+  document.getElementById('gateDemo').onclick = () => {
+    sessionStorage.setItem('escalaon-demo', '1');
+    gate.remove();
+  };
+})();
+
 // Navega para uma aba da sidebar (usado pelos vazios com ação e pelo checklist).
 function irParaAba(tab) {
   const btn = document.querySelector(`.sidebar button[data-tab="${tab}"]`);
@@ -4596,34 +4638,9 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
       sourceStatus.className = dadosReais ? 'source-connected' : 'source-demo';
     }
 
-    // PORTÃO DE LOGIN — a página de entrada. Visível por padrão (faz papel de splash);
-    // some para quem está logado ou escolheu explorar a demonstração nesta sessão.
+    // Portão: quem já está logado (ou escolheu a demonstração) não vê a tela de entrada.
     const gate = document.getElementById('loginGate');
-    if (gate) {
-      if (authState.authenticated || sessionStorage.getItem('escalaon-demo') === '1') {
-        gate.remove();
-      } else {
-        const gateForm = document.getElementById('gateForm');
-        gateForm.onsubmit = async (ev) => {
-          ev.preventDefault();
-          const erro = document.getElementById('gateErro');
-          const botao = gateForm.querySelector('.gate-entrar');
-          erro.textContent = '';
-          botao.disabled = true; botao.textContent = 'Entrando…';
-          try {
-            const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: document.getElementById('gateEmail').value, password: document.getElementById('gateSenha').value }) });
-            const d = await r.json();
-            if (!r.ok) { erro.textContent = d.error || 'Não foi possível entrar. Confira e tente de novo.'; botao.disabled = false; botao.textContent = 'Entrar'; return; }
-            window.location.reload();
-          } catch (e) {
-            erro.textContent = 'Erro de conexão. Tente novamente.';
-            botao.disabled = false; botao.textContent = 'Entrar';
-          }
-        };
-        document.getElementById('gateCriarConta').onclick = () => openAuthDialog('register');
-        document.getElementById('gateDemo').onclick = () => { sessionStorage.setItem('escalaon-demo', '1'); gate.remove(); };
-      }
-    }
+    if (gate && (authState.authenticated || sessionStorage.getItem('escalaon-demo') === '1')) gate.remove();
     safeRender('estado de login', renderAuthState);
     safeRender('selo de estado', () => renderBrandStatus(data));
     safeRender('checklist de implantação', () => renderSetupChecklist(data));

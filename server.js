@@ -6493,8 +6493,11 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // Ignora query string e hash: '/?', '/?x=1' e '/' são a mesma página.
+  // (Antes comparava req.url cru: qualquer parâmetro virava busca por arquivo → 404.)
+  const caminho = req.url.split('?')[0].split('#')[0];
   // Proteção contra path traversal
-  const file = req.url === '/' ? 'index.html' : req.url.replace(/^\//, '');
+  const file = (caminho === '/' || caminho === '') ? 'index.html' : caminho.replace(/^\//, '');
   const filePath = path.join(PUBLIC, file);
   if (!filePath.startsWith(PUBLIC)) {
     return json(res, { error: 'Forbidden' }, 403);
