@@ -2582,8 +2582,7 @@ function renderWeeklySchedule(data) {
         const setor = setorMap[nome] || '';
         return `<tr><td class="nm">${nome}<small>${setor}</small></td>${shifts.map(s => `<td class="${s === 'Folga' ? 'fg' : ''}">${s.replace(' · ', '<br>')}</td>`).join('')}</tr>`;
       }).join('');
-      const win = window.open('', '_blank');
-      win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Escala — ${empresa}</title>
+      const docHtml = `<!doctype html><html><head><meta charset="utf-8"><title>Escala — ${empresa}</title>
         <style>
           @page{size:A4 landscape;margin:12mm}
           *{print-color-adjust:exact;-webkit-print-color-adjust:exact}
@@ -2616,9 +2615,30 @@ function renderWeeklySchedule(data) {
         <table><thead><tr><th>Colaborador</th>${cabecalhos}</tr></thead><tbody>${rows}</tbody></table>
         <p class="ft">Folga = descanso semanal. ${cltNota}</p>
         <div class="assina"><span>Responsável pela loja</span><span>Emitido por</span></div>
-        <button onclick="window.print()" style="margin-top:16px;padding:10px 20px;background:#2563EB;color:#fff;border:none;border-radius:6px;cursor:pointer">Imprimir / Salvar PDF</button>
-        </body></html>`);
-      win.document.close();
+        </body></html>`;
+      // Impressão via iframe oculto NA PRÓPRIA página: nada de pop-up nem botão
+      // dentro de janela escrita (ambos bloqueáveis pelo navegador). A caixa de
+      // imprimir abre direto — e nela também dá para salvar em PDF.
+      const antigoFrame = document.getElementById('escalaonPrintFrame');
+      if (antigoFrame) antigoFrame.remove();
+      const frame = document.createElement('iframe');
+      frame.id = 'escalaonPrintFrame';
+      frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+      frame.onload = () => {
+        try {
+          frame.contentWindow.focus();
+          frame.contentWindow.print();
+        } catch (e) {
+          // Plano B: visualização em nova aba; o usuário imprime com Ctrl+P.
+          const win = window.open('', '_blank');
+          if (!win) { showToast('Não foi possível abrir a impressão — libere pop-ups e tente de novo.'); return; }
+          win.document.write(docHtml);
+          win.document.close();
+          showToast('Visualização aberta em nova aba — use Ctrl+P para imprimir.');
+        }
+      };
+      frame.srcdoc = docHtml;
+      document.body.appendChild(frame);
     };
   }
 
