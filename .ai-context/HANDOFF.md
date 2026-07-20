@@ -28,6 +28,12 @@ Da revisão de design (persona: gerente 40-60 anos, monitor barato, sala clara),
 **Correção pós-teste do usuário:** o botão "Imprimir / Salvar PDF" da janela pop-up não respondia (handler inline em janela `document.write` + pop-up: ambos bloqueáveis pelo navegador). **Arquitetura trocada**: a impressão agora usa **iframe oculto na própria página** (`#escalaonPrintFrame`, `srcdoc`) — clicar em Exportar/Imprimir abre a caixa de impressão **direto** sobre o app (nela também se salva PDF); plano B (se o print do iframe falhar) abre a visualização em nova aba com toast "use Ctrl+P". Verificado com instrumentação no navegador: `print()` dispara ao clicar.
 **Pendências restantes**: ícones SVG no lugar de emojis, consulta mobile. Impressão real em A4 P&B ainda precisa de teste físico com dados reais.
 
+## 🔁 Loop de login: portão acoplado ao summary + zero cache-control (2026-07-17, Fable)
+
+Usuário reportou: F5 volta pra tela de login; loga, entra e volta pro login. Backend estava **íntegro** (testado por API: `/api/auth/status` com cookie → `authenticated:true`; `/api/summary` autenticado → 200, inclusive com 14 funcionários). Duas causas estruturais no cliente:
+1. **Portão acoplado aos dados**: o `gate.remove()` vivia **dentro do `Promise.all([summary, auth])`**. Qualquer falha do `/api/summary` (erro, timeout, payload grande) impedia o `.then()` de rodar → usuário autenticado **preso na tela de login**. Pior: o `.catch()` existente escrevia o erro na topbar, mas o portão (`z-index: 200`, tela cheia) **cobria a mensagem** — daí o sintoma parecer "voltou pro login". **Fix**: `pedidoAuth` separado; o portão resolve **só** com `/api/auth/status` (com `.catch` próprio). O summary segue no `Promise.all` para o resto da UI.
+2. **Estáticos sem `Cache-Control`** (`server.js`): o fallback de arquivos não enviava nenhum header de cache → o navegador aplicava heurística e podia servir `app.js`/CSS **antigos** por horas (é a razão dos "Ctrl+F5" pedidos a sessão toda; em produção, cliente rodaria versão anterior após deploy). **Fix**: `Cache-Control: no-cache, must-revalidate` em html/js/css — revalida sempre, sem proibir o cache. Verificado nos três arquivos.
+
 ## 📋 Planilha modelo da equipe agora tem CPF (2026-07-17, Fable)
 
 A importação por planilha **já existia** (aba Implantação, painel "2. Importar equipe") — o pedido do usuário era o **CPF**, que faltava na cadeia inteira. Adicionado ponta a ponta:

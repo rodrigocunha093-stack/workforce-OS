@@ -4649,7 +4649,19 @@ function safeRender(label, renderFn) {
   }
 }
 
-Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/api/auth/status').then((response) => response.json())])
+const pedidoAuth = fetch('/api/auth/status').then((r) => r.json()).catch(() => ({ authenticated: false, user: null }));
+const pedidoSummary = fetch('/api/summary').then((r) => r.json());
+
+// O PORTÃO DEPENDE SÓ DA AUTENTICAÇÃO — nunca dos dados.
+// Antes ele era removido dentro do Promise.all: se o /api/summary falhasse, o
+// usuário ficava preso na tela de login mesmo estando logado (loop de login).
+pedidoAuth.then((auth) => {
+  const gate = document.getElementById('loginGate');
+  if (!gate) return;
+  if (auth.authenticated || sessionStorage.getItem('escalaon-demo') === '1') gate.remove();
+});
+
+Promise.all([pedidoSummary, pedidoAuth])
   .then(([data, authentication]) => {
     window.currentSummary = data;
     authState = authentication || { authenticated: false, user: null };
@@ -4663,9 +4675,6 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
       sourceStatus.className = dadosReais ? 'source-connected' : 'source-demo';
     }
 
-    // Portão: quem já está logado (ou escolheu a demonstração) não vê a tela de entrada.
-    const gate = document.getElementById('loginGate');
-    if (gate && (authState.authenticated || sessionStorage.getItem('escalaon-demo') === '1')) gate.remove();
     safeRender('estado de login', renderAuthState);
     safeRender('selo de estado', () => renderBrandStatus(data));
     safeRender('checklist de implantação', () => renderSetupChecklist(data));

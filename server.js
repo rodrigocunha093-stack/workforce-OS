@@ -6509,6 +6509,10 @@ const requestHandler = async (req, res) => {
     const type = ext === '.html' ? 'text/html; charset=utf-8' : ext === '.css' ? 'text/css; charset=utf-8' : 'application/javascript; charset=utf-8';
     res.writeHead(200, {
       'Content-Type': type,
+      // Sem isto o navegador decide o cache sozinho e pode servir app.js/CSS ANTIGOS
+      // por horas — o usuário roda uma versão do sistema que não existe mais.
+      // 'no-cache' não proíbe guardar: obriga a revalidar com o servidor a cada carga.
+      'Cache-Control': 'no-cache, must-revalidate',
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'DENY',
       'Referrer-Policy': 'same-origin',
