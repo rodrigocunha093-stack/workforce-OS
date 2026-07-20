@@ -16,6 +16,14 @@
 **Arquivos:** `public/index.html`, `public/app.js`, `public/futuristic.css`, `public/colaborador.html`, `server.js` (log), docs.
 **Próximo (Fases 2-4 de design):** tela de entrada/login, grade da Escala, repaginada dos demais painéis.
 
+## 🧰 Bloco pré-piloto de design (2026-07-17, Fable) — revisão de web design aplicada
+
+Da revisão de design (persona: gerente 40-60 anos, monitor barato, sala clara), executado o bloco "antes do piloto":
+1. **Planta 3D recolhível + lazy** — botão `🗺️ Planta da loja` na Escala (padrão Auditoria/Domingos); `renderStoreFloorMap` saiu do bootstrap e só roda **ao abrir o painel** (sempre de `window.currentSummary`, então nunca fica stale). Era o maior peso de renderização da página.
+2. **Primeira meia hora**: badge fixo `PILOTO-CX-2026` removido do popup de conta (código real vem do env `PILOT_INVITE_CODE` — o badge causava "Dados inválidos"); vazios principais (painel ops, setores, forecast-7) ganharam **botão de ação** `irParaAba('implantacao')`; novo **checklist "Primeiros passos"** no topo do Diagnóstico (`renderSetupChecklist`, lê `summary.onboarding` + `escalaFechada`, some quando completo ou sem login).
+3. **Piso tipográfico**: 8px→10px (só chips), 9px/10px/10.5px→11px em `styles.css`, `futuristic.css` e inline do `app.js` (118 ocorrências); horário da grade 12.5→13px. Não sobrou nada abaixo de 10px.
+**Pendências da revisão (não feitas)**: auditoria de impressão (zero `@media print`; export gera página própria — testar em A4 P&B), skeleton de carga, ícones SVG no lugar de emojis, consulta mobile.
+
 ## 🔵 Azul vira a cor de marca/interação; verde fica SÓ para estados (2026-07-17, Fable)
 
 Decisão do usuário a partir do sistema fiscal da Contagil (azul `#3B82F6` já era o accent da marca-mãe, registrado no co-branding). Semântica melhorou: antes o verde era marca E sinal de "conforme" (papel duplo).

@@ -545,12 +545,12 @@ select option { background: #141b2e; color: #c2cbd8; }
 /* Quadro semana por colaboradora */
 .weekly-row > span { font-size: 12px !important; min-height: 54px !important; }
 .weekly-person strong { font-size: 13px !important; }
-.weekly-person small { font-size: 10px !important; }
-.weekly-head > span { font-size: 10px !important; }
+.weekly-person small { font-size: 11px !important; }
+.weekly-head > span { font-size: 11px !important; }
 
 /* Tabela de cobertura (Demanda x caixas) */
 .coverage-row > span { font-size: 13px !important; min-height: 40px !important; }
-.coverage-head > span { font-size: 10px !important; }
+.coverage-head > span { font-size: 11px !important; }
 
 /* Escala diária (staff cards) */
 .staff-card, .staff-card * { font-size: 12px; }
@@ -768,7 +768,7 @@ select option { background: #141b2e; color: #c2cbd8; }
 .shift-role {
   display: block;
   margin-top: 6px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   color: #5eead4;
   text-transform: uppercase;
@@ -850,7 +850,7 @@ select option { background: #141b2e; color: #c2cbd8; }
   display: inline-flex; align-items: center; gap: 6px;
   margin-left: 8px; padding: 3px 9px 3px 7px;
   border-radius: 999px;
-  font-family: inherit; font-size: 10.5px; font-weight: 700;
+  font-family: inherit; font-size: 11px; font-weight: 700;
   letter-spacing: 0.08em; text-transform: uppercase;
   vertical-align: middle;
   -webkit-text-fill-color: currentColor;
@@ -877,18 +877,18 @@ select option { background: #141b2e; color: #c2cbd8; }
 /* GRADE: o horário é o herói. O resto vira nota de rodapé. */
 .weekly-shift .shift-main {
   font-variant-numeric: tabular-nums;
-  font-weight: 600; font-size: 12.5px; letter-spacing: -0.01em;
+  font-weight: 600; font-size: 13px; letter-spacing: -0.01em;
 }
 .weekly-shift .shift-meta {
   display: block; margin-top: 2px;
-  font-size: 10px; font-weight: 400; color: #7f8da1;
+  font-size: 11px; font-weight: 400; color: #7f8da1;
   font-variant-numeric: tabular-nums;
 }
 /* 🔓/🔒 já dizem abertura e fechamento — o rótulo do papel era redundante. */
 .weekly-shift .shift-role { display: none; }
 
 /* Conformidade: resumo na caixa, detalhe sob demanda (modais de alertas/avisos). */
-.clt-nota { display: block; margin-top: 8px; font-size: 10.5px; color: #7f8da1; }
+.clt-nota { display: block; margin-top: 8px; font-size: 11px; color: #7f8da1; }
 .clt-btn-alertas:not(:disabled) {
   background: rgba(224,72,58,0.12) !important;
   border-color: rgba(224,72,58,0.45) !important;
@@ -908,7 +908,7 @@ select option { background: #141b2e; color: #c2cbd8; }
 .clt-lista-item.alerta strong { color: #fca5a5; }
 .clt-lista-item.aviso strong { color: #93c5fd; }
 .clt-lista-item ul { margin: 6px 0 0 16px; padding: 0; font-size: 12px; color: #b2bdcb; line-height: 1.6; }
-.clt-lista-vazia { color: #64748b; font-size: 12.5px; padding: 8px 0; }
+.clt-lista-vazia { color: #64748b; font-size: 13px; padding: 8px 0; }
 html[data-theme="light"] .clt-lista-item.alerta strong { color: #b91c1c; }
 html[data-theme="light"] .clt-lista-item.aviso strong { color: #1d4ed8; }
 html[data-theme="light"] .clt-lista-item ul { color: #334155; }
@@ -926,7 +926,7 @@ html[data-theme="light"] .clt-lista-item ul { color: #334155; }
 .custo-alta { color: var(--alerta); font-style: normal; }
 .custo-baixa { color: var(--on); font-style: normal; }
 .custo-titulo {
-  margin: 10px 0 6px; font-size: 10px; font-weight: 700;
+  margin: 10px 0 6px; font-size: 11px; font-weight: 700;
   letter-spacing: 0.07em; text-transform: uppercase; color: #64748b;
 }
 .custo-titulo:first-child { margin-top: 0; }
@@ -983,7 +983,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
   padding: 2px 8px;
   background: linear-gradient(135deg, #34d399, #2dd4bf);
   color: #051014;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   border-radius: 10px;
   vertical-align: middle;
@@ -1038,7 +1038,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
 .icos-card.st-none { border-left-color: #64748b; opacity: 0.85; }
 .icos-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .icos-card-head strong { font-size: 15px; color: #c2cbd8; }
-.icos-status { font-size: 10px; padding: 2px 8px; border-radius: 10px; background: rgba(255,255,255,0.08); color: #b2bdcb; }
+.icos-status { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: rgba(255,255,255,0.08); color: #b2bdcb; }
 .icos-card.st-high .icos-status { background: rgba(248,113,113,0.18); color: #fca5a5; }
 .icos-card.st-ok .icos-status { background: rgba(52,211,153,0.18); color: #6ee7b7; }
 .icos-card.st-low .icos-status { background: rgba(251,191,36,0.18); color: #fcd34d; }
@@ -1055,11 +1055,11 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
   background: rgba(255,255,255,0.03);
   border-radius: 7px;
 }
-.icos-metrics small { display: block; color: #8e9cb0; font-size: 10px; }
+.icos-metrics small { display: block; color: #8e9cb0; font-size: 11px; }
 .icos-metrics b { color: #c2cbd8; font-size: 14px; }
 .icos-need { font-size: 11px; padding: 4px 0; color: var(--muted); border-top: 1px solid rgba(255,255,255,.06); margin-top: 4px; }
 .icos-team { display: flex; flex-wrap: wrap; gap: 5px; }
-.icos-team span { font-size: 10px; padding: 3px 7px; background: rgba(59,130,246,0.12); color: #93c5fd; border-radius: 8px; }
+.icos-team span { font-size: 11px; padding: 3px 7px; background: rgba(59,130,246,0.12); color: #93c5fd; border-radius: 8px; }
 .icos-team.empty { color: #64748b; font-size: 11px; font-style: italic; }
 .icos-legend { display: flex; gap: 16px; margin-top: 14px; font-size: 11px; }
 .icos-legend .st-high { color: #fca5a5; }
@@ -1208,7 +1208,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
 .plant-metrics small,
 .plant-action small {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   color: #8e9cb0;
   margin-bottom: 4px;
   text-transform: uppercase;
@@ -1354,7 +1354,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
 
 /* Curva por dia da semana no card ICOS */
 .icos-curva { margin: 10px 0; }
-.icos-curva > small { display: block; color: #8e9cb0; font-size: 10px; margin-bottom: 6px; }
+.icos-curva > small { display: block; color: #8e9cb0; font-size: 11px; margin-bottom: 6px; }
 .icos-bars { display: flex; gap: 4px; align-items: flex-end; height: 48px; }
 .icos-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; height: 100%; justify-content: flex-end; }
 .icos-bar {
@@ -1365,7 +1365,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
   transition: all 0.2s;
 }
 .icos-bar.pico { background: linear-gradient(180deg, #2dd4bf, #3b82f6); }
-.icos-bar-wrap span { font-size: 9px; color: #64748b; }
+.icos-bar-wrap span { font-size: 11px; color: #64748b; }
 
 /* ---------- PAINEL OPERACIONAL (abertura) ---------- */
 .ops-period-switch { display: flex; gap: 4px; }
@@ -1452,7 +1452,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
 
 /* Ícones de abertura/fechamento na escala */
 .weekly-shift { position: relative; }
-.shift-icon { font-size: 10px; margin-left: 3px; opacity: 0.9; }
+.shift-icon { font-size: 11px; margin-left: 3px; opacity: 0.9; }
 .shift-icon.abre { filter: hue-rotate(120deg); }
 
 /* FASE 1: Compliance CLT */
@@ -1847,10 +1847,10 @@ html[data-theme="light"] .adherence-extra { background: rgba(59,130,246,0.15); c
 .forecast7-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
 .forecast-day { background: rgba(255,255,255,.04); border-radius: 10px; padding: 12px 10px; text-align: center; border: 1px solid rgba(255,255,255,.06); }
 .forecast-day .fd-label { font-size: 11px; color: #8e9cb0; font-weight: 600; text-transform: uppercase; }
-.forecast-day .fd-date { font-size: 10px; color: #64748b; margin-top: 2px; }
+.forecast-day .fd-date { font-size: 11px; color: #64748b; margin-top: 2px; }
 .forecast-day .fd-value { font-size: 18px; font-weight: 700; color: #c2cbd8; margin: 8px 0 4px; }
-.forecast-day .fd-factors { font-size: 9px; color: #64748b; line-height: 1.4; }
-.forecast-day .fd-event { font-size: 10px; margin-top: 6px; padding: 3px 6px; border-radius: 6px; display: inline-block; }
+.forecast-day .fd-factors { font-size: 11px; color: #64748b; line-height: 1.4; }
+.forecast-day .fd-event { font-size: 11px; margin-top: 6px; padding: 3px 6px; border-radius: 6px; display: inline-block; }
 .forecast-day .fd-event.feriado { background: rgba(239,68,68,.15); color: #fca5a5; }
 .forecast-day .fd-event.vespera { background: rgba(251,191,36,.15); color: #fcd34d; }
 .forecast-day .fd-event.promocao { background: rgba(168,85,247,.15); color: #c4b5fd; }
@@ -1871,10 +1871,10 @@ html[data-theme="light"] .adherence-extra { background: rgba(59,130,246,0.15); c
 .eventos-lista .evento-row { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px; font-size: 12px; }
 .eventos-lista .evento-row:nth-child(odd) { background: rgba(255,255,255,.02); }
 .eventos-lista .evento-row .ev-data { width: 90px; color: #8e9cb0; font-family: monospace; }
-.eventos-lista .evento-row .ev-tipo { padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+.eventos-lista .evento-row .ev-tipo { padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
 .eventos-lista .evento-row .ev-nome { flex: 1; color: #c2cbd8; }
 .eventos-lista .evento-row .ev-fator { color: #fcd34d; font-weight: 600; width: 50px; text-align: right; }
-.eventos-lista .evento-row .ev-auto { font-size: 9px; color: #64748b; font-style: italic; }
+.eventos-lista .evento-row .ev-auto { font-size: 11px; color: #64748b; font-style: italic; }
 .eventos-lista .evento-row .ev-del { background: none; border: none; color: #ef4444; cursor: pointer; font-size: 14px; padding: 2px 6px; }
 
 /* Escala sugerida */
@@ -1884,8 +1884,8 @@ html[data-theme="light"] .adherence-extra { background: rgba(59,130,246,0.15); c
 .escala-sugerida-grid td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,.04); color: #c2cbd8; }
 .escala-sugerida-grid tr.dia-fechado td { color: #64748b; font-style: italic; }
 .escala-sugerida-grid tr.dia-pico td { background: rgba(251,191,36,.05); }
-.escala-sugerida-grid .es-fator { font-size: 10px; color: #fcd34d; }
-.escala-sugerida-grid .es-setor-detail { font-size: 10px; color: #8e9cb0; }
+.escala-sugerida-grid .es-fator { font-size: 11px; color: #fcd34d; }
+.escala-sugerida-grid .es-setor-detail { font-size: 11px; color: #8e9cb0; }
 .escala-sugerida-grid .es-surplus { color: #86efac; }
 .escala-sugerida-grid .es-deficit { color: #fca5a5; }
 .escala-sugerida-grid .es-resumo { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; padding: 10px; background: rgba(255,255,255,.03); border-radius: 10px; font-size: 12px; }
@@ -1941,3 +1941,28 @@ html[data-theme="light"] .operating-principles article {
 }
 html[data-theme="light"] .operating-principles p { color: #475569; }
 html[data-theme="light"] .operating-principles article > span { color: #2563EB; }
+
+/* Checklist de primeiros passos (Diagnóstico) + vazios com ação */
+.setup-checklist .setup-steps {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;
+}
+.setup-step {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px; border-radius: 10px; text-align: left;
+  background: rgba(59,130,246,0.07); border: 1px solid rgba(59,130,246,0.25);
+  color: var(--ink); font: inherit; cursor: pointer;
+  transition: transform .15s ease, background .15s ease;
+}
+button.setup-step:hover { transform: translateY(-1px); background: rgba(59,130,246,0.14); }
+.setup-step.done {
+  background: rgba(0,194,113,0.07); border-color: rgba(0,194,113,0.25); cursor: default;
+}
+.setup-step strong { display: block; font-size: 13px; color: var(--ink); }
+.setup-step small { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.setup-mark {
+  flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 12px; font-weight: 700;
+  background: var(--marca-forte); color: #fff;
+}
+.setup-step.done .setup-mark { background: rgba(0,194,113,0.18); color: var(--on); }
+.summary-empty .optimize-button { margin-top: 10px; }

@@ -94,7 +94,7 @@ function renderOpsDashboard(data) {
   const el = document.getElementById('opsDashboard');
   if (!el) return;
   const ops = data.operationalDashboard;
-  if (!ops) { el.innerHTML = '<div class="summary-empty"><strong>Importe vendas para ativar o painel</strong><span>Importe vendas VRSoft e/ou mercadológico na aba Implantação.</span></div>'; return; }
+  if (!ops) { el.innerHTML = '<div class="summary-empty"><strong>Importe vendas para ativar o painel</strong><span>Com as vendas VRSoft ou mercadológico, o painel calcula faturamento, equipe ideal e pico.</span><button type="button" class="optimize-button" onclick="irParaAba(\'implantacao\')">Importar vendas →</button></div>'; return; }
 
   const periodoLabel = { dia: 'por dia', semana: 'por semana', mes: 'por mês' }[opsPeriod];
   const fat = ops.faturamento[opsPeriod];
@@ -466,7 +466,7 @@ function renderSetorDashboard(data) {
   if (!el) return;
   const dash = data.setorDashboard || [];
   if (!dash.length) {
-    el.innerHTML = '<div class="summary-empty"><strong>Importe vendas por mercadológico</strong><span>Na aba Implantação (painel 4), suba o arquivo de vendas por departamento para liberar os KPIs inteligentes de cada setor.</span></div>';
+    el.innerHTML = '<div class="summary-empty"><strong>Importe vendas por mercadológico</strong><span>Suba o arquivo de vendas por departamento para liberar os KPIs de cada setor.</span><button type="button" class="optimize-button" onclick="irParaAba(\'implantacao\')">Importar mercadológico →</button></div>';
     return;
   }
   const statusColor = { sobrecarga: 'st-high', folga: 'st-low', equilibrado: 'st-ok', 'sem-equipe': 'st-none' };
@@ -982,7 +982,7 @@ function renderCashierLoadPanel(rows, scenario) {
                   <td style="text-align:right;padding:2px 6px">${r.cargaCaixa?.itensMedios || r.itensMedios || '—'}</td>
                   <td style="text-align:right;padding:2px 6px">${a.totalMinutos}</td>
                   <td style="text-align:right;padding:2px 6px">${minPerCup}</td>
-                  <td style="padding:2px 6px;font-size:10px;color:var(--fx-muted,#8899aa)">${perDate}</td>
+                  <td style="padding:2px 6px;font-size:11px;color:var(--fx-muted,#8899aa)">${perDate}</td>
                 </tr>`;
               }).join('')}
             </table>
@@ -1697,8 +1697,8 @@ function renderStoreFloorMap(data) {
           <span style="font-size:11px;font-weight:600;color:${borderColor}" title="Equipe total do setor / necessário no dia">${st.equipe} / ${st.necessario} <small style="opacity:.7">${saldoTxt}</small></span>
         </div>
         <p style="margin:0;font-size:11px;color:var(--color-text-secondary)">${st.acao || ''}</p>
-        ${st.explicacao ? `<p style="margin:3px 0 0;font-size:10px;color:var(--color-text-tertiary)">${st.explicacao}</p>` : ''}
-        <p style="margin:3px 0 0;font-size:10px;color:var(--color-text-tertiary)">${escalados} ativo(s) neste horário</p>
+        ${st.explicacao ? `<p style="margin:3px 0 0;font-size:11px;color:var(--color-text-tertiary)">${st.explicacao}</p>` : ''}
+        <p style="margin:3px 0 0;font-size:11px;color:var(--color-text-tertiary)">${escalados} ativo(s) neste horário</p>
       </div>`;
     }).filter(Boolean).join('');
     // Indicador de semana-alvo e confiança dos índices
@@ -1706,7 +1706,7 @@ function renderStoreFloorMap(data) {
     const confiancaLabels = { inicial: '⚠️ Inicial', media: '📊 Média', boa: '✅ Boa' };
     const semanaLabel = di ? `Semana ${di.semanaAtual} do mês` : '';
     const confiancaLabel = di ? (confiancaLabels[di.confianca] || di.confianca) : '';
-    const forecastBadge = di ? ` <span style="font-size:10px;font-weight:400;opacity:.7">· ${semanaLabel} · Confiança: ${confiancaLabel} (${di.totalDays} dias)</span>` : '';
+    const forecastBadge = di ? ` <span style="font-size:11px;font-weight:400;opacity:.7">· ${semanaLabel} · Confiança: ${confiancaLabel} (${di.totalDays} dias)</span>` : '';
     const recommendations = recCards ? `<div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:6px"><div style="grid-column:1/-1;font-size:12px;font-weight:600;color:var(--color-text-secondary);margin-bottom:2px"><i class="ti ti-alert-triangle" style="margin-right:3px"></i>Motor de necessidade operacional${forecastBadge}</div>${recCards}</div>` : '';
 
     // Motor de Realocação: cruzar déficit x excedente
@@ -1779,7 +1779,7 @@ function renderStoreFloorMap(data) {
             <span style="font-weight:600;font-size:12px;color:var(--color-text-primary)">${s.nome}</span>
           </div>
           <p style="margin:0;font-size:11px;color:var(--color-text-secondary)">Mover de <strong>${s.de}</strong> → <strong>${s.para}</strong></p>
-          <p style="margin:2px 0 0;font-size:10px;color:var(--color-text-tertiary)">Disponível ${s.horario} · ${s.de} tem excedente, ${s.para} precisa de reforço</p>
+          <p style="margin:2px 0 0;font-size:11px;color:var(--color-text-tertiary)">Disponível ${s.horario} · ${s.de} tem excedente, ${s.para} precisa de reforço</p>
         </div>`;
       }).join('');
       realocacaoHtml = `<div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:6px">
@@ -1841,7 +1841,7 @@ function renderStoreFloorMap(data) {
               const tp = ((hr - lojaH.open) / span) * 100;
               const isMain = hr % 2 === 0;
               ticks += '<div style="position:absolute;left:' + tp + '%;top:' + (isMain ? '8' : '12') + 'px;width:1px;height:' + (isMain ? '20' : '12') + 'px;background:var(--color-border-secondary);transform:translateX(-0.5px)"></div>';
-              if (isMain) ticks += '<div style="position:absolute;left:' + tp + '%;top:32px;transform:translateX(-50%);font-size:10px;color:var(--color-text-tertiary);white-space:nowrap;font-variant-numeric:tabular-nums">' + String(hr).padStart(2,'0') + 'h</div>';
+              if (isMain) ticks += '<div style="position:absolute;left:' + tp + '%;top:32px;transform:translateX(-50%);font-size:11px;color:var(--color-text-tertiary);white-space:nowrap;font-variant-numeric:tabular-nums">' + String(hr).padStart(2,'0') + 'h</div>';
             }
             return ticks;
           })()}
@@ -1946,6 +1946,43 @@ function renderStoreFloorMap(data) {
   }
 
   render();
+}
+
+// Navega para uma aba da sidebar (usado pelos vazios com ação e pelo checklist).
+function irParaAba(tab) {
+  const btn = document.querySelector(`.sidebar button[data-tab="${tab}"]`);
+  if (btn) btn.click();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Checklist de primeiros passos (Diagnóstico): diz ao cliente novo onde ele está
+// e qual é o próximo passo. Some sozinho quando a implantação está completa.
+function renderSetupChecklist(data) {
+  const el = document.getElementById('setupChecklist');
+  if (!el) return;
+  const ob = data.onboarding || {};
+  const passos = [
+    { ok: Boolean(ob.profileComplete), nome: 'Cadastre a sua loja', detalhe: 'Nome, PDVs e horários', aba: 'implantacao' },
+    { ok: Boolean(ob.salesImported), nome: 'Importe as vendas', detalhe: 'Arquivo VRSoft ou mercadológico', aba: 'implantacao' },
+    { ok: Boolean(ob.employeesImported), nome: 'Cadastre a equipe', detalhe: 'Manual ou por planilha', aba: 'implantacao' },
+    { ok: Boolean(data.escalaFechada), nome: 'Publique a primeira escala', detalhe: 'Revise e feche o período', aba: 'cenarios' },
+  ];
+  const pendentes = passos.filter(p => !p.ok).length;
+  if (!authState?.authenticated || pendentes === 0) { el.innerHTML = ''; el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `
+    <div class="panel setup-checklist">
+      <div class="panel-head"><div>
+        <h3>Primeiros passos</h3>
+        <p class="note">${passos.length - pendentes} de ${passos.length} concluídos — complete para liberar todo o diagnóstico.</p>
+      </div></div>
+      <div class="setup-steps">
+        ${passos.map((p, i) => p.ok
+          ? `<div class="setup-step done"><span class="setup-mark">✓</span><div><strong>${p.nome}</strong><small>Concluído</small></div></div>`
+          : `<button type="button" class="setup-step" onclick="irParaAba('${p.aba}')"><span class="setup-mark">${i + 1}</span><div><strong>${p.nome}</strong><small>${p.detalhe} →</small></div></button>`
+        ).join('')}
+      </div>
+    </div>`;
 }
 
 // Simulador What-if (aba Simulador): impacto de contratar/desligar e de variação de vendas.
@@ -2543,9 +2580,9 @@ function renderWeeklySchedule(data) {
           th,td{border:1px solid #ccc;padding:6px 4px;text-align:center}
           th{background:#0d7d6f;color:#fff}
           td.nm{text-align:left;font-weight:700;white-space:nowrap}
-          td.nm small{display:block;font-weight:400;color:#777;font-size:9px}
+          td.nm small{display:block;font-weight:400;color:#777;font-size:11px}
           td.fg{background:#f1f1f1;color:#999}
-          .ft{margin-top:16px;font-size:10px;color:#888}
+          .ft{margin-top:16px;font-size:11px;color:#888}
           @media print{button{display:none}}
         </style></head><body>
         <h1>Escala de Trabalho — ${empresa}${loja ? ' · ' + loja : ''}</h1>
@@ -2744,7 +2781,7 @@ function renderAudit(audit) {
 
 function renderForecast7(forecast7) {
   const el = document.getElementById('forecast7Container');
-  if (!el || !forecast7 || !forecast7.length) { if (el) el.innerHTML = '<p style="color:#64748b;font-size:12px;">Importe faturamento diário para ativar a previsão.</p>'; return; }
+  if (!el || !forecast7 || !forecast7.length) { if (el) el.innerHTML = '<div class="summary-empty"><strong>Sem previsão ainda</strong><span>Importe o faturamento diário para prever os próximos 7 dias.</span><button type="button" class="optimize-button" onclick="irParaAba(\'implantacao\')">Importar faturamento →</button></div>'; return; }
   const dayNames = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
   const todayStr = new Date().toISOString().slice(0, 10);
   const maxPrev = Math.max(...forecast7.map(d => d.previsao));
@@ -2826,7 +2863,7 @@ function renderEscalaSugerida(esc) {
       });
       html += `<td><strong>${d.totalPessoas}</strong></td>`;
       html += `<td>${d.folgas}</td>`;
-      html += `<td>${d.evento ? `<span style="font-size:10px;">${d.evento.nome}</span>` : '—'}</td>`;
+      html += `<td>${d.evento ? `<span style="font-size:11px;">${d.evento.nome}</span>` : '—'}</td>`;
     }
     html += '</tr>';
   });
@@ -4513,10 +4550,11 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     }
     safeRender('estado de login', renderAuthState);
     safeRender('selo de estado', () => renderBrandStatus(data));
+    safeRender('checklist de implantação', () => renderSetupChecklist(data));
     safeRender('simulador what-if', initWhatIf);
 
-    // Painéis recolhíveis da aba Escala (antigas abas Auditoria e Domingos).
-    const ligaPainelRecolhivel = (btnId, panelId, rotuloAberto, rotuloFechado) => {
+    // Painéis recolhíveis da aba Escala (antigas abas Auditoria e Domingos + planta).
+    const ligaPainelRecolhivel = (btnId, panelId, rotuloAberto, rotuloFechado, aoAbrir) => {
       const btn = document.getElementById(btnId);
       const panel = document.getElementById(panelId);
       if (!btn || !panel) return;
@@ -4527,10 +4565,14 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
         btn.setAttribute('aria-expanded', String(abrindo));
         btn.classList.toggle('active', abrindo);
         btn.textContent = abrindo ? rotuloAberto : rotuloFechado;
+        if (abrindo && aoAbrir) aoAbrir();
       };
     };
     ligaPainelRecolhivel('toggleAuditoria', 'auditoriaPanel', '📋 Ocultar auditoria', '📋 Auditoria');
     ligaPainelRecolhivel('toggleDomingos', 'domingosPanel', '☀️ Ocultar domingos', '☀️ Domingos');
+    // Planta 3D: pesada — só é construída quando o gestor abre (e sempre com os dados atuais).
+    ligaPainelRecolhivel('togglePlanta', 'plantaPanel', '🗺️ Ocultar planta', '🗺️ Planta da loja',
+      () => safeRender('planta loja', () => renderStoreFloorMap(window.currentSummary)));
     safeRender('modulos', () => applyEnabledModules(data));
     safeRender('gestor', () => renderGestorPanel(data));
     if (!authState.authenticated) {
@@ -4547,7 +4589,6 @@ Promise.all([fetch('/api/summary').then((response) => response.json()), fetch('/
     safeRender('setores', () => renderSectorEngine(data));
     safeRender('cenarios', () => renderScenarios(data.scenarios, data.metadata));
     safeRender('cobertura', () => renderCoverage(data));
-    safeRender('planta loja', () => renderStoreFloorMap(data));
     safeRender('semana colaboradora', () => renderWeeklySchedule(data));
     safeRender('domingos', () => renderSunday(data.sundayRotation));
     safeRender('auditoria', () => renderAudit(data.audit));

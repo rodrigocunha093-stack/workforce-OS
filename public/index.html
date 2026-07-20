@@ -85,6 +85,7 @@
           <div id="opsDashboard"></div>
         </article>
 
+        <div id="setupChecklist" hidden></div>
         <div id="kpis" class="kpis"></div>
 
 
@@ -154,6 +155,7 @@
           <div class="escala-acoes-head">
             <button id="toggleDomingos" class="optimize-button" type="button" aria-expanded="false">☀️ Domingos</button>
             <button id="toggleAuditoria" class="optimize-button" type="button" aria-expanded="false">📋 Auditoria</button>
+            <button id="togglePlanta" class="optimize-button" type="button" aria-expanded="false">🗺️ Planta da loja</button>
           </div>
         </div>
 
@@ -190,7 +192,7 @@
           <div id="weeklySchedule" class="weekly-schedule"></div>
         </div>
 
-        <div class="panel" style="overflow:hidden">
+        <div id="plantaPanel" class="panel" style="overflow:hidden" hidden>
           <div id="storeFloorMap"></div>
         </div>
 
@@ -643,8 +645,7 @@
     <form id="registerForm" class="auth-form" hidden>
       <label>Seu nome <input id="registerName" autocomplete="name" required></label>
       <label>E-mail <input id="registerEmail" type="email" autocomplete="email" required></label>
-      <div class="pilot-invite"><span>Convite de implantação</span><strong>PILOTO-CX-2026</strong></div>
-      <label>Código de convite <input id="registerInvite" autocomplete="off" required></label>
+      <label>Código de convite <input id="registerInvite" autocomplete="off" required placeholder="Fornecido pela Contagil na implantação"></label>
       <label>Código da empresa <span style="font-weight:400;opacity:0.7">(opcional)</span> <input id="registerCompany" autocomplete="off" placeholder="Ex: EMP-A1B2C3 — deixe vazio para criar nova empresa"></label>
       <small style="opacity:0.8">Tem um código de empresa? Cole para acessar os dados compartilhados da sua equipe. Vazio = você cria uma nova empresa e recebe um código para convidar colegas.</small>
       <label>Senha <input id="registerPassword" type="password" minlength="8" autocomplete="new-password" required></label>
