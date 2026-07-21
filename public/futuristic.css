@@ -4,9 +4,12 @@
    (O contraste base já vem do styles.css com tema escuro nativo)
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap');
 
 :root {
+  /* Fonte de display (títulos, números). A antiga 'Space Grotesk' vinha por @import
+     do Google Fonts, que o CSP deste servidor bloqueia — nunca chegou a carregar.
+     Pilha nativa: usa a melhor fonte já instalada no sistema, sem requisição externa. */
+  --fx-display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, "Inter", Arial, sans-serif;
   /* EscalaON — azul = marca e interação (família Contagil); verde = SÓ estado "no ar/conforme". */
   --marca: #3B82F6;       /* acento de marca sobre fundo escuro */
   --marca-forte: #2563EB; /* preenchimento sólido de botões/abas */
@@ -40,7 +43,7 @@ body {
 }
 
 .topbar h1 {
-  font-family: 'Space Grotesk', Inter, sans-serif;
+  font-family: var(--fx-display);
   font-weight: 700;
   letter-spacing: -0.02em;
   background: linear-gradient(90deg, #fff, #a5f3ec);
@@ -53,7 +56,7 @@ body {
   background: var(--fx-grad-primary);
   border: none;
   box-shadow: 0 0 20px -2px rgba(45,212,191,0.6);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--fx-display);
   position: relative;
   overflow: hidden;
 }
@@ -127,7 +130,7 @@ body {
   box-shadow: inset 0 0 0 1px rgba(59,130,246,0.14);
 }
 
-.sidebar button span { font-family: 'Space Grotesk', sans-serif; }
+.sidebar button span { font-family: var(--fx-display); }
 
 .sidebar button.active {
   background: var(--fx-grad-primary);
@@ -174,7 +177,7 @@ body {
 }
 
 .hero-panel h2 {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--fx-display);
   font-weight: 700;
   letter-spacing: -0.02em;
   max-width: 860px;
@@ -229,7 +232,7 @@ body {
 
 /* ---------- HEADINGS ---------- */
 .panel h3, h2, h3 {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--fx-display);
 }
 
 /* ---------- KPIs com glass + gradiente no topo ---------- */
@@ -261,7 +264,7 @@ body {
 }
 
 .kpi strong {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--fx-display);
   font-weight: 700;
 }
 
@@ -395,7 +398,7 @@ body {
 .weekly-strength-metrics strong,
 .weekly-strength-support b {
   color: #ffffff !important;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--fx-display);
   font-size: 22px !important;
 }
 .weekly-strength-support b {
@@ -536,7 +539,7 @@ select option { background: #141b2e; color: #c2cbd8; }
 }
 
 /* ---------- SAVINGS panel (mantém destaque) ---------- */
-.savings-card strong { font-family: 'Space Grotesk', sans-serif; }
+.savings-card strong { font-family: var(--fx-display); }
 
 /* ============================================================
    LEGIBILIDADE — fontes maiores (+10% e correção dos micro-textos)
@@ -598,7 +601,7 @@ select option { background: #141b2e; color: #c2cbd8; }
   margin: 6px 0;
 }
 .company-code-value strong {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--fx-display);
   font-size: 26px;
   font-weight: 700;
   letter-spacing: 2px;
@@ -832,7 +835,7 @@ select option { background: #141b2e; color: #c2cbd8; }
 .brand-logo svg { display: block; }
 
 .topbar h1 {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--fx-display);
   font-weight: 700;
   font-size: 22px;
   letter-spacing: -0.01em;
@@ -1017,7 +1020,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
   border-radius: 10px;
 }
 .icos-summary small { display: block; color: #8e9cb0; font-size: 11px; }
-.icos-summary strong { font-family: 'Space Grotesk', sans-serif; font-size: 20px; color: #c2cbd8; }
+.icos-summary strong { font-family: var(--fx-display); font-size: 20px; color: #c2cbd8; }
 .icos-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -1042,7 +1045,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
 .icos-card.st-high .icos-status { background: rgba(248,113,113,0.18); color: #fca5a5; }
 .icos-card.st-ok .icos-status { background: rgba(52,211,153,0.18); color: #6ee7b7; }
 .icos-card.st-low .icos-status { background: rgba(251,191,36,0.18); color: #fcd34d; }
-.icos-bigval { font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; color: #5eead4; margin-bottom: 12px; }
+.icos-bigval { font-family: var(--fx-display); font-size: 26px; font-weight: 700; color: #5eead4; margin-bottom: 12px; }
 .icos-bigval small { font-size: 13px; color: #8e9cb0; font-weight: 400; }
 .icos-metrics {
   display: grid;
@@ -1119,7 +1122,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
   line-height: 1;
   color: #c2cbd8;
   margin-bottom: 6px;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--fx-display);
 }
 .plant-summary-card span {
   color: #b2bdcb;
@@ -1217,7 +1220,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
 .plant-metrics strong {
   font-size: 22px;
   color: #f8fafc;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--fx-display);
 }
 .plant-metrics strong.neg { color: #fca5a5; }
 .plant-metrics strong.pos { color: #6ee7b7; }
@@ -1397,7 +1400,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
   border-radius: 12px;
 }
 .ops-kpi small { display: block; color: #8e9cb0; font-size: 11px; margin-bottom: 6px; }
-.ops-kpi strong { display: block; font-family: 'Space Grotesk', sans-serif; font-size: 26px; color: #c2cbd8; }
+.ops-kpi strong { display: block; font-family: var(--fx-display); font-size: 26px; color: #c2cbd8; }
 .ops-kpi span { display: block; color: #8e9cb0; font-size: 11px; margin-top: 4px; }
 .ops-kpi .ops-vs { display: inline; font-size: 14px; color: #8e9cb0; font-weight: 400; }
 .ops-kpi.ops-primary { background: linear-gradient(135deg, rgba(45,212,191,0.12), rgba(59,130,246,0.08)); border-color: var(--fx-border-glow); }
@@ -1416,7 +1419,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
   border: 1px solid var(--fx-border);
   border-radius: 12px;
 }
-.ops-card h4 { margin: 0 0 12px; font-size: 14px; color: #c2cbd8; font-family: 'Space Grotesk', sans-serif; }
+.ops-card h4 { margin: 0 0 12px; font-size: 14px; color: #c2cbd8; font-family: var(--fx-display); }
 .ops-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; }
 .ops-row:last-child { border-bottom: none; }
 .ops-row span { color: #8e9cb0; }
@@ -1429,7 +1432,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
 .ops-alert-ok { background: rgba(52,211,153,0.12); color: #6ee7b7; border-left: 3px solid #34d399; }
 
 /* Seções extras do painel operacional */
-.ops-section-title { margin: 20px 0 12px; font-size: 13px; font-weight: 700; color: #b2bdcb; font-family: 'Space Grotesk', sans-serif; }
+.ops-section-title { margin: 20px 0 12px; font-size: 13px; font-weight: 700; color: #b2bdcb; font-family: var(--fx-display); }
 .ops-kpi.ops-loss { border-left: 3px solid #f87171; }
 .ops-kpi.ops-loss strong { color: #fca5a5; }
 .ops-kpi.ops-loss-total { background: linear-gradient(135deg, rgba(248,113,113,0.12), rgba(251,191,36,0.08)); border-color: rgba(248,113,113,0.3); }
@@ -1471,7 +1474,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
 .banco-item { padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--fx-border); border-radius: 8px; }
 .banco-item strong { display: block; font-size: 12px; color: #c2cbd8; }
 .banco-item span { display: block; font-size: 11px; color: #8e9cb0; }
-.banco-item b { font-size: 15px; font-family: 'Space Grotesk', sans-serif; }
+.banco-item b { font-size: 15px; font-family: var(--fx-display); }
 .banco-pos b { color: #fca5a5; }
 .banco-neg b { color: #93c5fd; }
 .banco-pos { border-left: 3px solid #f87171; }
@@ -1484,7 +1487,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
 .wf-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 10px; margin-bottom: 12px; }
 .wf-card { padding: 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--fx-border); border-radius: 10px; }
 .wf-card small { display: block; color: #8e9cb0; font-size: 11px; }
-.wf-card b { display: block; font-family: 'Space Grotesk', sans-serif; font-size: 18px; color: #c2cbd8; margin: 3px 0; }
+.wf-card b { display: block; font-family: var(--fx-display); font-size: 18px; color: #c2cbd8; margin: 3px 0; }
 .wf-card span { font-size: 11px; color: #8e9cb0; }
 .wf-bad { color: #fca5a5 !important; }
 .wf-warn { color: #fcd34d !important; }
@@ -1524,7 +1527,7 @@ html[data-theme="light"] .clt-detalhes > summary { color: #b91c1c; }
 }
 .app-footer-brand { display: flex; align-items: center; gap: 12px; }
 .footer-logo { display: grid; place-items: center; filter: drop-shadow(0 2px 8px rgba(45,212,191,0.3)); }
-.app-footer-brand strong { color: #c2cbd8; font-family: 'Space Grotesk', sans-serif; }
+.app-footer-brand strong { color: #c2cbd8; font-family: var(--fx-display); }
 .app-footer-brand a { color: #93c5fd; text-decoration: none; font-weight: 600; }
 .app-footer-brand a:hover { color: #bfdbfe; }
 .app-footer-brand span { display: block; color: #64748b; font-size: 11px; margin-top: 2px; }
