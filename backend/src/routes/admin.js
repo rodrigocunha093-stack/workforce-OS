@@ -1,14 +1,16 @@
 const express = require('express');
-const crypto = require('crypto');
 const pool = require('../db/postgres');
 
 const router = express.Router();
 
-// Middleware para verificar se o usuário é administrador
-// Para este MVP, consideramos que qualquer usuário autenticado pode gerenciar sua própria empresa
+// Esta área é de uso exclusivo da equipe interna Contagil (configuração de
+// clientes, geração de client_id para os agentes). Exige usuário admin.
 async function requireAuth(req, res, next) {
   if (!req.user || !req.user.id) {
     return res.status(401).json({ error: 'Não autenticado. Faça login para acessar.' });
+  }
+  if (!req.user.is_admin) {
+    return res.status(403).json({ error: 'Acesso restrito a administradores.' });
   }
   next();
 }
@@ -31,9 +33,10 @@ router.get('/companies', requireAuth, async (req, res) => {
 
     const companyId = userResult.rows[0].company_id;
 
-    // Obter informações da empresa (sem retornar o hash da API key)
+    // Obter informações da empresa, incluindo client_id (usado na
+    // configuração do agente)
     const companyResult = await pool.query(
-      'SELECT id, name, created_at FROM companies WHERE id = $1',
+      'SELECT id, name, client_id, created_at FROM companies WHERE id = $1',
       [companyId]
     );
 
@@ -58,13 +61,9 @@ router.post('/companies', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Nome da empresa é obrigatório.' });
     }
 
-    // Gerar uma API key aleatória e fazer hash
-    const apiKey = crypto.randomBytes(32).toString('hex');
-    const apiKeyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
-
     const result = await pool.query(
-      'INSERT INTO companies (name, api_key_hash) VALUES ($1, $2) RETURNING id, name, created_at',
-      [name, apiKeyHash]
+      'INSERT INTO companies (name) VALUES ($1) RETURNING id, name, created_at',
+      [name]
     );
 
     const company = result.rows[0];
@@ -76,7 +75,6 @@ router.post('/companies', requireAuth, async (req, res) => {
         name: company.name,
         created_at: company.created_at,
       },
-      api_key: apiKey, // Retornar a chave apenas uma vez na criação
     });
   } catch (err) {
     if (err.code === '23505') {
@@ -165,8 +163,9 @@ router.delete('/companies/:id', requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/admin/companies/:id/api-keys - Obter informações da API key (sem retornar o hash)
-router.get('/companies/:id/api-keys', requireAuth, async (req, res) => {
+// GET /api/admin/companies/:id/client-id - Obter o client_id usado para
+// configurar o agente do cliente (AGENTE-VR). Uso interno da equipe Contagil.
+router.get('/companies/:id/client-id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
@@ -178,12 +177,11 @@ router.get('/companies/:id/api-keys', requireAuth, async (req, res) => {
     );
 
     if (userResult.rows.length === 0 || userResult.rows[0].company_id !== parseInt(id)) {
-      return res.status(403).json({ error: 'Você não tem permissão para acessar as API keys desta empresa.' });
+      return res.status(403).json({ error: 'Você não tem permissão para acessar esta empresa.' });
     }
 
-    // Retornar apenas informações sobre a existência da API key, sem o hash
     const result = await pool.query(
-      'SELECT id, name, created_at FROM companies WHERE id = $1',
+      'SELECT id, name, client_id, created_at FROM companies WHERE id = $1',
       [id]
     );
 
@@ -191,53 +189,9 @@ router.get('/companies/:id/api-keys', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'Empresa não encontrada.' });
     }
 
-    res.json({
-      company: result.rows[0],
-      message: 'A empresa possui uma API key ativa. Use a rota de regeneração para obter uma nova chave.',
-    });
+    res.json({ company: result.rows[0] });
   } catch (err) {
-    console.error('Erro ao obter API keys:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /api/admin/companies/:id/api-keys/regenerate - Regenerar API key
-router.post('/companies/:id/api-keys/regenerate', requireAuth, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.id;
-
-    // Verificar se o usuário tem permissão para regenerar a API key desta empresa
-    const userResult = await pool.query(
-      'SELECT company_id FROM users WHERE id = $1',
-      [userId]
-    );
-
-    if (userResult.rows.length === 0 || userResult.rows[0].company_id !== parseInt(id)) {
-      return res.status(403).json({ error: 'Você não tem permissão para regenerar a API key desta empresa.' });
-    }
-
-    // Gerar uma nova API key e fazer hash
-    const apiKey = crypto.randomBytes(32).toString('hex');
-    const apiKeyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
-
-    const result = await pool.query(
-      'UPDATE companies SET api_key_hash = $1 WHERE id = $2 RETURNING id, name, created_at',
-      [apiKeyHash, id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Empresa não encontrada.' });
-    }
-
-    res.json({
-      message: 'API key regenerada com sucesso.',
-      company: result.rows[0],
-      api_key: apiKey, // Retornar a chave apenas uma vez
-      warning: 'Guarde esta chave em um local seguro. Ela não será exibida novamente.',
-    });
-  } catch (err) {
-    console.error('Erro ao regenerar API key:', err.message);
+    console.error('Erro ao obter client_id:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

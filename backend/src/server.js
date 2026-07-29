@@ -3,8 +3,12 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const crypto = require('crypto');
+const cron = require('node-cron');
 const pool = require('./db/postgres');
+const { logActivity } = require('./services/activityLog');
+const { syncAllCompanies: syncVendas } = require('./services/syncVendas');
+const { syncAllCompanies: syncMercadologico } = require('./services/syncMercadologico');
+const { syncAllCompanies: syncSetores } = require('./services/syncSetores');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -29,68 +33,79 @@ app.use((req, res, next) => {
   next();
 });
 
-// Middleware de verificação de API Key
-async function verifyApiKey(req, res, next) {
-  const apiKey = req.body.client_identifier || req.headers['x-api-key'];
-
-  if (!apiKey) {
-    return res.status(403).json({ error: 'Ação proibida: API Key não fornecida.' });
+// Middleware que bloqueia rotas restritas ao admin da empresa do cliente.
+// A tela de Implantação e as rotas que ela usa não devem ser acessíveis
+// pelo cliente final, apenas por quem configura a conta.
+function requireAdmin(req, res, next) {
+  if (!req.user?.id) {
+    return res.status(401).json({ error: 'Não autenticado' });
   }
+  if (!req.user.is_admin) {
+    return res.status(403).json({ error: 'Acesso restrito a administradores.' });
+  }
+  next();
+}
 
+// Middleware simples: qualquer usuário do cliente autenticado (comum ou
+// admin), usado nas rotas de autoatendimento do próprio perfil.
+function requireAuth(req, res, next) {
+  if (!req.user?.id) {
+    return res.status(401).json({ error: 'Não autenticado' });
+  }
+  next();
+}
+
+// Gera um client_id a partir do nome da empresa (slug), garantindo
+// unicidade ao anexar um sufixo numérico em caso de colisão.
+function slugify(text) {
+  return text
+    .toString()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // remove acentos
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+async function generateUniqueClientId(companyName) {
+  const base = slugify(companyName) || 'empresa';
+  let candidate = base;
+  let suffix = 1;
+
+  while (true) {
+    const result = await pool.query('SELECT id FROM companies WHERE client_id = $1', [candidate]);
+    if (result.rows.length === 0) return candidate;
+    suffix += 1;
+    candidate = `${base}-${suffix}`;
+  }
+}
+
+// Identifica a empresa pelo client_id vindo do envelope do agente
+async function identifyCompanyByClientId(clientId) {
   try {
-    const hash = crypto.createHash('sha256').update(apiKey).digest('hex');
     const result = await pool.query(
-      'SELECT id FROM companies WHERE api_key_hash = $1',
-      [hash]
+      'SELECT id FROM companies WHERE client_id = $1',
+      [clientId]
     );
 
     if (result.rows.length === 0) {
-      return res.status(403).json({ error: 'Ação proibida: API Key inválida.' });
+      return null;
     }
 
-    req.company = result.rows[0];
-    next();
+    return result.rows[0];
   } catch (err) {
-    console.error('Erro na verificação da API Key:', err.message);
-    res.status(500).json({ error: 'Erro interno na verificação de segurança.' });
+    console.error('Erro ao identificar empresa pelo client_id:', err.message);
+    return null;
   }
 }
 
 // ===== ROTAS DE AUTENTICAÇÃO =====
-
-app.post('/api/auth/register', async (req, res) => {
-  try {
-    const { name, email, password, orgName } = req.body;
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // No registro, criamos uma empresa para o usuário se orgName for fornecido
-    let companyId;
-    const companyResult = await pool.query(
-      'INSERT INTO companies (name, api_key_hash) VALUES ($1, $2) RETURNING id',
-      [orgName || `${name}'s Company`, crypto.createHash('sha256').update(crypto.randomBytes(32).toString('hex')).digest('hex')]
-    );
-    companyId = companyResult.rows[0].id;
-
-    const result = await pool.query(
-      'INSERT INTO users (name, email, password_hash, company_id) VALUES ($1, $2, $3, $4) RETURNING id, name, email, company_id',
-      [name, email, hashedPassword, companyId]
-    );
-
-    const user = result.rows[0];
-    const token = jwt.sign(
-      { id: user.id, email: user.email },
-      process.env.JWT_SECRET || 'secret',
-      { expiresIn: '24h' }
-    );
-
-    res.json({ token, user });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+// Não existe mais cadastro público: contas de cliente são criadas pela
+// Contagil (rota /api/superadmin/companies) ou por um admin da própria
+// empresa adicionando teammates (rota /api/admin/users).
 
 app.post('/api/auth/login', async (req, res) => {
+  console.log('[auth/login] body recebido:', JSON.stringify(req.body, null, 2));
   try {
     const { email, password } = req.body;
 
@@ -107,25 +122,281 @@ app.post('/api/auth/login', async (req, res) => {
     const validPassword = await bcrypt.compare(password, user.password_hash);
 
     if (!validPassword) {
+      await logActivity({
+        companyId: user.company_id,
+        userId: user.id,
+        eventType: 'login_failed',
+        description: `Tentativa de login com senha incorreta para ${user.email}`,
+        performedBy: user.name,
+      });
       return res.status(401).json({ error: 'Senha incorreta' });
     }
 
+    if (!user.ativo) {
+      await logActivity({
+        companyId: user.company_id,
+        userId: user.id,
+        eventType: 'login_blocked',
+        description: `Tentativa de login de usuário desativado (${user.email})`,
+        performedBy: user.name,
+      });
+      return res.status(403).json({ error: 'Usuário desativado. Fale com o administrador da sua empresa.' });
+    }
+
     const token = jwt.sign(
-      { id: user.id, email: user.email },
+      { id: user.id, email: user.email, is_admin: user.is_admin },
       process.env.JWT_SECRET || 'secret',
       { expiresIn: '24h' }
     );
 
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, company_id: user.company_id } });
+    await logActivity({
+      companyId: user.company_id,
+      userId: user.id,
+      eventType: 'login_success',
+      description: `${user.name} fez login`,
+      performedBy: user.name,
+    });
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        company_id: user.company_id,
+        is_admin: user.is_admin,
+      },
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ===== ROTAS ADMINISTRATIVAS =====
+// ===== PERFIL (autoatendimento) =====
+// Qualquer usuário logado pode ver/editar seu próprio nome e senha.
+
+app.get('/api/me', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, name, email, company_id, is_admin FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+    res.json({ user: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/me', requireAuth, async (req, res) => {
+  try {
+    const { name, currentPassword, newPassword } = req.body;
+
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
+    const user = userResult.rows[0];
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+
+    // Trocar senha exige confirmar a senha atual, por segurança.
+    let newPasswordHash = null;
+    if (newPassword) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'Informe sua senha atual para definir uma nova.' });
+      }
+      const validPassword = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!validPassword) {
+        return res.status(401).json({ error: 'Senha atual incorreta.' });
+      }
+      newPasswordHash = await bcrypt.hash(newPassword, 10);
+    }
+
+    const result = await pool.query(
+      `UPDATE users SET
+         name = COALESCE($1, name),
+         password_hash = COALESCE($2, password_hash)
+       WHERE id = $3
+       RETURNING id, name, email, company_id, is_admin`,
+      [name || null, newPasswordHash, req.user.id]
+    );
+
+    const updatedUser = result.rows[0];
+
+    if (newPasswordHash) {
+      await logActivity({
+        companyId: updatedUser.company_id,
+        userId: updatedUser.id,
+        eventType: 'password_changed',
+        description: `${updatedUser.name} alterou a própria senha`,
+        performedBy: updatedUser.name,
+      });
+    }
+
+    res.json({ message: 'Perfil atualizado com sucesso.', user: updatedUser });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/platform-admin/login - Login exclusivo da equipe interna
+// Contagil, separado da tabela de usuários do cliente. Usa a mesma chave
+// JWT_SECRET, mas o token carrega role: 'platform_admin' — só isso dá
+// acesso às rotas /api/superadmin/*.
+app.post('/api/platform-admin/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const result = await pool.query('SELECT * FROM platform_admins WHERE email = $1', [email]);
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Usuário não encontrado' });
+    }
+
+    const admin = result.rows[0];
+    const validPassword = await bcrypt.compare(password, admin.password_hash);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Senha incorreta' });
+    }
+
+    const token = jwt.sign(
+      { id: admin.id, email: admin.email, role: 'platform_admin' },
+      process.env.JWT_SECRET || 'secret',
+      { expiresIn: '24h' }
+    );
+
+    res.json({ token, admin: { id: admin.id, name: admin.name, email: admin.email } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===== ROTAS ADMINISTRATIVAS (equipe Contagil) =====
+
+const superadminRouter = require('./routes/superadmin');
+app.use('/api/superadmin', superadminRouter);
+
+// ===== ROTAS ADMINISTRATIVAS (admin da empresa do cliente) =====
 
 const adminRouter = require('./routes/admin');
 app.use('/api/admin', adminRouter);
+
+// ===== ROTAS DE SINCRONIZAÇÃO =====
+
+const syncVendasRouter = require('./routes/syncVendas');
+app.use('/api/sync', syncVendasRouter);
+
+// POST /api/admin/users - Admin da empresa cria um teammate, sempre
+// atrelado automaticamente ao mesmo company_id de quem está criando.
+// Só a equipe Contagil (rota /api/superadmin) pode criar usuários admin —
+// por isso is_admin aqui é sempre false, não é aceito do body.
+app.post('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Nome, email e senha são obrigatórios.' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // O JWT não carrega company_id (pode ficar desatualizado se o usuário
+    // for movido de empresa), então buscamos sempre do banco.
+    const requesterResult = await pool.query('SELECT name, company_id FROM users WHERE id = $1', [req.user.id]);
+    const requester = requesterResult.rows[0];
+
+    const result = await pool.query(
+      'INSERT INTO users (name, email, password_hash, company_id, is_admin) VALUES ($1, $2, $3, $4, false) RETURNING id, name, email, company_id, is_admin',
+      [name, email, hashedPassword, requester?.company_id]
+    );
+
+    const newUser = result.rows[0];
+    await logActivity({
+      companyId: newUser.company_id,
+      userId: newUser.id,
+      eventType: 'user_created',
+      description: `${requester?.name} criou o usuário ${newUser.name} (${newUser.email})`,
+      performedBy: requester?.name,
+    });
+
+    res.status(201).json({ message: 'Usuário criado com sucesso.', user: newUser });
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(400).json({ error: 'Já existe um usuário com esse email.' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/users - Lista os usuários da própria empresa do admin.
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const requesterResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [req.user.id]);
+    const companyId = requesterResult.rows[0]?.company_id;
+
+    const result = await pool.query(
+      'SELECT id, name, email, is_admin, ativo, created_at FROM users WHERE company_id = $1 ORDER BY created_at ASC',
+      [companyId]
+    );
+    res.json({ users: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/admin/users/:id - Admin apaga um usuário, mas só da própria
+// empresa (nunca de outra) e nunca a própria conta.
+app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (parseInt(id) === req.user.id) {
+      return res.status(400).json({ error: 'Você não pode excluir sua própria conta.' });
+    }
+
+    const requesterResult = await pool.query('SELECT name, company_id FROM users WHERE id = $1', [req.user.id]);
+    const requester = requesterResult.rows[0];
+
+    const result = await pool.query(
+      'DELETE FROM users WHERE id = $1 AND company_id = $2 RETURNING id, name, email',
+      [id, requester?.company_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado nesta empresa.' });
+    }
+
+    const deletedUser = result.rows[0];
+    await logActivity({
+      companyId: requester.company_id,
+      userId: null,
+      eventType: 'user_deleted',
+      description: `${requester.name} excluiu o usuário ${deletedUser.name} (${deletedUser.email})`,
+      performedBy: requester.name,
+    });
+
+    res.json({ message: 'Usuário excluído com sucesso.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/logs - Logs de auditoria, restritos à própria empresa do
+// admin (diferente da versão em /api/superadmin, que vê qualquer empresa).
+app.get('/api/admin/logs', requireAdmin, async (req, res) => {
+  try {
+    const requesterResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [req.user.id]);
+    const companyId = requesterResult.rows[0]?.company_id;
+
+    const result = await pool.query(
+      'SELECT id, event_type, description, performed_by, created_at FROM activity_logs WHERE company_id = $1 ORDER BY created_at DESC LIMIT 200',
+      [companyId]
+    );
+    res.json({ logs: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ===== ROTAS DE ESCALA =====
 
@@ -133,14 +404,11 @@ const scheduleRouter = require('./routes/schedule');
 app.use('/api/schedule', scheduleRouter);
 
 // ===== ROTAS DE COLABORADORES =====
+// Usadas apenas pela tela de Implantação, restrita a administradores.
 
-app.get('/api/employees', async (req, res) => {
+app.get('/api/employees', requireAdmin, async (req, res) => {
   try {
     const userId = req.user?.id;
-
-    if (!userId) {
-      return res.status(401).json({ error: 'Token expirado ou inválido. Faça login novamente.' });
-    }
 
     // Pegar o company_id do usuário
     const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
@@ -157,7 +425,8 @@ app.get('/api/employees', async (req, res) => {
   }
 });
 
-app.post('/api/employees', async (req, res) => {
+app.post('/api/employees', requireAdmin, async (req, res) => {
+  console.log('[employees] body recebido:', JSON.stringify(req.body, null, 2));
   try {
     const userId = req.user?.id;
     const { name, cargo, setor, turno, desempenho, pode_domingo } = req.body;
@@ -260,12 +529,54 @@ function normalizeBatchPayload(payload) {
 }
 
 // ---- POST /api/sales_data ----
-app.post('/api/sales_data', verifyApiKey, async (req, res) => {
-  // Log temporário para confirmar o formato exato recebido em produção.
-  // Remova depois de validar (ou condicione a um DEBUG=true).
-  console.log('[sales_data] body recebido:', JSON.stringify(req.body).slice(0, 2000));
-
+app.post('/api/sales_data', async (req, res) => {
   const { type, payload } = extractEnvelope(req.body);
+
+  // Extrair client_id do envelope e validar ANTES de logar/processar
+  // qualquer dado de negócio (evita expor dados de vendas de agentes
+  // não identificados nos logs do servidor).
+  const clientId = req.body.client_id || payload?.client_id;
+  if (!clientId) {
+    return res.status(400).json({ error: 'client_id não fornecido no envelope.' });
+  }
+
+  const company = await identifyCompanyByClientId(clientId);
+  if (!company) {
+    console.warn(`[sales_data] client_id desconhecido, requisição rejeitada: ${clientId}`);
+    return res.status(404).json({ error: `Nenhuma empresa encontrada para o client_id: ${clientId}` });
+  }
+  req.company = company;
+
+  console.log('[sales_data] body recebido:', JSON.stringify(req.body, null, 2));
+
+  // Discriminar pelo task_id: pode ser 'venda' ou 'indices-escala-vendas'
+  const taskId = payload?.task_id;
+
+  // Se for a tarefa de índice, extrai o MAX(id) e grava em indices_vendas
+  if (taskId === 'indices-escala-vendas') {
+    const records = normalizeBatchPayload(payload);
+    if (records.length > 0 && records[0].max !== undefined) {
+      const maxId = records[0].max;
+      try {
+        await pool.query(
+          'INSERT INTO indices_vendas (company_id, ultimo_id) VALUES ($1, $2) ON CONFLICT (company_id) DO UPDATE SET ultimo_id = $2, datahoraexecucao = NOW()',
+          [req.company.id, Number(maxId)]
+        );
+        console.log(`[sales_data] Índice gravado: company=${req.company.id}, ultimo_id=${maxId}`);
+        return res.status(200).json({ message: 'Índice de vendas registrado com sucesso.' });
+      } catch (err) {
+        console.error('[sales_data] Erro ao gravar índice:', err.message);
+        return res.status(500).json({ error: err.message });
+      }
+    }
+    return res.status(200).json({ message: 'Nenhum índice pra registrar.' });
+  }
+
+  // Se for a tarefa de vendas, continua no fluxo normal de sales_data
+  if (taskId !== 'venda') {
+    console.warn(`[sales_data] task_id desconhecido: ${taskId}`);
+    return res.status(400).json({ error: `Task ID não suportado: ${taskId}` });
+  }
 
   // Mensagens de controle do agente: apenas confirmar recebimento,
   // não há nada a inserir nelas.
@@ -342,7 +653,7 @@ app.post('/api/sales_data', verifyApiKey, async (req, res) => {
     const result = await bulkInsert(
       client,
       'sales_data',
-      ['company_id', 'data', 'hora', 'clientes', 'itens', 'valor_total', 'erp_id'],
+      ['company_id', 'data', 'hora', 'clientes', 'itens', 'valor_total'],
       records,
       (r) => [
         req.company.id,
@@ -351,16 +662,25 @@ app.post('/api/sales_data', verifyApiKey, async (req, res) => {
         r.clientes,
         toItensInteger(r.itens),
         r.valor_total,
-        r.erp_id,
       ]
     );
+
+    // O job `indices-escala-vendas` executa SELECT MAX(id) e retorna o
+    // resultado como "max_id" no payload. Gravamos aqui pra usar na
+    // próxima execução de vendas como id_inicio (WHERE id > ultimo_id).
+    const maxId = req.body.max_id ?? payload?.max_id;
+    if (maxId !== undefined && maxId !== null) {
+      await client.query(
+        'INSERT INTO indices_vendas (company_id, ultimo_id) VALUES ($1, $2)',
+        [req.company.id, Number(maxId)]
+      );
+    }
 
     await client.query('COMMIT');
 
     res.status(201).json({
       message: `${result.rowCount} registro(s) de vendas inserido(s) com sucesso.`,
-      inserted: result.rowCount,
-      ids: result.rows.map((row) => row.erp_id),
+      inserted: result.rowCount
     });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -381,10 +701,23 @@ app.post('/api/sales_data', verifyApiKey, async (req, res) => {
 // LOTES e não tem token, usamos uma rota separada para não conflitar
 // com aquele fluxo.
 app.post('/api/employees/batch', async (req, res) => {
-  // Log temporário para confirmar o formato exato recebido em produção.
-  console.log('[employees/batch] body recebido:', JSON.stringify(req.body).slice(0, 2000));
-
   const { type, payload } = extractEnvelope(req.body);
+
+  // Extrair client_id do envelope e validar ANTES de logar/processar
+  // qualquer dado de negócio.
+  const clientId = req.body.client_id || payload?.client_id;
+  if (!clientId) {
+    return res.status(400).json({ error: 'client_id não fornecido no envelope.' });
+  }
+
+  const company = await identifyCompanyByClientId(clientId);
+  if (!company) {
+    console.warn(`[employees/batch] client_id desconhecido, requisição rejeitada: ${clientId}`);
+    return res.status(404).json({ error: `Nenhuma empresa encontrada para o client_id: ${clientId}` });
+  }
+  req.company = company;
+
+  console.log('[employees/batch] body recebido:', JSON.stringify(req.body, null, 2));
 
   if (type && type.includes('DONE')) {
     return res.status(200).json({
@@ -474,11 +807,24 @@ app.post('/api/employees/batch', async (req, res) => {
 
 // ---- POST /api/setores/batch ----
 // Body esperado: array de objetos [{ nome, corredor }, ...]
-app.post('/api/setores/batch', verifyApiKey, async (req, res) => {
-  // Log temporário para confirmar o formato exato recebido em produção.
-  console.log('[setores/batch] body recebido:', JSON.stringify(req.body).slice(0, 2000));
-
+app.post('/api/setores/batch', async (req, res) => {
   const { type, payload } = extractEnvelope(req.body);
+
+  // Extrair client_id do envelope e validar ANTES de logar/processar
+  // qualquer dado de negócio.
+  const clientId = req.body.client_id || payload?.client_id;
+  if (!clientId) {
+    return res.status(400).json({ error: 'client_id não fornecido no envelope.' });
+  }
+
+  const company = await identifyCompanyByClientId(clientId);
+  if (!company) {
+    console.warn(`[setores/batch] client_id desconhecido, requisição rejeitada: ${clientId}`);
+    return res.status(404).json({ error: `Nenhuma empresa encontrada para o client_id: ${clientId}` });
+  }
+  req.company = company;
+
+  console.log('[setores/batch] body recebido:', JSON.stringify(req.body, null, 2));
 
   if (type && type.includes('DONE')) {
     return res.status(200).json({
@@ -522,12 +868,11 @@ app.post('/api/setores/batch', verifyApiKey, async (req, res) => {
     const result = await bulkInsert(
       client,
       'setores',
-      ['company_id', 'nome', 'corredor', 'erp_id'],
+      ['company_id', 'nome', 'erp_id'],
       records,
       (r) => [
         req.company.id,
         r.nome,
-        r.corredor ?? null,
         r.erp_id ?? null,
       ]
     );
@@ -550,11 +895,24 @@ app.post('/api/setores/batch', verifyApiKey, async (req, res) => {
 
 // ---- POST /api/mercadologicos/batch ----
 // Body esperado: array de objetos [{ nome }, ...]
-app.post('/api/mercadologicos/batch', verifyApiKey, async (req, res) => {
-  // Log temporário para confirmar o formato exato recebido em produção.
-  console.log('[mercadologicos/batch] body recebido:', JSON.stringify(req.body).slice(0, 2000));
-
+app.post('/api/mercadologicos/batch', async (req, res) => {
   const { type, payload } = extractEnvelope(req.body);
+
+  // Extrair client_id do envelope e validar ANTES de logar/processar
+  // qualquer dado de negócio.
+  const clientId = req.body.client_id || payload?.client_id;
+  if (!clientId) {
+    return res.status(400).json({ error: 'client_id não fornecido no envelope.' });
+  }
+
+  const company = await identifyCompanyByClientId(clientId);
+  if (!company) {
+    console.warn(`[mercadologicos/batch] client_id desconhecido, requisição rejeitada: ${clientId}`);
+    return res.status(404).json({ error: `Nenhuma empresa encontrada para o client_id: ${clientId}` });
+  }
+  req.company = company;
+
+  console.log('[mercadologicos/batch] body recebido:', JSON.stringify(req.body, null, 2));
 
   if (type && type.includes('DONE')) {
     return res.status(200).json({
@@ -620,7 +978,8 @@ app.post('/api/mercadologicos/batch', verifyApiKey, async (req, res) => {
 });
 
 // GET /api/config/store-hours - Retorna configuração completa da loja
-app.get('/api/config/store-hours', async (req, res) => {
+// Usada apenas pela tela de Implantação, restrita a administradores.
+app.get('/api/config/store-hours', requireAdmin, async (req, res) => {
   try {
     const userId = req.user?.id;
 
@@ -632,10 +991,12 @@ app.get('/api/config/store-hours', async (req, res) => {
     const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
     const companyId = userResult.rows[0]?.company_id;
 
-    const result = await pool.query(
-      'SELECT * FROM store_setup WHERE company_id = $1',
-      [companyId]
-    );
+    const [result, companyResult] = await Promise.all([
+      pool.query('SELECT * FROM store_setup WHERE company_id = $1', [companyId]),
+      pool.query('SELECT client_id FROM companies WHERE id = $1', [companyId]),
+    ]);
+
+    const clientId = companyResult.rows[0]?.client_id || null;
 
     if (result.rows.length === 0) {
       return res.json({
@@ -649,7 +1010,8 @@ app.get('/api/config/store-hours', async (req, res) => {
           saturdayHours: '07:00-20:00',
           sundayHours: '09:00-18:00',
           sundayOperation: 'aberto'
-        }
+        },
+        clientId
       });
     }
 
@@ -666,14 +1028,16 @@ app.get('/api/config/store-hours', async (req, res) => {
       sundayOperation: setup.sunday_operation || 'aberto'
     };
 
-    res.json({ storeSetup });
+    res.json({ storeSetup, clientId });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // POST /api/config/store-hours - Salva configuração completa da loja
-app.post('/api/config/store-hours', async (req, res) => {
+// Usada apenas pela tela de Implantação, restrita a administradores.
+app.post('/api/config/store-hours', requireAdmin, async (req, res) => {
+  console.log('[config/store-hours] body recebido:', JSON.stringify(req.body, null, 2));
   try {
     const userId = req.user?.id;
     const { empresa, loja, regimeTributario, corredores, pdvs, weekdayHours, saturdayHours, sundayHours, sundayOperation } = req.body;
@@ -682,12 +1046,26 @@ app.post('/api/config/store-hours', async (req, res) => {
       return res.status(401).json({ error: 'Não autenticado' });
     }
 
-
-
     // Salvar todos os dados em uma única tabela
     // Pegar o company_id do usuário
     const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
     const companyId = userResult.rows[0]?.company_id;
+
+    // O nome informado aqui pelo admin é o nome "oficial" da empresa. O
+    // client_id é derivado dele, mas só na PRIMEIRA vez (empresa ainda sem
+    // client_id) — depois disso fica travado, pois o agente do cliente já
+    // pode estar configurado com esse valor e não deve mudar sozinho.
+    if (empresa) {
+      const companyRow = await pool.query('SELECT client_id FROM companies WHERE id = $1', [companyId]);
+      const currentClientId = companyRow.rows[0]?.client_id;
+
+      if (!currentClientId) {
+        const newClientId = await generateUniqueClientId(empresa);
+        await pool.query('UPDATE companies SET name = $1, client_id = $2 WHERE id = $3', [empresa, newClientId, companyId]);
+      } else {
+        await pool.query('UPDATE companies SET name = $1 WHERE id = $2', [empresa, companyId]);
+      }
+    }
 
     await pool.query(
       `INSERT INTO store_setup (company_id, empresa, loja, regime_tributario, corredores, pdvs, weekday_hours, saturday_hours, sunday_hours, sunday_operation)
@@ -745,10 +1123,40 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// ===== SCHEDULER DE SINCRONIZAÇÃO =====
+// Formato: "0 8 * * *" = 8:00 todo dia; "0 */4 * * *" = a cada 4 horas
+
+const syncJobs = [
+  { name: 'vendas', env: 'SYNC_VENDAS_SCHEDULES', fn: syncVendas },
+  { name: 'mercadologico', env: 'SYNC_MERCADOLOGICO_SCHEDULES', fn: syncMercadologico },
+  { name: 'setores', env: 'SYNC_SETORES_SCHEDULES', fn: syncSetores },
+];
+
+syncJobs.forEach(({ name, env, fn }) => {
+  const schedules = (process.env[env] || '').split(',').filter(Boolean);
+  if (schedules.length > 0) {
+    console.log(`📅 Scheduler de ${name} configurado com ${schedules.length} horário(s):`);
+    schedules.forEach((schedule) => {
+      try {
+        cron.schedule(schedule.trim(), () => {
+          console.log(`[scheduler-${name}] Executando sincronização em ${new Date().toISOString()}`);
+          fn().catch((err) => console.error(`[scheduler-${name}] Erro:`, err.message));
+        });
+        console.log(`   ✓ ${schedule.trim()}`);
+      } catch (err) {
+        console.error(`   ✗ Erro ao registrar schedule "${schedule}":`, err.message);
+      }
+    });
+  } else {
+    console.log(`📅 Scheduler de ${name} desabilitado (sem ${env} no .env)`);
+  }
+});
+
 // ===== INICIAR SERVIDOR =====
 
 app.listen(PORT, () => {
   console.log(`✅ Servidor rodando em http://localhost:${PORT}`);
   console.log(`   API em http://localhost:${PORT}/api`);
-  console.log(`   Schedule em http://localhost:${PORT}/api/schedule`);
+  console.log(`   Sincronização manual: GET /api/sync/vendas`);
+  console.log(`   Status: GET /api/sync/status`);
 })

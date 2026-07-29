@@ -92,6 +92,7 @@ export default function Implantacao() {
   });
 
   const [importedFiles, setImportedFiles] = useState({ employees: null, timecard: null });
+  const [clientId, setClientId] = useState(null);
 
   // Lado direito: dados gerenciáveis
   const [activeTab, setActiveTab] = useState('employees');
@@ -116,6 +117,7 @@ export default function Implantacao() {
       const response = await fetch('/api/config/store-hours', { method: 'GET', headers: authHeaders() });
       if (response.ok) {
         const data = await response.json();
+        setClientId(data.clientId || null);
         if (data.storeSetup) {
           setSetupData(prev => ({
             ...prev,
@@ -405,6 +407,28 @@ export default function Implantacao() {
             </div>
 
             <button type="submit" className="imp-btn" style={buttonStyle}>Salvar configuração da loja</button>
+
+            {clientId && (
+              <div style={{ marginTop: '14px', background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.25)', borderRadius: '10px', padding: '12px 14px' }}>
+                <p style={{ margin: '0 0 6px', fontSize: '11px', fontWeight: 700, color: c.accent, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Código de integração do agente
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <code style={{ fontSize: '13px', color: c.text, fontFamily: 'monospace' }}>{clientId}</code>
+                  <button
+                    type="button"
+                    className="imp-btn"
+                    onClick={() => navigator.clipboard.writeText(clientId)}
+                    style={{ ...ghostBtn, color: c.accent, borderColor: 'rgba(56,189,248,0.3)' }}
+                  >
+                    Copiar
+                  </button>
+                </div>
+                <p style={{ margin: '8px 0 0', fontSize: '11.5px', color: c.muted }}>
+                  Use este valor como <code>client_id</code> na configuração do agente instalado no cliente.
+                </p>
+              </div>
+            )}
           </form>
 
           {/* Importar Equipe */}

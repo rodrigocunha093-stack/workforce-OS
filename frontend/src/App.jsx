@@ -3,6 +3,9 @@ import axios from 'axios';
 import Login from './pages/Login';
 import Escala from './pages/Escala';
 import Implantacao from './pages/Implantacao';
+import Usuarios from './pages/Usuarios';
+import Logs from './pages/Logs';
+import Perfil from './pages/Perfil';
 import Sidebar from './components/Sidebar';
 import './index.css';
 import './App.responsive.css';
@@ -164,7 +167,7 @@ export default function App() {
         </div>
       </nav>
 
-      <Sidebar activeTab={activeTab} onTabChange={handleTabChange} onToggle={handleSidebarToggle} />
+      <Sidebar activeTab={activeTab} onTabChange={handleTabChange} onToggle={handleSidebarToggle} isAdmin={!!user?.is_admin} />
 
       <div style={{
         marginLeft: sidebarExpanded ? '214px' : '60px',
@@ -173,7 +176,10 @@ export default function App() {
       }}>
         <main>
           {activeTab === 'escala' && <Escala token={token} />}
-          {activeTab === 'implantacao' && <Implantacao />}
+          {activeTab === 'implantacao' && user?.is_admin && <Implantacao />}
+          {activeTab === 'usuarios' && user?.is_admin && <Usuarios />}
+          {activeTab === 'logs' && user?.is_admin && <Logs />}
+          {activeTab === 'perfil' && <Perfil />}
 
           <footer style={{
           background: '#0d171e',

@@ -3,11 +3,10 @@ import axios from 'axios';
 import './Login.responsive.css';
 
 export default function Login({ onLogin, sessionExpired = false }) {
-  const [isRegister, setIsRegister] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(sessionExpired ? 'Sua sessão expirou. Por favor, faça login novamente.' : '');
   const [showPassword, setShowPassword] = useState(false);
-  const [form, setForm] = useState({ email: '', password: '', name: '', orgName: '' });
+  const [form, setForm] = useState({ email: '', password: '' });
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -16,8 +15,7 @@ export default function Login({ onLogin, sessionExpired = false }) {
     setLoading(true);
     setError('');
     try {
-      const url = isRegister ? '/api/auth/register' : '/api/auth/login';
-      const response = await axios.post(url, form);
+      const response = await axios.post('/api/auth/login', form);
       onLogin(response.data.token, response.data.user);
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao autenticar');
@@ -139,32 +137,13 @@ export default function Login({ onLogin, sessionExpired = false }) {
       {/* CARD */}
       <div className="esc-card">
         <div className="esc-head">
-          <h2>{isRegister ? 'Criar conta' : 'Acessar conta'}</h2>
-          <p>{isRegister ? 'Preencha os dados para começar' : 'Bem-vindo de volta'}</p>
+          <h2>Acessar conta</h2>
+          <p>Bem-vindo de volta</p>
         </div>
 
         {error && <div className="esc-err">{error}</div>}
 
         <form onSubmit={handleSubmit}>
-          {isRegister && (
-            <>
-              <div className="esc-field">
-                <label className="esc-label">Usuário</label>
-                <div className="esc-input">
-                  <Icon d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8" />
-                  <input type="text" name="name" value={form.name} onChange={handleChange} required placeholder="Como deseja ser chamado?" />
-                </div>
-              </div>
-              <div className="esc-field">
-                <label className="esc-label">Empresa</label>
-                <div className="esc-input">
-                  <Icon d="M3 21h18 M5 21V7l8-4v18 M19 21V11l-6-4 M9 9v.01 M9 12v.01 M9 15v.01" />
-                  <input type="text" name="orgName" value={form.orgName} onChange={handleChange} placeholder="Nome da empresa" />
-                </div>
-              </div>
-            </>
-          )}
-
           <div className="esc-field">
             <label className="esc-label">Email</label>
             <div className="esc-input">
@@ -188,23 +167,9 @@ export default function Login({ onLogin, sessionExpired = false }) {
           </div>
 
           <button type="submit" className="esc-btn" disabled={loading}>
-            {loading ? 'Aguarde...' : isRegister ? 'Criar conta' : 'Entrar'}
+            {loading ? 'Aguarde...' : 'Entrar'}
           </button>
         </form>
-
-        <div style={{ marginTop: 16, textAlign: 'center' }}>
-          <button className="esc-link" onClick={() => setIsRegister(!isRegister)}>
-            {isRegister ? 'Já tem conta? Entrar' : 'Criar nova conta'}
-          </button>
-        </div>
-
-        {!isRegister && (
-          <div className="esc-demo">
-            <b>Demo:</b>
-            <span>Email: demo@test.com</span>
-            <span>Senha: 123456</span>
-          </div>
-        )}
 
         <p className="esc-foot">© 2026 Escalágil. Todos os direitos reservados.</p>
       </div>
