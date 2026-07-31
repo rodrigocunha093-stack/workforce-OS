@@ -122,7 +122,7 @@ const STYLES = `
 
 .adm-brand { text-align: center; margin-bottom: 26px; }
 .adm-eyebrow {
-  display: inline-flex; align-items: center; gap: 8px; margin: 0 0 18px; padding: 5px 12px;
+  display: inline-flex; align-items: center; gap: 8px; margin: 0 0 64px; padding: 5px 12px;
   border: 1px solid var(--border-strong); border-radius: 999px; background: rgba(76,157,255,0.08);
   color: #bcd8ff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em;
   animation: adm-rise .5s ease both;
