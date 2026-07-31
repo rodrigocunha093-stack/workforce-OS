@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import Login from './pages/Login';
 import Escala from './pages/Escala';
+import Controlador from './pages/Controlador';
 import Implantacao from './pages/Implantacao';
 import Usuarios from './pages/Usuarios';
 import Logs from './pages/Logs';
@@ -260,6 +261,7 @@ export default function App() {
       }}>
         <main>
           {activeTab === 'escala' && <Escala token={token} />}
+          {activeTab === 'controlador' && user?.is_admin && <Controlador />}
           {activeTab === 'implantacao' && user?.is_admin && <Implantacao />}
           {activeTab === 'usuarios' && user?.is_admin && <Usuarios />}
           {activeTab === 'logs' && user?.is_admin && <Logs />}

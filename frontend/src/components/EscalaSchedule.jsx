@@ -445,11 +445,6 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
         .esc-toolbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
       `}</style>
 
-      {/* Contador de colaboradores */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px', fontSize: '13px', color: 'var(--esc-muted)' }}>
-        <span>{employees.length} colaboradores</span>
-      </div>
-
       {/* Week Selector Panel */}
       <div className="esc-panel esc-week-selector">
         <label>Analisar por semana do mês:</label>

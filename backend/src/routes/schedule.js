@@ -153,7 +153,7 @@ router.get('/demand', async (req, res) => {
 
       // Aplicar Erlang-C para cada hora
       const coverage = Object.entries(demand).map(([hour, clients]) => {
-        const load = cashierLoadForHour(hour, clients / 24, 3, 'saturday', pdvs);
+        const load = cashierLoadForHour(hour, clients, 14, 3, 'saturday', pdvs);
         return load;
       });
 

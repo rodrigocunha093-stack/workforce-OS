@@ -147,7 +147,7 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
   const zoneOf = (employee) => {
     const setor = (employee.setor || '').toLowerCase();
     const cargo = (employee.cargo || '').toLowerCase();
-    const combined = `${setor} ${cargo}`.normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const combined = `${setor} ${cargo}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
     if (combined.includes('acougue') || combined.includes('carnes')) return 'acougue';
     if (combined.includes('padaria') || combined.includes('confeitaria')) return 'padaria';
@@ -359,11 +359,10 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     h += isoRect(13.5, 1.5, 0.8, 0.5, '#2d2760', null, 0.4);
     h += isoRect(15.5, 1.5, 0.8, 0.5, '#2d2760', null, 0.4);
     h += isoRect(14.5, 1.5, 0.8, 0.5, '#2d2760', null, 0.4);
-    
+
     h += isoRect(13.6, 2.5, 0.8, 0.5, '#2d2760', null, 0.4);
     h += isoRect(14.6, 2.5, 0.8, 0.5, '#2d2760', null, 0.4);
     h += isoRect(15.6, 2.5, 0.8, 0.5, '#2d2760', null, 0.4);
-
 
     const isoDoor = (gx, gy, gw, h, fill) => {
       const pts = [
@@ -376,10 +375,6 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     };
 
     h += isoDoor(13.5, 3.3, 0.3, 28.2, '#6d6d6b31');
-
-
-
-    
 
     // PDVs e colaboradores
     const checkoutWorkers = byZone.checkout || [];
@@ -421,11 +416,9 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
         zone: 'frios'
       },
       'HORTI': {
-        boxes: [{ x: 0, y: 0, w: 8.5, h: 11.99, ht: 10, mtC: '#558b2f', mtD: '#33691e', mtE: '#1b5e20' },  
-
+        boxes: [{ x: 0, y: 0, w: 8.5, h: 11.99, ht: 10, mtC: '#558b2f', mtD: '#33691e', mtE: '#1b5e20' },
                 { x: 11, y: 0.1, w: 0.5, h: 11.99, ht: 50, mtC: '#525252', mtD: '#1c1d1b', mtE: '#4c4d4c' }
-              
-                ], 
+                ],
         zone: 'hortifruti'
       },
       'LOJA': {
@@ -507,15 +500,11 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
       });
     }
 
-    // Label removido de dentro do box - agora está no header acima
-
     // Colaboradores - distribuir em cima dos boxes
     const workers = byZone[conf.zone] || [];
-    const TH = 25; // Height unit (mesmo do código isométrico)
+    const TH = 25;
 
-    // Distribuir funcionários em cima de cada box
     workers.forEach((w, i) => {
-      // Distribuir entre todos os boxes
       const boxIndex = i % conf.boxes.length;
       const posInBox = Math.floor(i / conf.boxes.length);
       const box = conf.boxes[boxIndex];
@@ -525,14 +514,12 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
       const row = Math.floor(posInBox / cols);
       const col = posInBox % cols;
 
-      // Distribuir dentro das margens do box (não nas bordas)
       const marginX = box.w * 0.15;
       const marginY = box.h * 0.15;
       const tx = cols > 1 ? col / (cols - 1) : 0.5;
       const rowCount = Math.ceil(workersPerBox / cols);
       const ty = rowCount > 1 ? row / (rowCount - 1) : 0.5;
 
-      // Posicionar DENTRO da superfície do box, depois subtrair altura para parecer em cima
       const gx = box.x + marginX + tx * (box.w - marginX * 2);
       const gy = (box.y + marginY + ty * (box.h - marginY * 2)) - (box.ht / TH * 0.8);
 
@@ -562,60 +549,133 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     setFloorHour(Math.round(Math.max(openHour, Math.min(closeHour - 0.5, newHour)) * 2) / 2);
   };
 
+  // ---------------- Paleta / helpers de estilo (redesign premium) ----------------
+  const C = {
+    accent: '#4aa8ff',
+    grad: 'linear-gradient(135deg,#6cc0ff,#3a7bff)',
+    glow: '0 10px 26px -10px rgba(74,168,255,.7), inset 0 1px 0 rgba(255,255,255,.4)',
+    text: '#e8eef5',
+    muted: '#94a3b8',
+    faint: 'rgba(148,163,184,.55)',
+    line: 'rgba(255,255,255,.09)',
+    surface: 'rgba(255,255,255,.04)',
+  };
+
+  const metricCard = {
+    background: C.surface,
+    border: `1px solid ${C.line}`,
+    borderRadius: '12px',
+    padding: '10px 12px',
+  };
+  const metricLabel = { fontSize: '10.5px', color: C.muted, margin: 0, fontWeight: 600, letterSpacing: '.3px' };
+  const metricValue = { fontSize: '16px', fontWeight: 700, margin: '3px 0 0', color: C.text };
+  const metricGridStyle = {
+    display: 'grid',
+    gridTemplateColumns: (typeof window !== 'undefined' && window.innerWidth < 768) ? 'repeat(2, 1fr)' : 'repeat(auto-fit, minmax(84px, 1fr))',
+    gap: (typeof window !== 'undefined' && window.innerWidth < 768) ? '6px' : '8px',
+  };
+
   return (
-    <div style={{ color: '#eef2f8', background: 'linear-gradient(180deg,#16233a 0%,#111c2e 100%)', border: '1px solid rgba(148,163,184,.14)', borderRadius: '12px', padding: '14px', marginBottom: '10px', boxShadow: '0 20px 50px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04)' }}>
+    <div
+      style={{
+        position: 'relative',
+        color: C.text,
+        background: 'linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02))',
+        border: `1px solid ${C.line}`,
+        borderRadius: '18px',
+        padding: '20px',
+        boxShadow: '0 30px 80px -40px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.06)',
+        backdropFilter: 'blur(14px)',
+        WebkitBackdropFilter: 'blur(14px)',
+        fontFamily: 'inherit',
+      }}
+    >
+      <style>{`
+        .sfm-day, .sfm-play, .sfm-nav, .sfm-back { transition: all .16s ease; }
+        .sfm-day:hover:not(.is-active),
+        .sfm-play:hover,
+        .sfm-nav:hover { background: rgba(74,168,255,.14) !important; border-color: rgba(74,168,255,.4) !important; color: #e8eef5 !important; }
+        .sfm-nav:active { transform: translateY(1px); }
+        .sfm-metric { transition: border-color .16s ease, transform .16s ease; }
+        .sfm-metric:hover { border-color: rgba(74,168,255,.3); transform: translateY(-1px); }
+      `}</style>
+
       {/* Cabeçalho */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
-        <span style={{ fontSize: '13px', fontWeight: '600' }}>
-          {selectedSector ? `Setor: ${selectedSector}` : 'Planta da loja'}
-        </span>
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: '10px', flexWrap: 'wrap',
+        paddingBottom: '14px', marginBottom: '16px', borderBottom: `1px solid ${C.line}`,
+      }}>
+        <div>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: '7px',
+            fontSize: '10.5px', fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase',
+            color: '#bcd8ff',
+          }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: C.accent, boxShadow: `0 0 8px ${C.accent}` }} />
+            Operação em tempo real
+          </span>
+          <div style={{ fontSize: '15px', fontWeight: 700, marginTop: '6px', color: C.text }}>
+            {selectedSector ? `Setor: ${selectedSector}` : 'Planta da loja'}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <button
+            className="sfm-play"
             onClick={() => setIsPlaying(!isPlaying)}
             style={{
-              background: isPlaying ? 'rgba(37,99,235,.16)' : 'rgba(148, 163, 184, 0.08)',
-              border: `1px solid ${isPlaying ? 'rgba(96,165,250,.5)' : 'rgba(148, 163, 184, 0.18)'}`,
-              borderRadius: '6px',
-              padding: '6px 12px',
-              fontSize: '11px',
-              fontWeight: '600',
+              background: isPlaying ? C.grad : C.surface,
+              border: `1px solid ${isPlaying ? 'transparent' : C.line}`,
+              borderRadius: '10px',
+              padding: '8px 14px',
+              fontSize: '12px',
+              fontWeight: 700,
               cursor: 'pointer',
-              color: isPlaying ? '#bcd4fb' : 'rgba(203, 213, 225, 0.85)',
-              transition: 'all 0.2s',
+              color: isPlaying ? '#fff' : 'rgba(203,213,225,.9)',
+              boxShadow: isPlaying ? C.glow : 'none',
             }}
           >
             {isPlaying ? '⏸ Parar' : '▶ Simular'}
           </button>
-          <div style={{ display: 'flex', gap: '2px' }}>
-            {DAYS.map((d, i) => (
-              <button
-                key={i}
-                onClick={() => setFloorDay(i)}
-                style={{
-                  background: i === floorDay ? '#2563eb' : 'rgba(148, 163, 184, 0.08)',
-                  color: i === floorDay ? '#ffffff' : 'rgba(203, 213, 225, 0.85)',
-                  border: `1px solid ${i === floorDay ? '#2563eb' : 'rgba(148, 163, 184, 0.18)'}`,
-                  borderRadius: '6px',
-                  padding: '6px 10px',
-                  fontSize: '11px',
-                  fontWeight: i === floorDay ? '600' : '500',
-                  cursor: 'pointer',
-                  boxShadow: i === floorDay ? '0 4px 14px rgba(37,99,235,.4)' : 'none',
-                  transition: 'all 0.2s',
-                }}
-              >
-                {d}
-              </button>
-            ))}
+          <div style={{ display: 'flex', gap: '4px' }}>
+            {DAYS.map((d, i) => {
+              const active = i === floorDay;
+              return (
+                <button
+                  key={i}
+                  className={`sfm-day ${active ? 'is-active' : ''}`}
+                  onClick={() => setFloorDay(i)}
+                  style={{
+                    background: active ? C.grad : C.surface,
+                    color: active ? '#fff' : 'rgba(203,213,225,.85)',
+                    border: `1px solid ${active ? 'transparent' : C.line}`,
+                    borderRadius: '9px',
+                    padding: '8px 11px',
+                    fontSize: '11.5px',
+                    fontWeight: active ? 700 : 500,
+                    cursor: 'pointer',
+                    boxShadow: active ? '0 8px 20px -8px rgba(74,168,255,.75), inset 0 1px 0 rgba(255,255,255,.4)' : 'none',
+                  }}
+                >
+                  {d}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
 
       {/* SVG */}
-      <div style={{ position: 'relative', marginBottom: '12px', borderRadius: '8px', overflow: 'hidden', background: 'rgba(0,0,0,.2)', height: '500px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexDirection: 'column', padding: '8px' }}>
+      <div style={{
+        position: 'relative', marginBottom: '16px', borderRadius: '14px', overflow: 'hidden',
+        background: 'radial-gradient(700px 300px at 50% 0%, rgba(74,168,255,.06), rgba(0,0,0,.28) 70%)',
+        border: `1px solid ${C.line}`,
+        height: '500px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexDirection: 'column', padding: '10px',
+      }}>
         {selectedSector && (
-          <button onClick={() => setSelectedSector(null)} style={{
-            background: 'rgba(96,165,250,.2)', border: '1px solid rgba(96,165,250,.5)', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer', color: '#60a5fa', fontSize: '12px', fontWeight: '600', zIndex: 10
+          <button className="sfm-back" onClick={() => setSelectedSector(null)} style={{
+            background: 'rgba(74,168,255,.16)', border: '1px solid rgba(74,168,255,.45)', borderRadius: '10px',
+            padding: '7px 13px', cursor: 'pointer', color: '#8cc6ff', fontSize: '12px', fontWeight: 600, zIndex: 10,
           }}>
             ← Voltar para mapa geral
           </button>
@@ -629,18 +689,18 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
             left: `${tooltipPos.x + 12}px`,
             top: `${tooltipPos.y - 8}px`,
             background: 'rgba(15, 23, 42, 0.95)',
-            border: '1px solid rgba(59, 130, 246, 0.4)',
-            borderRadius: '8px',
+            border: '1px solid rgba(74,168,255,.45)',
+            borderRadius: '10px',
             padding: '10px 12px',
             fontSize: '12px',
-            color: '#e8eef5',
+            color: C.text,
             zIndex: 1001,
-            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.5)',
+            boxShadow: '0 14px 30px rgba(0,0,0,.55)',
             pointerEvents: 'none',
             backdropFilter: 'blur(8px)',
             whiteSpace: 'nowrap'
           }}>
-            <div style={{ fontWeight: '600', marginBottom: '4px', color: '#60a5fa' }}>{hoveredWorker.name}</div>
+            <div style={{ fontWeight: 600, marginBottom: '4px', color: '#6cc0ff' }}>{hoveredWorker.name}</div>
             {hoveredWorker.cargo && <div style={{ fontSize: '11px', color: 'rgba(203, 213, 225, 0.8)' }}>{hoveredWorker.cargo}</div>}
             {hoveredWorker.setor && <div style={{ fontSize: '11px', color: 'rgba(203, 213, 225, 0.8)', marginTop: '2px' }}>{hoveredWorker.setor}</div>}
           </div>
@@ -648,15 +708,20 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
       </div>
 
       {/* Timeline */}
-      <div style={{ marginBottom: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '8px' }}>
-          <button onClick={() => setFloorHour(Math.max(openHour, floorHour - 0.5))} style={{ background: 'rgba(148, 163, 184, 0.1)', border: '1px solid rgba(148, 163, 184, 0.2)', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', color: 'rgba(203, 213, 225, 0.9)', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>◀</button>
-          <span style={{ fontSize: '18px', fontWeight: '700', color: '#e8eef5', minWidth: '65px', textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{timeStr}</span>
-          <button onClick={() => setFloorHour(Math.min(closeHour - 0.5, floorHour + 0.5))} style={{ background: 'rgba(148, 163, 184, 0.1)', border: '1px solid rgba(148, 163, 184, 0.2)', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', color: 'rgba(203, 213, 225, 0.9)', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>▶</button>
+      <div style={{ marginBottom: '18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '8px' }}>
+          <button className="sfm-nav" onClick={() => setFloorHour(Math.max(openHour, floorHour - 0.5))} style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: '50%', width: '34px', height: '34px', cursor: 'pointer', color: 'rgba(203,213,225,.9)', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>◀</button>
+          <span style={{
+            fontSize: '20px', fontWeight: 800, minWidth: '72px', textAlign: 'center', fontVariantNumeric: 'tabular-nums',
+            background: 'linear-gradient(180deg,#ffffff,#b9d4ff)', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent',
+          }}>{timeStr}</span>
+          <button className="sfm-nav" onClick={() => setFloorHour(Math.min(closeHour - 0.5, floorHour + 0.5))} style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: '50%', width: '34px', height: '34px', cursor: 'pointer', color: 'rgba(203,213,225,.9)', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▶</button>
         </div>
 
         <div ref={timelineRef} onClick={handleTimelineClick} style={{ position: 'relative', height: '32px', cursor: 'pointer', margin: '0 4px' }}>
           <div style={{ position: 'absolute', top: '16px', left: 0, right: 0, height: '4px', background: 'rgba(255,255,255,.1)', borderRadius: '2px' }}></div>
+          {/* Progresso preenchido até a hora atual */}
+          <div style={{ position: 'absolute', top: '16px', left: 0, width: `${((floorHour - openHour) / (closeHour - openHour)) * 100}%`, height: '4px', background: C.grad, borderRadius: '2px', boxShadow: '0 0 12px rgba(74,168,255,.6)' }}></div>
           {/* Marcas */}
           {Array.from({ length: closeHour - openHour + 1 }).map((_, i) => {
             const hr = openHour + i;
@@ -670,88 +735,75 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
           })}
           {/* Handle */}
           <div style={{ position: 'absolute', top: '8px', left: `${((floorHour - openHour) / (closeHour - openHour)) * 100}%`, transform: 'translateX(-50%)', cursor: 'grab', zIndex: 5, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: '#2563eb', border: '3px solid #fff', boxShadow: '0 1px 6px rgba(37,99,235,.5)' }}></div>
-            <div style={{ width: '2px', height: '10px', background: '#2563eb', marginTop: '-1px' }}></div>
+            <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: '#6cc0ff', border: '3px solid #fff', boxShadow: '0 2px 10px rgba(74,168,255,.8)' }}></div>
+            <div style={{ width: '2px', height: '10px', background: C.accent, marginTop: '-1px' }}></div>
           </div>
         </div>
-
       </div>
 
       {/* Métricas Gerais */}
-      <div style={{ display: 'grid', gridTemplateColumns: window.innerWidth < 768 ? 'repeat(2, 1fr)' : 'repeat(auto-fit, minmax(80px, 1fr))', gap: window.innerWidth < 768 ? '4px' : '6px', marginBottom: '8px' }}>
-        {/* No piso */}
-        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
-          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>No piso</p>
-          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{activeCount - (employees.filter(e => {
+      <div style={{ ...metricGridStyle, marginBottom: '10px' }}>
+        <div className="sfm-metric" style={metricCard}>
+          <p style={metricLabel}>No piso</p>
+          <p style={metricValue}>{activeCount - (employees.filter(e => {
             const z = zoneOf(e);
             return (z === 'escritorio' || z === 'comercial') && isWorking(e);
           }).length || 0)}</p>
         </div>
 
-        {/* Intervalo */}
-        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
-          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Intervalo</p>
-          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{onBreakCount}</p>
+        <div className="sfm-metric" style={metricCard}>
+          <p style={metricLabel}>Intervalo</p>
+          <p style={metricValue}>{onBreakCount}</p>
         </div>
 
-        {/* Folga */}
-        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
-          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Folga</p>
-          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{offCount}</p>
+        <div className="sfm-metric" style={metricCard}>
+          <p style={metricLabel}>Folga</p>
+          <p style={metricValue}>{offCount}</p>
         </div>
 
-        {/* Total */}
-        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
-          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Total</p>
-          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{activeCount}/{employees.length}</p>
+        <div className="sfm-metric" style={metricCard}>
+          <p style={metricLabel}>Total</p>
+          <p style={{ ...metricValue, color: C.accent }}>{activeCount}/{employees.length}</p>
         </div>
       </div>
 
       {/* Funcionários por Setor */}
-      <div style={{ display: 'grid', gridTemplateColumns: window.innerWidth < 768 ? 'repeat(2, 1fr)' : 'repeat(auto-fit, minmax(80px, 1fr))', gap: window.innerWidth < 768 ? '4px' : '6px' }}>
-        {/* Caixa */}
-        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
-          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Caixa</p>
-          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{employees.filter(e => zoneOf(e) === 'checkout' && isWorking(e)).length}/{pdvs}</p>
+      <div style={metricGridStyle}>
+        <div className="sfm-metric" style={metricCard}>
+          <p style={metricLabel}>Caixa</p>
+          <p style={metricValue}>{employees.filter(e => zoneOf(e) === 'checkout' && isWorking(e)).length}/{pdvs}</p>
         </div>
 
-        {/* Loja */}
-        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
-          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Loja</p>
-          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{employees.filter(e => zoneOf(e) === 'gondola' && isWorking(e)).length}</p>
+        <div className="sfm-metric" style={metricCard}>
+          <p style={metricLabel}>Loja</p>
+          <p style={metricValue}>{employees.filter(e => zoneOf(e) === 'gondola' && isWorking(e)).length}</p>
         </div>
 
-        {/* Açougue */}
-        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
-          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Açougue</p>
-          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{employees.filter(e => zoneOf(e) === 'acougue' && isWorking(e)).length}</p>
+        <div className="sfm-metric" style={metricCard}>
+          <p style={metricLabel}>Açougue</p>
+          <p style={metricValue}>{employees.filter(e => zoneOf(e) === 'acougue' && isWorking(e)).length}</p>
         </div>
 
-        {/* Padaria */}
-        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
-          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Padaria</p>
-          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{employees.filter(e => zoneOf(e) === 'padaria' && isWorking(e)).length}</p>
+        <div className="sfm-metric" style={metricCard}>
+          <p style={metricLabel}>Padaria</p>
+          <p style={metricValue}>{employees.filter(e => zoneOf(e) === 'padaria' && isWorking(e)).length}</p>
         </div>
 
-        {/* Hortifruti */}
-        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
-          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Horti</p>
-          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{employees.filter(e => zoneOf(e) === 'hortifruti' && isWorking(e)).length}</p>
+        <div className="sfm-metric" style={metricCard}>
+          <p style={metricLabel}>Horti</p>
+          <p style={metricValue}>{employees.filter(e => zoneOf(e) === 'hortifruti' && isWorking(e)).length}</p>
         </div>
 
-        {/* Frios */}
-        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
-          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Frios</p>
-          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{employees.filter(e => zoneOf(e) === 'frios' && isWorking(e)).length}</p>
+        <div className="sfm-metric" style={metricCard}>
+          <p style={metricLabel}>Frios</p>
+          <p style={metricValue}>{employees.filter(e => zoneOf(e) === 'frios' && isWorking(e)).length}</p>
         </div>
 
-        {/* Recebimento */}
-        <div style={{ background: 'rgba(255,255,255,.04)', borderRadius: '6px', padding: '8px' }}>
-          <p style={{ fontSize: '10px', color: 'rgba(255,255,255,.6)', margin: 0 }}>Recebimento</p>
-          <p style={{ fontSize: '14px', fontWeight: '600', margin: '2px 0 0', color: '#fff' }}>{employees.filter(e => zoneOf(e) === 'recebimento' && isWorking(e)).length}</p>
+        <div className="sfm-metric" style={metricCard}>
+          <p style={metricLabel}>Recebimento</p>
+          <p style={metricValue}>{employees.filter(e => zoneOf(e) === 'recebimento' && isWorking(e)).length}</p>
         </div>
       </div>
-
     </div>
   );
 }

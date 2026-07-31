@@ -117,18 +117,18 @@ export default function Escala({ token }) {
 
   const eyebrowStyle = {
     display: 'inline-flex', alignItems: 'center', gap: '8px',
-    margin: '0 0 14px', padding: '5px 12px', borderRadius: '999px',
+    margin: '0 0 14px 15px', padding: '5px 12px', borderRadius: '999px',
     background: 'rgba(74,168,255,0.08)', border: '1px solid rgba(74,168,255,0.22)',
     color: '#bcd8ff', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em',
   };
   const dotStyle = { width: '6px', height: '6px', borderRadius: '50%', background: c.accent, boxShadow: `0 0 10px ${c.accent}`, animation: 'esc-dot 1.8s ease-in-out infinite' };
 
   const titleStyle = {
-    margin: '0 0 10px', fontSize: '34px', lineHeight: 1.15, fontWeight: 800, letterSpacing: '-0.02em',
+    margin: '0 15px 10px', fontSize: '34px', lineHeight: 1.15, fontWeight: 800, letterSpacing: '-0.02em',
     background: 'linear-gradient(180deg, #ffffff 0%, #b9d4ff 100%)',
     WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
   };
-  const subtitleStyle = { margin: '0 0 30px', fontSize: '15px', color: c.muted, lineHeight: 1.5 };
+  const subtitleStyle = { margin: '0 15px 30px', fontSize: '15px', color: c.muted, lineHeight: 1.5 };
 
   // ---------------- Loading ----------------
   if (loading) {
@@ -211,7 +211,7 @@ export default function Escala({ token }) {
 
       <div style={contentStyle}>
         {!hasEmployees && !loading && (
-          <div className="esc-fade" style={{ marginBottom: '24px', padding: '14px 16px', borderRadius: '12px', background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+          <div className="esc-fade" style={{ margin: '0 15px 24px', padding: '14px 16px', borderRadius: '12px', background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginTop: '2px', flexShrink: 0 }}>
               <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
             </svg>
@@ -228,9 +228,13 @@ export default function Escala({ token }) {
           <p style={subtitleStyle}>Visualize e ajuste a distribuição de turnos com base na demanda da loja.</p>
         </div>
 
+        <div style={{ textAlign: 'right', marginBottom: '20px', fontSize: '13px', color: c.muted, marginRight: '15px' }}>
+          {employees.length} colaboradores
+        </div>
+
         {/* Sem painel envolvente: o EscalaSchedule já tem seus próprios cards */}
-        {/* Só renderiza se houver colaboradores importados */}
-        {schedule && hasEmployees && (
+        {/* TODO: ativar validação de colaboradores depois de testes (hasEmployees &&) */}
+        {schedule && (
           <div className="esc-fade" style={{ animationDelay: '.08s' }}>
             <EscalaSchedule
               schedule={schedule.schedule}

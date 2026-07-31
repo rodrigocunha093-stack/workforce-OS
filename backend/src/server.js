@@ -285,6 +285,17 @@ app.use('/api/superadmin', superadminRouter);
 const adminRouter = require('./routes/admin');
 app.use('/api/admin', adminRouter);
 
+// ===== ROTAS DO CONTROLADOR (calendário de eventos, forecast, etc.) =====
+
+const eventosRouter = require('./routes/eventos');
+app.use('/api/eventos', eventosRouter);
+
+const forecastRouter = require('./routes/forecast');
+app.use('/api/forecast', forecastRouter);
+
+const controllerCaixaRouter = require('./routes/controllerCaixa');
+app.use('/api/controller-caixa', controllerCaixaRouter);
+
 // ===== ROTAS DE SINCRONIZAÇÃO =====
 
 const syncVendasRouter = require('./routes/syncVendas');
