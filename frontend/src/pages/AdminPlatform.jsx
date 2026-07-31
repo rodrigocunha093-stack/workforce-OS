@@ -153,7 +153,7 @@ const STYLES = `
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; opacity: .7;
 }
-.adm-gate-card { padding: 30px 30px 26px; animation: adm-rise .6s ease .2s both; }
+.adm-gate-card { width: 100%; box-sizing: border-box; padding: 30px 30px 26px; animation: adm-rise .6s ease .2s both; }
 .adm-gate-head { text-align: center; margin-bottom: 22px; }
 .adm-gate-head h2 { margin: 0 0 5px; font-size: 21px; font-weight: 700; color: var(--text); }
 .adm-gate-head p { margin: 0; font-size: 13px; color: var(--muted); }
@@ -1028,7 +1028,7 @@ function LoginGate({ onLogin }) {
     <div className="adm-gate">
       <div className="adm-gate-inner">
         <div className="adm-brand">
-          <span className="adm-eyebrow"><span className="dot" />Acesso restrito</span>
+          <span className="adm-eyebrow">Acesso restrito</span>
           <div>
             <span className="adm-brand-ico"><Shield className="h-7 w-7" /></span>
           </div>
