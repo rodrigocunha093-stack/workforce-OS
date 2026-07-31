@@ -103,30 +103,22 @@ const STYLES = `
 /* ---------- Tela de login ---------- */
 .adm-gate {
   position: relative; min-height: 100vh; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; padding: 40px 20px 48px; overflow: hidden;
+  align-items: center; justify-content: flex-start; padding: 56px 20px 48px; overflow: hidden;
   background:
-    radial-gradient(1200px 520px at 50% -260px, rgba(76,157,255,0.18), transparent 60%),
-    radial-gradient(900px 500px at 50% -160px, rgba(124,139,255,0.12), transparent 55%),
-    linear-gradient(180deg, var(--bg-2), var(--bg));
+    radial-gradient(1200px 520px at 50% -260px, rgba(74,168,255,0.18), transparent 60%),
+    radial-gradient(900px 500px at 50% -160px, rgba(124,92,255,0.12), transparent 55%),
+    linear-gradient(180deg, #080b16, #05070f);
 }
 .adm-gate::before {
   content: ''; position: absolute; top: -260px; left: 50%;
   width: 900px; height: 520px; transform: translateX(-50%); border-radius: 50%;
-  box-shadow: 0 0 140px 30px rgba(76,157,255,0.3);
+  box-shadow: 0 0 140px 30px rgba(74,168,255,0.32);
   border-top: 2px solid rgba(120,190,255,0.5);
   -webkit-mask-image: linear-gradient(180deg, #000 0%, transparent 46%);
           mask-image: linear-gradient(180deg, #000 0%, transparent 46%);
   pointer-events: none; animation: adm-breathe 6s ease-in-out infinite;
 }
-.adm-gate::after {
-  content: ''; position: absolute; inset: 0;
-  background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
-  background-size: 44px 44px;
-  -webkit-mask-image: radial-gradient(760px 420px at 50% 0%, #000, transparent 72%);
-          mask-image: radial-gradient(760px 420px at 50% 0%, #000, transparent 72%);
-  opacity: .5; pointer-events: none;
-}
-.adm-gate-inner { position: relative; z-index: 1; width: 100%; max-width: 440px; }
+.adm-gate-inner { position: relative; z-index: 1; width: 100%; max-width: 440px; display: flex; flex-direction: column; align-items: center; }
 
 .adm-brand { text-align: center; margin-bottom: 26px; }
 .adm-eyebrow {
