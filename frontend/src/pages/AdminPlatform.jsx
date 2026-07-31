@@ -1,7 +1,7 @@
 import { useState, useEffect, Fragment } from 'react';
 import {
   Shield, Building2, AlertCircle, Loader2, Check, Lock, LogOut, Plus, Users, X,
-  ChevronDown, ChevronUp, ToggleLeft, ToggleRight, UserPlus, Eye, EyeOff, ScrollText, Pencil, Trash2, Play
+  ChevronDown, ChevronUp, ToggleLeft, ToggleRight, UserPlus, Eye, EyeOff, ScrollText, Pencil, Trash2, Play, Mail
 } from 'lucide-react';
 
 /* ============================================================
@@ -118,7 +118,15 @@ const STYLES = `
           mask-image: linear-gradient(180deg, #000 0%, transparent 46%);
   pointer-events: none; animation: adm-breathe 6s ease-in-out infinite;
 }
-.adm-gate-inner { position: relative; z-index: 1; width: 100%; max-width: 420px; }
+.adm-gate::after {
+  content: ''; position: absolute; inset: 0;
+  background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(760px 420px at 50% 0%, #000, transparent 72%);
+          mask-image: radial-gradient(760px 420px at 50% 0%, #000, transparent 72%);
+  opacity: .5; pointer-events: none;
+}
+.adm-gate-inner { position: relative; z-index: 1; width: 100%; max-width: 440px; }
 
 .adm-brand { text-align: center; margin-bottom: 26px; }
 .adm-eyebrow {
@@ -161,10 +169,11 @@ const STYLES = `
 .adm-field { margin-bottom: 15px; }
 .adm-field-label { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 8px; }
 .adm-inputbox {
-  display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; border-radius: 12px;
+  display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 12px;
   background: rgba(255,255,255,0.03); border: 1px solid var(--border); color: var(--muted);
   transition: border-color .2s, box-shadow .2s, background .2s, color .2s;
 }
+.adm-inputbox > svg { flex-shrink: 0; }
 .adm-inputbox:focus-within { border-color: rgba(76,157,255,0.6); color: var(--accent); background: rgba(76,157,255,0.05); box-shadow: 0 0 0 4px rgba(76,157,255,0.12); }
 .adm-inputbox input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-size: 14px; font-family: inherit; color: var(--text); }
 .adm-inputbox input::placeholder { color: var(--faint); }
@@ -224,6 +233,14 @@ const STYLES = `
 }
 .adm-nav-brand h1 { margin: 0; font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
 .adm-nav-brand p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+
+.adm-nav-actions { display: flex; align-items: center; gap: 12px; }
+.adm-dept-badge {
+  display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.03em; color: #cfe4ff;
+  background: linear-gradient(150deg, rgba(76,157,255,0.22), rgba(124,139,255,0.1));
+  border: 1px solid rgba(120,180,255,0.4);
+}
 
 .adm-logout {
   display: inline-flex; align-items: center; gap: 7px; padding: 9px 15px; border-radius: 11px; cursor: pointer;
@@ -1039,6 +1056,7 @@ function LoginGate({ onLogin }) {
             <div className="adm-field">
               <label className="adm-field-label">Email</label>
               <div className="adm-inputbox">
+                <Mail className="h-4 w-4" />
                 <input type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required placeholder="Digite seu email" />
               </div>
             </div>
@@ -1046,6 +1064,7 @@ function LoginGate({ onLogin }) {
             <div className="adm-field">
               <label className="adm-field-label">Senha</label>
               <div className="adm-inputbox">
+                <Lock className="h-4 w-4" />
                 <input type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required placeholder="Digite sua senha" />
                 <button type="button" className="adm-eye" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -1054,8 +1073,7 @@ function LoginGate({ onLogin }) {
             </div>
 
             <button type="submit" className="adm-btn primary block" disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 adm-spin" /> : <Lock className="h-4 w-4" />}
-              {loading ? 'Entrando...' : 'Acessar'}
+              {loading ? 'Aguarde...' : 'Entrar'}
             </button>
           </form>
 
@@ -1331,9 +1349,12 @@ function CompaniesPanel({ token, department, onLogout }) {
               <p>Gerenciamento de empresas clientes</p>
             </div>
           </div>
-          <button onClick={onLogout} className="adm-logout">
-            <LogOut className="h-4 w-4" /> Sair
-          </button>
+          <div className="adm-nav-actions">
+            {department && <span className="adm-dept-badge">{department}</span>}
+            <button onClick={onLogout} className="adm-logout">
+              <LogOut className="h-4 w-4" /> Sair
+            </button>
+          </div>
         </div>
       </nav>
 
