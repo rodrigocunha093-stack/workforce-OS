@@ -532,6 +532,13 @@ const STYLES = `
 .adm-check input { width: 15px; height: 15px; accent-color: var(--accent); }
 .adm-modal-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 4px; }
 
+.adm-creds { display: flex; flex-direction: column; gap: 14px; }
+.adm-creds-box {
+  margin: 0; padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border-strong); color: var(--text); font-size: 13px; line-height: 1.7;
+  font-family: 'Consolas', 'Courier New', monospace; white-space: pre-wrap; word-break: break-word;
+}
+
 /* Lista de logs no modal */
 .adm-logs { display: flex; flex-direction: column; gap: 10px; max-height: 24rem; overflow-y: auto; }
 .adm-logs.full { max-height: none; }
@@ -1087,6 +1094,8 @@ function CompaniesPanel({ token, department, onLogout }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [credentialsInfo, setCredentialsInfo] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   // Expandir empresa / gerenciar usuários
   const [expandedCompanyId, setExpandedCompanyId] = useState(null);
@@ -1318,8 +1327,15 @@ function CompaniesPanel({ token, department, onLogout }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao criar empresa');
       setSuccess(`Empresa "${data.company.name}" cadastrada com sucesso!`);
-      setForm(EMPTY_COMPANY_FORM);
       setIsModalOpen(false);
+      setCredentialsInfo({
+        companyName: data.company.name,
+        clientId: data.company.client_id || null,
+        adminName: data.adminUser.name,
+        adminEmail: data.adminUser.email,
+        adminPassword: form.adminPassword,
+      });
+      setForm(EMPTY_COMPANY_FORM);
       await loadCompanies();
     } catch (err) {
       setError(err.message);
@@ -1609,6 +1625,42 @@ function CompaniesPanel({ token, department, onLogout }) {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        open={credentialsInfo !== null}
+        onClose={() => { setCredentialsInfo(null); setCopied(false); }}
+        title="Empresa cadastrada"
+        description="Copie o acesso abaixo e envie para o cliente"
+        size="sm"
+      >
+        {credentialsInfo && (
+          <div className="adm-creds">
+            <pre className="adm-creds-box">{`Acesso à plataforma Escalágil
+
+Link: ${window.location.origin}
+Empresa: ${credentialsInfo.companyName}
+Email: ${credentialsInfo.adminEmail}
+Senha: ${credentialsInfo.adminPassword}`}</pre>
+            <div className="adm-modal-actions">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    `Acesso à plataforma Escalágil\n\nLink: ${window.location.origin}\nEmpresa: ${credentialsInfo.companyName}\nEmail: ${credentialsInfo.adminEmail}\nSenha: ${credentialsInfo.adminPassword}`
+                  );
+                  setCopied(true);
+                }}
+              >
+                <Check className="h-4 w-4" /> {copied ? 'Copiado!' : 'Copiar'}
+              </Button>
+              <Button type="button" onClick={() => { setCredentialsInfo(null); setCopied(false); }}>
+                Fechar
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <Modal
