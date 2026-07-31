@@ -2,7 +2,13 @@
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.up = function(knex) {
+exports.up = async function(knex) {
+  // Em bancos novos, 001_init_schema.js já cria "store_setup" (foi
+  // adicionada ao schema inicial depois que essa migration foi escrita) —
+  // sem esse guard, rodar do zero quebra tentando criar a tabela 2x.
+  const hasTable = await knex.schema.hasTable('store_setup');
+  if (hasTable) return;
+
   return knex.schema.createTable('store_setup', (table) => {
     table.increments('id').primary();
     table.integer('company_id').notNullable().unique().references('id').inTable('companies').onDelete('CASCADE');
