@@ -3,12 +3,13 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const cron = require('node-cron');
 const pool = require('./db/postgres');
 const { logActivity } = require('./services/activityLog');
 const { syncAllCompanies: syncVendas } = require('./services/syncVendas');
 const { syncAllCompanies: syncMercadologico } = require('./services/syncMercadologico');
 const { syncAllCompanies: syncSetores } = require('./services/syncSetores');
+const { resolveConsulta } = require('./services/syncQueue');
+const { initSchedulers } = require('./services/syncScheduler');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -178,7 +179,10 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/me', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, name, email, company_id, is_admin FROM users WHERE id = $1',
+      `SELECT u.id, u.name, u.email, u.company_id, u.is_admin, c.name AS company_name
+       FROM users u
+       LEFT JOIN companies c ON c.id = u.company_id
+       WHERE u.id = $1`,
       [req.user.id]
     );
     if (result.rows.length === 0) {
@@ -260,12 +264,12 @@ app.post('/api/platform-admin/login', async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: admin.id, email: admin.email, role: 'platform_admin' },
+      { id: admin.id, email: admin.email, role: 'platform_admin', department: admin.department },
       process.env.JWT_SECRET || 'secret',
       { expiresIn: '24h' }
     );
 
-    res.json({ token, admin: { id: admin.id, name: admin.name, email: admin.email } });
+    res.json({ token, admin: { id: admin.id, name: admin.name, email: admin.email, department: admin.department } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -483,6 +487,50 @@ async function bulkInsert(client, table, columns, rows, mapRow) {
   return client.query(sql, params);
 }
 
+// Insere linhas de sales_data somando nos valores existentes quando já há
+// um registro pra mesma empresa+data+hora (constraint UNIQUE), em vez de
+// criar uma linha duplicada. Necessário porque o agente reenvia vendas
+// incrementais dentro da mesma hora em capturas sucessivas.
+//
+// Linhas repetidas dentro do MESMO lote (mesma empresa+data+hora) também são
+// somadas antes do INSERT, porque o Postgres não permite que um ON CONFLICT
+// DO UPDATE afete a mesma linha duas vezes num único comando.
+async function upsertSalesData(client, companyId, records) {
+  const merged = new Map();
+  for (const r of records) {
+    const key = `${r.data}|${r.hora}`;
+    const existing = merged.get(key);
+    if (existing) {
+      existing.clientes += r.clientes;
+      existing.itens += r.itens;
+      existing.valor_total += r.valor_total;
+    } else {
+      merged.set(key, { ...r });
+    }
+  }
+
+  const valuesSql = [];
+  const params = [];
+  let paramIndex = 1;
+
+  for (const r of merged.values()) {
+    valuesSql.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`);
+    params.push(companyId, r.data, r.hora, r.clientes, r.itens, r.valor_total);
+  }
+
+  const sql = `
+    INSERT INTO sales_data (company_id, data, hora, clientes, itens, valor_total)
+    VALUES ${valuesSql.join(', ')}
+    ON CONFLICT (company_id, data, hora) DO UPDATE SET
+      clientes = sales_data.clientes + EXCLUDED.clientes,
+      itens = sales_data.itens + EXCLUDED.itens,
+      valor_total = sales_data.valor_total + EXCLUDED.valor_total
+    RETURNING id
+  `;
+
+  return client.query(sql, params);
+}
+
 // O agente agora envia o ENVELOPE COMPLETO (depois da correção de
 // serialização no lado Python), no formato:
 //
@@ -547,7 +595,9 @@ app.post('/api/sales_data', async (req, res) => {
   }
   req.company = company;
 
-  console.log('[sales_data] body recebido:', JSON.stringify(req.body, null, 2));
+  // Job desse client_id concluído no agente: libera a vaga na fila de sync
+  // pra que o próximo job enfileirado (se houver) possa ser disparado.
+  resolveConsulta(req.body.consulta_id || payload?.consulta_id);
 
   // Discriminar pelo task_id: pode ser 'venda' ou 'indices-escala-vendas'
   const taskId = payload?.task_id;
@@ -562,7 +612,6 @@ app.post('/api/sales_data', async (req, res) => {
           'INSERT INTO indices_vendas (company_id, ultimo_id) VALUES ($1, $2) ON CONFLICT (company_id) DO UPDATE SET ultimo_id = $2, datahoraexecucao = NOW()',
           [req.company.id, Number(maxId)]
         );
-        console.log(`[sales_data] Índice gravado: company=${req.company.id}, ultimo_id=${maxId}`);
         return res.status(200).json({ message: 'Índice de vendas registrado com sucesso.' });
       } catch (err) {
         console.error('[sales_data] Erro ao gravar índice:', err.message);
@@ -650,20 +699,15 @@ app.post('/api/sales_data', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const result = await bulkInsert(
-      client,
-      'sales_data',
-      ['company_id', 'data', 'hora', 'clientes', 'itens', 'valor_total'],
-      records,
-      (r) => [
-        req.company.id,
-        r.data,
-        toTimeValue(r.hora),
-        r.clientes,
-        toItensInteger(r.itens),
-        r.valor_total,
-      ]
-    );
+    const normalized = records.map((r) => ({
+      data: r.data,
+      hora: toTimeValue(r.hora),
+      clientes: r.clientes,
+      itens: toItensInteger(r.itens),
+      valor_total: r.valor_total,
+    }));
+
+    const result = await upsertSalesData(client, req.company.id, normalized);
 
     // O job `indices-escala-vendas` executa SELECT MAX(id) e retorna o
     // resultado como "max_id" no payload. Gravamos aqui pra usar na
@@ -679,7 +723,7 @@ app.post('/api/sales_data', async (req, res) => {
     await client.query('COMMIT');
 
     res.status(201).json({
-      message: `${result.rowCount} registro(s) de vendas inserido(s) com sucesso.`,
+      message: `${result.rowCount} registro(s) de vendas processado(s) com sucesso.`,
       inserted: result.rowCount
     });
   } catch (err) {
@@ -824,7 +868,7 @@ app.post('/api/setores/batch', async (req, res) => {
   }
   req.company = company;
 
-  console.log('[setores/batch] body recebido:', JSON.stringify(req.body, null, 2));
+  resolveConsulta(req.body.consulta_id || payload?.consulta_id);
 
   if (type && type.includes('DONE')) {
     return res.status(200).json({
@@ -912,7 +956,7 @@ app.post('/api/mercadologicos/batch', async (req, res) => {
   }
   req.company = company;
 
-  console.log('[mercadologicos/batch] body recebido:', JSON.stringify(req.body, null, 2));
+  resolveConsulta(req.body.consulta_id || payload?.consulta_id);
 
   if (type && type.includes('DONE')) {
     return res.status(200).json({
@@ -993,15 +1037,16 @@ app.get('/api/config/store-hours', requireAdmin, async (req, res) => {
 
     const [result, companyResult] = await Promise.all([
       pool.query('SELECT * FROM store_setup WHERE company_id = $1', [companyId]),
-      pool.query('SELECT client_id FROM companies WHERE id = $1', [companyId]),
+      pool.query('SELECT client_id, name FROM companies WHERE id = $1', [companyId]),
     ]);
 
     const clientId = companyResult.rows[0]?.client_id || null;
+    const companyName = companyResult.rows[0]?.name || null;
 
     if (result.rows.length === 0) {
       return res.json({
         storeSetup: {
-          empresa: null,
+          empresa: companyName,
           loja: null,
           regimeTributario: null,
           corredores: 1,
@@ -1017,7 +1062,7 @@ app.get('/api/config/store-hours', requireAdmin, async (req, res) => {
 
     const setup = result.rows[0];
     const storeSetup = {
-      empresa: setup.empresa,
+      empresa: setup.empresa || companyName,
       loja: setup.loja,
       regimeTributario: setup.regime_tributario,
       corredores: setup.corredores || 1,
@@ -1124,33 +1169,15 @@ app.get('/api/health', (req, res) => {
 });
 
 // ===== SCHEDULER DE SINCRONIZAÇÃO =====
-// Formato: "0 8 * * *" = 8:00 todo dia; "0 */4 * * *" = a cada 4 horas
+// Horários agora vêm da tabela sync_schedules (editável pela rota
+// administrativa /admin-plataforma), não mais direto do .env. Na primeira
+// subida, o .env é usado só como semente inicial — veja syncScheduler.js.
 
-const syncJobs = [
-  { name: 'vendas', env: 'SYNC_VENDAS_SCHEDULES', fn: syncVendas },
-  { name: 'mercadologico', env: 'SYNC_MERCADOLOGICO_SCHEDULES', fn: syncMercadologico },
-  { name: 'setores', env: 'SYNC_SETORES_SCHEDULES', fn: syncSetores },
-];
-
-syncJobs.forEach(({ name, env, fn }) => {
-  const schedules = (process.env[env] || '').split(',').filter(Boolean);
-  if (schedules.length > 0) {
-    console.log(`📅 Scheduler de ${name} configurado com ${schedules.length} horário(s):`);
-    schedules.forEach((schedule) => {
-      try {
-        cron.schedule(schedule.trim(), () => {
-          console.log(`[scheduler-${name}] Executando sincronização em ${new Date().toISOString()}`);
-          fn().catch((err) => console.error(`[scheduler-${name}] Erro:`, err.message));
-        });
-        console.log(`   ✓ ${schedule.trim()}`);
-      } catch (err) {
-        console.error(`   ✗ Erro ao registrar schedule "${schedule}":`, err.message);
-      }
-    });
-  } else {
-    console.log(`📅 Scheduler de ${name} desabilitado (sem ${env} no .env)`);
-  }
-});
+initSchedulers([
+  { module: 'vendas', fn: syncVendas },
+  { module: 'mercadologico', fn: syncMercadologico },
+  { module: 'setores', fn: syncSetores },
+]).catch((err) => console.error('Erro ao iniciar schedulers de sincronização:', err.message));
 
 // ===== INICIAR SERVIDOR =====
 

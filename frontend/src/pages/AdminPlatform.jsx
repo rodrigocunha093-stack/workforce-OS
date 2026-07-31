@@ -1,16 +1,27 @@
 import { useState, useEffect, Fragment } from 'react';
 import {
   Shield, Building2, AlertCircle, Loader2, Check, Lock, LogOut, Plus, Users, X,
-  ChevronDown, ChevronUp, ToggleLeft, ToggleRight, UserPlus, Eye, EyeOff, ScrollText, Pencil, Trash2
+  ChevronDown, ChevronUp, ToggleLeft, ToggleRight, UserPlus, Eye, EyeOff, ScrollText, Pencil, Trash2, Play
 } from 'lucide-react';
 
-// Painel interno da Contagil — uso exclusivo do setor administrativo.
-// Totalmente separado do app do cliente: login próprio, token próprio
-// (chave de localStorage diferente), sem Sidebar/menu do Escalágil.
-// Só acessível em /admin-plataforma.
+/* ============================================================
+   Painel Administrativo — Contagil (redesign premium v2)
+   Uso exclusivo do setor administrativo. Totalmente separado do
+   app do cliente: login próprio, token próprio (chave de
+   localStorage diferente), sem Sidebar/menu do Escalágil.
+   Só acessível em /admin-plataforma.
+
+   Visual premium: fundo escuro com glow suave (sem grade de
+   pontos), glass, KPIs com tiles de ícone, card CTA dedicado,
+   tabela com avatares e hierarquia clara, badges refinados.
+   100% self-contained (não depende do Tailwind). Lógica, estados
+   e chamadas de API idênticas ao original.
+   ============================================================ */
 
 const TOKEN_KEY = 'contagil_platform_token';
+const DEPT_KEY = 'contagil_platform_department';
 const EMPTY_COMPANY_FORM = { companyName: '', clientId: '', adminName: '', adminEmail: '', adminPassword: '' };
+const EMPTY_USER_FORM = { name: '', email: '', password: '', isAdmin: false };
 
 // Transforma texto livre em slug: minúsculas, espaços/underscores viram
 // hífen, remove acentos e qualquer caractere que não seja a-z0-9-.
@@ -19,7 +30,7 @@ const EMPTY_COMPANY_FORM = { companyName: '', clientId: '', adminName: '', admin
 // caractere naquele instante e seria removido a cada tecla).
 function toSlug(value) {
   return value
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[\s_]+/g, '-')
     .replace(/[^a-z0-9-]/g, '')
@@ -33,73 +44,567 @@ function finalizeSlug(value) {
   return toSlug(value).replace(/-$/, '');
 }
 
+// Iniciais para avatar (até 2 letras).
+function getInitials(name) {
+  return (name || '?')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase();
+}
+
+const EVENT_LABELS = {
+  login_success: 'Login',
+  login_failed: 'Login falhou',
+  login_blocked: 'Login bloqueado',
+  user_created: 'Usuário criado',
+  user_activated: 'Usuário ativado',
+  user_deactivated: 'Usuário desativado',
+  password_changed: 'Senha alterada',
+};
+
+const STYLES = `
+.adm-scope select option {
+  background-color: #101827;
+  color: #e8eef5;
+  padding: 8px;
+}
+.adm-scope select option:checked { background-color: #1e4b7a; color: #fff; }
+
+.adm-scope {
+  --bg: #060b18;
+  --bg-2: #0b1428;
+  --border: rgba(255,255,255,0.07);
+  --border-strong: rgba(255,255,255,0.13);
+  --text: #eaf1f9;
+  --muted: #93a1b8;
+  --faint: #5b6880;
+  --accent: #4c9dff;
+  --accent-2: #7c8bff;
+  --green: #37d39a;
+  --red: #f2657a;
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.adm-scope *, .adm-scope *::before, .adm-scope *::after { box-sizing: border-box; }
+
+@keyframes adm-breathe { 0%,100%{opacity:.75} 50%{opacity:1} }
+@keyframes adm-rise { from{opacity:0; transform:translateY(16px)} to{opacity:1; transform:translateY(0)} }
+@keyframes adm-pop { from{opacity:0; transform:scale(.96)} to{opacity:1; transform:scale(1)} }
+@keyframes adm-dot { 0%,100%{opacity:1; transform:scale(1)} 50%{opacity:.4; transform:scale(.75)} }
+@keyframes adm-spin { to { transform: rotate(360deg); } }
+.adm-spin { animation: adm-spin .9s linear infinite; }
+@keyframes adm-aurora-a { 0%,100%{transform:translate3d(0,0,0) scale(1)} 50%{transform:translate3d(6%,4%,0) scale(1.12)} }
+@keyframes adm-aurora-b { 0%,100%{transform:translate3d(0,0,0) scale(1.05)} 50%{transform:translate3d(-5%,-3%,0) scale(1)} }
+
+/* ---------- Tela de login ---------- */
+.adm-gate {
+  position: relative; min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; padding: 40px 20px 48px; overflow: hidden;
+  background:
+    radial-gradient(1200px 520px at 50% -260px, rgba(76,157,255,0.18), transparent 60%),
+    radial-gradient(900px 500px at 50% -160px, rgba(124,139,255,0.12), transparent 55%),
+    linear-gradient(180deg, var(--bg-2), var(--bg));
+}
+.adm-gate::before {
+  content: ''; position: absolute; top: -260px; left: 50%;
+  width: 900px; height: 520px; transform: translateX(-50%); border-radius: 50%;
+  box-shadow: 0 0 140px 30px rgba(76,157,255,0.3);
+  border-top: 2px solid rgba(120,190,255,0.5);
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, transparent 46%);
+          mask-image: linear-gradient(180deg, #000 0%, transparent 46%);
+  pointer-events: none; animation: adm-breathe 6s ease-in-out infinite;
+}
+.adm-gate-inner { position: relative; z-index: 1; width: 100%; max-width: 420px; }
+
+.adm-brand { text-align: center; margin-bottom: 26px; }
+.adm-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px; margin: 0 0 18px; padding: 5px 12px;
+  border: 1px solid var(--border-strong); border-radius: 999px; background: rgba(76,157,255,0.08);
+  color: #bcd8ff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em;
+  animation: adm-rise .5s ease both;
+}
+.adm-eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); animation: adm-dot 1.8s ease-in-out infinite; }
+.adm-brand-ico {
+  width: 58px; height: 58px; border-radius: 18px; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--accent); background: linear-gradient(180deg, rgba(76,157,255,0.16), rgba(76,157,255,0.06));
+  border: 1px solid rgba(76,157,255,0.3);
+  box-shadow: 0 0 34px -6px rgba(76,157,255,0.55), inset 0 1px 0 rgba(255,255,255,0.12); animation: adm-rise .5s ease .05s both;
+}
+.adm-brand h1 {
+  margin: 18px 0 10px; font-size: 34px; line-height: 1.1; font-weight: 800; letter-spacing: -0.02em;
+  background: linear-gradient(180deg, #ffffff, #a9c4e6);
+  -webkit-background-clip: text; background-clip: text; color: transparent; animation: adm-rise .5s ease .1s both;
+}
+.adm-brand p { margin: 0 auto; max-width: 380px; font-size: 14px; line-height: 1.55; color: var(--muted); animation: adm-rise .5s ease .15s both; }
+
+.adm-card {
+  position: relative; border: 1px solid var(--border); border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015));
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 30px 60px -30px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.adm-card.glow::before {
+  content: ''; position: absolute; inset: 0; border-radius: 20px; padding: 1px;
+  background: linear-gradient(140deg, rgba(76,157,255,0.5), transparent 35%, transparent 65%, rgba(124,139,255,0.4));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; opacity: .7;
+}
+.adm-gate-card { padding: 30px 30px 26px; animation: adm-rise .6s ease .2s both; }
+.adm-gate-head { text-align: center; margin-bottom: 22px; }
+.adm-gate-head h2 { margin: 0 0 5px; font-size: 21px; font-weight: 700; color: var(--text); }
+.adm-gate-head p { margin: 0; font-size: 13px; color: var(--muted); }
+
+.adm-field { margin-bottom: 15px; }
+.adm-field-label { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 8px; }
+.adm-inputbox {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; border-radius: 12px;
+  background: rgba(255,255,255,0.03); border: 1px solid var(--border); color: var(--muted);
+  transition: border-color .2s, box-shadow .2s, background .2s, color .2s;
+}
+.adm-inputbox:focus-within { border-color: rgba(76,157,255,0.6); color: var(--accent); background: rgba(76,157,255,0.05); box-shadow: 0 0 0 4px rgba(76,157,255,0.12); }
+.adm-inputbox input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-size: 14px; font-family: inherit; color: var(--text); }
+.adm-inputbox input::placeholder { color: var(--faint); }
+.adm-eye { border: none; background: none; cursor: pointer; padding: 0; display: flex; color: var(--muted); transition: color .16s; }
+.adm-eye:hover { color: #cfe0f7; }
+
+.adm-gate-foot { margin-top: 18px; text-align: center; font-size: 11.5px; color: rgba(214,228,247,0.45); }
+
+/* ---------- App / painel ---------- */
+.adm-app {
+  position: relative; height: 100vh; overflow: hidden;
+  background:
+    /* foco de luz central atrás do navbar + card */
+    radial-gradient(900px 520px at 50% 8%, rgba(58,120,210,0.18), transparent 62%),
+    /* vinheta escura nas bordas para dar profundidade/sombra */
+    radial-gradient(1200px 900px at 50% 40%, transparent 55%, rgba(3,6,14,0.55) 100%),
+    /* base azul-marinho profunda */
+    linear-gradient(180deg, #08101f 0%, #060b17 46%, #04070f 100%);
+}
+/* brilho azul central e discreto (estilo Auctus, mais escuro) */
+.adm-app::before {
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(760px 480px at 50% 120%, rgba(70,140,230,0.22), transparent 60%),
+    radial-gradient(460px 320px at 50% 132%, rgba(110,170,240,0.14), transparent 60%);
+  filter: blur(2px); animation: adm-breathe 9s ease-in-out infinite;
+}
+/* grade de pontos sutil, esmaecendo perto do brilho inferior */
+.adm-app::after {
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background-image: radial-gradient(rgba(255,255,255,0.045) 1px, transparent 1.4px);
+  background-size: 42px 42px;
+  -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.25) 55%, transparent 88%);
+          mask-image: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.25) 55%, transparent 88%);
+  opacity: .6;
+}
+
+.adm-nav {
+  position: fixed; top: 18px; left: 0; right: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center; padding: 0 24px; pointer-events: none;
+}
+.adm-nav-row {
+  pointer-events: auto;
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  width: 100%; max-width: 1180px; height: 62px; padding: 0 14px 0 18px;
+  border-radius: 999px; border: 1px solid rgba(120,160,220,0.16);
+  background: linear-gradient(180deg, rgba(18,26,44,0.82), rgba(11,17,32,0.66));
+  backdrop-filter: blur(20px) saturate(150%); -webkit-backdrop-filter: blur(20px) saturate(150%);
+  box-shadow: 0 20px 50px -24px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.adm-nav-brand { display: flex; align-items: center; gap: 13px; }
+.adm-nav-ico {
+  width: 38px; height: 38px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center;
+  color: #cfe4ff; background: linear-gradient(150deg, rgba(76,157,255,0.4), rgba(124,139,255,0.18));
+  border: 1px solid rgba(120,180,255,0.45);
+  box-shadow: 0 8px 24px -8px rgba(76,157,255,0.7), inset 0 1px 0 rgba(255,255,255,0.22);
+}
+.adm-nav-brand h1 { margin: 0; font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+.adm-nav-brand p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+
+.adm-logout {
+  display: inline-flex; align-items: center; gap: 7px; padding: 9px 15px; border-radius: 11px; cursor: pointer;
+  font-size: 12.5px; font-weight: 600; color: #cfe0f7; font-family: inherit;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border-strong); transition: background .16s, transform .12s, border-color .16s;
+}
+.adm-logout:hover { background: rgba(242,101,122,0.12); border-color: rgba(242,101,122,0.4); color: #ffb3bf; transform: translateY(-1px); }
+
+.adm-main {
+  position: relative; z-index: 1; max-width: 1180px; width: 100%; margin: 0 auto;
+  padding: 24px 28px 24px; margin-top: 96px; height: calc(100vh - 96px);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+
+.adm-stack { display: flex; flex-direction: column; gap: 14px; flex-shrink: 0; }
+
+/* Alertas */
+.adm-alert {
+  display: flex; align-items: flex-start; gap: 8px; padding: 12px 14px; border-radius: 12px; font-size: 13.5px;
+  animation: adm-rise .3s ease both;
+}
+.adm-alert svg { margin-top: 1px; flex-shrink: 0; }
+.adm-alert.err { background: rgba(242,101,122,0.1); border: 1px solid rgba(242,101,122,0.35); color: #ffb3bf; }
+.adm-alert.ok { background: rgba(55,211,154,0.1); border: 1px solid rgba(55,211,154,0.35); color: #7ff0c6; }
+
+/* KPIs */
+.adm-kpis { display: grid; gap: 16px; grid-template-columns: 1fr; }
+@media (min-width: 860px) { .adm-kpis { grid-template-columns: 1fr 1fr 1.4fr; } }
+
+.adm-kpi {
+  position: relative; padding: 22px 22px 20px; border-radius: 18px; overflow: hidden;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.012));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05); animation: adm-rise .5s ease both;
+}
+.adm-kpi::before {
+  content: ''; position: absolute; top: 0; left: 22px; right: 22px; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--kpi-accent, var(--accent)), transparent 80%); opacity: .8;
+}
+.adm-kpi-top { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.adm-kpi-ico {
+  width: 42px; height: 42px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--kpi-accent, var(--accent));
+  background: color-mix(in srgb, var(--kpi-accent, var(--accent)) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kpi-accent, var(--accent)) 32%, transparent);
+}
+.adm-kpi-label { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted); }
+.adm-kpi-value { font-size: 36px; font-weight: 800; color: var(--text); letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.adm-kpi-sub { margin: 8px 0 0; font-size: 12px; color: var(--faint); }
+
+/* Card CTA */
+.adm-cta {
+  position: relative; display: flex; flex-direction: column; justify-content: center; gap: 14px;
+  padding: 22px; border-radius: 18px; overflow: hidden;
+  border: 1px solid rgba(76,157,255,0.28);
+  background:
+    radial-gradient(420px 200px at 100% 0%, rgba(76,157,255,0.16), transparent 70%),
+    linear-gradient(180deg, rgba(76,157,255,0.08), rgba(124,139,255,0.03));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08); animation: adm-rise .5s ease .05s both;
+}
+.adm-cta-title { margin: 0 0 4px; font-size: 15px; font-weight: 700; color: var(--text); }
+.adm-cta-desc { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); max-width: 320px; }
+
+/* Painel / tabela */
+.adm-panel {
+  position: relative; margin-top: 20px; display: flex; flex-direction: column; overflow: hidden; min-height: 0; flex: 1;
+  border-radius: 20px; border: 1px solid rgba(120,160,220,0.18);
+  background:
+    radial-gradient(900px 320px at 50% -8%, rgba(76,157,255,0.14), transparent 62%),
+    linear-gradient(180deg, rgba(23,35,60,0.72), rgba(13,21,38,0.62) 60%, rgba(10,16,30,0.66));
+  box-shadow: 0 40px 80px -44px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.02) inset, inset 0 1px 0 rgba(255,255,255,0.08);
+  animation: adm-rise .6s ease .1s both;
+}
+/* faixa de acento no topo do card */
+.adm-panel::before {
+  content: ''; position: absolute; top: 0; left: 24px; right: 24px; height: 1px; z-index: 2; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(76,157,255,0.7) 25%, rgba(124,139,255,0.6) 75%, transparent);
+}
+.adm-panel::after {
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none; border-radius: 20px;
+  background-image: radial-gradient(rgba(255,255,255,0.035) 1px, transparent 1.4px);
+  background-size: 34px 34px;
+  -webkit-mask-image: linear-gradient(180deg, transparent 30%, #000 100%);
+          mask-image: linear-gradient(180deg, transparent 30%, #000 100%);
+  opacity: .5;
+}
+.adm-panel > * { position: relative; z-index: 1; }
+.adm-panel-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 22px; flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), transparent);
+}
+.adm-panel-head h2 { margin: 0; font-size: 15px; font-weight: 700; color: var(--text); }
+.adm-panel-head p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
+.adm-count-pill { display: inline-flex; align-items: center; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #bcd8ff; background: rgba(76,157,255,0.12); border: 1px solid rgba(76,157,255,0.28); }
+.adm-panel-body { padding: 10px 14px 16px; overflow-y: auto; min-height: 0; }
+
+.adm-table-wrap { overflow-x: auto; }
+.adm-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
+.adm-table thead th {
+  text-align: left; padding: 10px 16px; font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .08em; color: var(--faint); white-space: nowrap;
+}
+.adm-table tbody td { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.05); color: var(--text); vertical-align: middle; }
+.adm-row { transition: background .16s; cursor: pointer; }
+.adm-row > td:first-child { border-top-left-radius: 12px; border-bottom-left-radius: 12px; }
+.adm-row > td:last-child { border-top-right-radius: 12px; border-bottom-right-radius: 12px; }
+.adm-row:hover > td { background: rgba(76,157,255,0.06); }
+.adm-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--faint); }
+.adm-td-name { font-weight: 600; color: var(--text); }
+.adm-td-muted { color: var(--muted); }
+.adm-table th.adm-right, .adm-table td.adm-right { text-align: right; }
+.adm-row-static:hover > td { background: rgba(255,255,255,0.025); }
+
+.adm-chevron { color: var(--faint); display: inline-flex; transition: color .16s; }
+.adm-row:hover .adm-chevron { color: var(--accent); }
+
+/* Avatares */
+.adm-company-cell, .adm-user-cell { display: flex; align-items: center; gap: 11px; }
+.adm-avatar {
+  flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 800; letter-spacing: .02em; color: #eaf1f9;
+  border: 1px solid rgba(255,255,255,0.12); box-shadow: inset 0 1px 0 rgba(255,255,255,0.14);
+}
+.adm-avatar.blue { background: linear-gradient(150deg, #3f7fd6, #2a4d99); }
+.adm-avatar.green { background: linear-gradient(150deg, #2ea982, #1e6f57); }
+.adm-avatar.sm { width: 30px; height: 30px; border-radius: 9px; font-size: 11px; }
+
+.adm-users-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--muted); background: rgba(255,255,255,0.05); border: 1px solid var(--border); }
+
+/* Bloco expandido */
+.adm-expand > td { padding: 10px 8px 14px !important; border-top: 0 !important; }
+.adm-expand-inner {
+  position: relative; padding: 18px 20px; border-radius: 16px; border: 1px solid rgba(120,160,220,0.16);
+  background:
+    radial-gradient(600px 180px at 0% 0%, rgba(76,157,255,0.10), transparent 70%),
+    linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02));
+  box-shadow: 0 18px 40px -28px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.07);
+  animation: adm-pop .25s ease both;
+}
+.adm-expand-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+.adm-expand-head h4 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 700; color: var(--text); }
+.adm-expand-head h4 svg { color: var(--accent); }
+.adm-expand-actions { display: flex; gap: 8px; }
+.adm-subtable td { border-top: 1px solid rgba(255,255,255,0.04); }
+.adm-subtable tr:first-child td { border-top: 0; }
+
+/* Badges */
+.adm-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.adm-badge.sky { background: rgba(76,157,255,0.14); color: #9cc7ff; border: 1px solid rgba(76,157,255,0.28); }
+.adm-badge.green { background: rgba(55,211,154,0.14); color: #7ff0c6; border: 1px solid rgba(55,211,154,0.3); }
+.adm-badge.slate { background: rgba(255,255,255,0.05); color: var(--muted); border: 1px solid var(--border); }
+.adm-badge.red { background: rgba(242,101,122,0.14); color: #ffb3bf; border: 1px solid rgba(242,101,122,0.32); }
+.adm-badge.violet { background: rgba(167,139,250,0.14); color: #c4b5fd; border: 1px solid rgba(167,139,250,0.32); }
+.adm-badge.amber { background: rgba(251,191,36,0.14); color: #fcd34d; border: 1px solid rgba(251,191,36,0.32); }
+.adm-badge.brown { background: rgba(120,72,42,0.28); color: #c99a6d; border: 1px solid rgba(120,72,42,0.55); }
+.adm-badge code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* Tabs de seção (Empresas / Sincronização, Logs / Agendamento) */
+.adm-view-tabs { flex-shrink: 0; margin-bottom: 16px; }
+.adm-tabs { display: inline-flex; gap: 4px; padding: 4px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--border); }
+.adm-tab {
+  padding: 8px 15px; border-radius: 9px; border: none; cursor: pointer; font-family: inherit;
+  font-size: 12.5px; font-weight: 700; color: var(--muted); background: transparent; transition: all .16s ease;
+}
+.adm-tab:hover { color: var(--text); }
+.adm-tab.active { color: #fff; background: linear-gradient(135deg, #6cc0ff, #3a7bff); box-shadow: 0 6px 16px -8px rgba(76,157,255,0.8); }
+.adm-subtabs-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; flex-shrink: 0; }
+
+/* Filtros da tela de logs */
+.adm-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.adm-filters select.adm-input, .adm-filters input.adm-input { width: auto; min-width: 150px; padding: 9px 12px; font-size: 13px; }
+
+/* Cards de agendamento (um por módulo) */
+.adm-sched-grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 760px) { .adm-sched-grid { grid-template-columns: 1fr 1fr 1fr; } }
+.adm-sched-card {
+  padding: 18px; border-radius: 16px; border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+  display: flex; flex-direction: column; gap: 12px;
+}
+.adm-sched-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.adm-sched-head h4 { margin: 0; font-size: 13.5px; font-weight: 800; letter-spacing: .02em; color: var(--text); text-transform: uppercase; }
+.adm-toggle { position: relative; width: 40px; height: 22px; border-radius: 999px; border: none; cursor: pointer; background: rgba(255,255,255,0.12); transition: background .18s ease; flex-shrink: 0; }
+.adm-toggle.on { background: linear-gradient(135deg, #37d39a, #1fae7c); }
+.adm-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .18s ease; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
+.adm-toggle.on::after { transform: translateX(18px); }
+.adm-sched-hint { margin: 0; font-size: 11px; color: var(--faint); line-height: 1.5; }
+.adm-sched-target { position: relative; }
+.adm-sched-target-btn {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 11px; border-radius: 9px; border: 1px solid var(--border-strong);
+  background: rgba(255,255,255,0.04); color: var(--text); font-family: inherit; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: background .16s, border-color .16s;
+}
+.adm-sched-target-btn:hover:not(:disabled) { background: rgba(255,255,255,0.08); border-color: rgba(76,157,255,0.35); }
+.adm-sched-target-btn:disabled { opacity: .6; cursor: default; }
+.adm-sched-target-list {
+  position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; right: 0; max-height: 200px; overflow-y: auto;
+  padding: 8px; border-radius: 12px; border: 1px solid var(--border-strong);
+  background: linear-gradient(180deg, #101a30, #0b1428); box-shadow: 0 20px 40px -16px rgba(0,0,0,0.9);
+}
+.adm-sched-target-item { display: flex; align-items: center; gap: 8px; padding: 7px 6px; border-radius: 8px; font-size: 12.5px; color: var(--text); cursor: pointer; }
+.adm-sched-target-item:hover { background: rgba(255,255,255,0.05); }
+.adm-sched-target-item input { width: 14px; height: 14px; accent-color: var(--accent); flex-shrink: 0; }
+.adm-sched-status { margin: 0; font-size: 11.5px; font-weight: 600; height: 15px; display: flex; align-items: center; gap: 5px; }
+.adm-sched-status.saving { color: var(--muted); }
+.adm-sched-status.saved { color: var(--green); }
+
+/* Painéis que não devem esticar até o fim da tela (conteúdo curto) */
+.adm-panel.auto { flex: none; }
+
+/* Botões */
+.adm-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 10px 16px; border-radius: 11px; font-size: 13px; font-weight: 700; font-family: inherit;
+  cursor: pointer; border: 1px solid transparent; transition: transform .15s ease, box-shadow .2s ease, background .16s, filter .2s; position: relative; overflow: hidden;
+}
+.adm-btn:disabled { filter: grayscale(.3) opacity(.7); cursor: default; }
+.adm-btn.block { width: 100%; }
+.adm-btn.sm { padding: 7px 12px; font-size: 12px; border-radius: 9px; }
+.adm-btn.primary {
+  color: #fff; background: linear-gradient(135deg, #6cc0ff, #3a7bff);
+  box-shadow: 0 12px 28px -12px rgba(76,157,255,0.7), inset 0 1px 0 rgba(255,255,255,0.4);
+}
+.adm-btn.primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 18px 34px -12px rgba(76,157,255,0.85); }
+.adm-btn.primary::after {
+  content:''; position:absolute; top:0; left:-120%; width:60%; height:100%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,0.5), transparent);
+  transform: skewX(-18deg); transition: left .6s ease;
+}
+.adm-btn.primary:hover:not(:disabled)::after { left: 130%; }
+.adm-btn.outline { color: var(--text); background: rgba(255,255,255,0.04); border-color: var(--border-strong); }
+.adm-btn.outline:hover:not(:disabled) { background: rgba(255,255,255,0.09); border-color: rgba(76,157,255,0.35); }
+.adm-btn.ghost { color: var(--muted); background: transparent; }
+.adm-btn.ghost:hover:not(:disabled) { background: rgba(255,255,255,0.06); color: var(--text); }
+.adm-btn.danger {
+  color: #fff; background: linear-gradient(135deg, #ff7d90, #e23b54);
+  box-shadow: 0 12px 24px -12px rgba(226,59,84,0.7);
+}
+.adm-btn.danger:hover:not(:disabled) { transform: translateY(-1px); }
+
+/* Ícone-ação (editar/excluir/toggle) */
+.adm-iconbtn { appearance: none; border: 0; background: transparent; padding: 6px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); transition: color .16s, background .16s, opacity .16s; }
+.adm-iconbtn:hover { background: rgba(255,255,255,0.06); }
+.adm-iconbtn.dim { opacity: .55; }
+.adm-iconbtn.dim:hover { opacity: 1; }
+.adm-iconbtn.edit:hover { color: var(--accent); }
+.adm-iconbtn.del:hover { color: var(--red); background: rgba(242,101,122,0.12); }
+.adm-iconbtn.ok { color: var(--green); }
+.adm-iconbtn.ok:hover { color: #7ff0c6; }
+.adm-iconbtn.mut:hover { color: var(--text); }
+.adm-clientid-edit { display: flex; align-items: center; gap: 6px; }
+.adm-clientid-view { display: flex; align-items: center; gap: 6px; }
+
+/* Loading skeleton */
+.adm-skel { height: 54px; border-radius: 12px; background: rgba(255,255,255,0.045); animation: adm-breathe 1.4s ease-in-out infinite; }
+.adm-empty { text-align: center; color: var(--muted); font-size: 13.5px; padding: 34px 0; }
+
+/* Inputs de formulário (modais) */
+.adm-input {
+  width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(140,170,220,0.22);
+  background: rgba(255,255,255,0.07); color: var(--text); font-size: 14px; font-family: inherit;
+  outline: none; transition: border-color .2s, box-shadow .2s, background .2s;
+}
+.adm-input::placeholder { color: rgba(200,214,235,0.5); }
+.adm-input:hover { background: rgba(255,255,255,0.09); border-color: rgba(140,170,220,0.3); }
+.adm-input:focus { border-color: rgba(76,157,255,0.7); background: rgba(76,157,255,0.09); box-shadow: 0 0 0 4px rgba(76,157,255,0.15); }
+.adm-input.mini { padding: 6px 9px; font-size: 12px; width: 150px; }
+.adm-label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+
+/* Modal */
+.adm-overlay {
+  position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: rgba(3,6,14,0.72); backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
+  animation: adm-rise .2s ease both;
+}
+.adm-modal {
+  position: relative; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto;
+  border-radius: 20px; padding: 24px; border: 1px solid var(--border-strong);
+  background: linear-gradient(180deg, #0e1626, #090d18);
+  box-shadow: 0 40px 90px -30px rgba(0,0,0,0.95), inset 0 1px 0 rgba(255,255,255,0.06); animation: adm-pop .25s ease both;
+}
+.adm-modal.sm { max-width: 430px; }
+.adm-modal-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 18px; gap: 12px; }
+.adm-modal-head h3 { margin: 0; font-size: 17px; font-weight: 700; color: var(--text); }
+.adm-modal-head p { margin: 4px 0 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
+.adm-modal-close { border: 0; background: transparent; cursor: pointer; color: var(--muted); display: flex; padding: 4px; border-radius: 8px; transition: color .16s, background .16s; }
+.adm-modal-close:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+
+.adm-form { display: flex; flex-direction: column; gap: 16px; }
+.adm-fieldset { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 14px; background: rgba(255,255,255,0.035); border: 1px solid rgba(120,160,220,0.14); }
+.adm-fieldset-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--text); }
+.adm-fieldset-title svg { color: var(--accent); }
+.adm-hint { font-size: 12px; color: var(--faint); margin: 6px 0 0; line-height: 1.45; }
+.adm-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
+.adm-check input { width: 15px; height: 15px; accent-color: var(--accent); }
+.adm-modal-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 4px; }
+
+/* Lista de logs no modal */
+.adm-logs { display: flex; flex-direction: column; gap: 10px; max-height: 24rem; overflow-y: auto; }
+.adm-logs.full { max-height: none; }
+.adm-log { padding: 12px 14px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); }
+.adm-log-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 10px; }
+.adm-log-time { font-size: 11.5px; color: var(--faint); white-space: nowrap; }
+.adm-log-desc { margin: 0; font-size: 13.5px; color: var(--text); }
+.adm-log-by { margin: 4px 0 0; font-size: 11.5px; color: var(--faint); }
+
+.adm-loading-center { display: flex; justify-content: center; padding: 32px 0; color: var(--muted); }
+
+/* Autofill escuro */
+.adm-input:-webkit-autofill,
+.adm-input:-webkit-autofill:hover,
+.adm-input:-webkit-autofill:focus,
+.adm-inputbox input:-webkit-autofill,
+.adm-inputbox input:-webkit-autofill:hover,
+.adm-inputbox input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text);
+  -webkit-box-shadow: 0 0 0 1000px #0a1120 inset;
+  transition: background-color 9999s ease-in-out 0s;
+  caret-color: var(--text);
+}
+`;
+
+/* ---------- Componentes de UI ---------- */
+
 function Alert({ variant = 'default', children }) {
-  const styles = {
-    default: 'border-emerald-900 bg-emerald-950/40 text-emerald-300',
-    destructive: 'border-red-900 bg-red-950/40 text-red-300',
-  };
   const Icon = variant === 'destructive' ? AlertCircle : Check;
   return (
-    <div className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${styles[variant]}`}>
-      <Icon className="h-4 w-4 mt-0.5 shrink-0" />
+    <div className={`adm-alert ${variant === 'destructive' ? 'err' : 'ok'}`}>
+      <Icon className="h-4 w-4" />
       <span>{children}</span>
     </div>
   );
 }
 
 function Badge({ children, tone = 'slate' }) {
-  const tones = {
-    slate: 'bg-slate-800 text-slate-300',
-    sky: 'bg-sky-500/15 text-sky-400',
-  };
-  return <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${tones[tone]}`}>{children}</span>;
+  return <span className={`adm-badge ${tone}`}>{children}</span>;
+}
+
+function Avatar({ name, tone = 'blue', size = '' }) {
+  return <span className={`adm-avatar ${tone} ${size}`}>{getInitials(name)}</span>;
 }
 
 function Card({ children, className = '' }) {
-  return <div className={`bg-white/[0.035] border border-white/[0.08] rounded-xl ${className}`}>{children}</div>;
+  return <div className={`adm-card glow ${className}`}>{children}</div>;
 }
 
-function Input({ autoComplete = 'off', ...props }) {
+function Input({ autoComplete = 'off', className = '', ...props }) {
   return (
     <input
       autoComplete={autoComplete}
       {...props}
-      className={`admin-input w-full rounded-md border border-white/[0.12] bg-white/[0.04] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 ${props.className || ''}`}
+      className={`adm-input ${className}`}
     />
   );
 }
 
 function Label({ children }) {
-  return <label className="block text-xs font-semibold text-slate-400 mb-1.5">{children}</label>;
+  return <label className="adm-label">{children}</label>;
 }
 
 function Button({ children, variant = 'primary', className = '', ...props }) {
-  const variants = {
-    primary: 'bg-sky-500 text-slate-950 hover:bg-sky-400 disabled:opacity-60',
-    outline: 'border border-slate-700 text-slate-200 hover:bg-slate-800',
-    ghost: 'text-slate-400 hover:bg-slate-800 hover:text-slate-100',
-  };
   return (
-    <button
-      {...props}
-      className={`inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition-colors ${variants[variant]} ${className}`}
-    >
+    <button {...props} className={`adm-btn ${variant} ${className}`}>
       {children}
     </button>
   );
 }
 
-function Modal({ open, onClose, title, description, children }) {
+function Modal({ open, onClose, title, description, children, size = '' }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-lg rounded-xl border border-white/[0.1] bg-[#0d1420] p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-start justify-between mb-4">
+    <div className="adm-overlay">
+      <div className={`adm-modal ${size}`}>
+        <div className="adm-modal-head">
           <div>
-            <h3 className="text-lg font-bold text-slate-100">{title}</h3>
-            {description && <p className="text-sm text-slate-400 mt-1">{description}</p>}
+            <h3>{title}</h3>
+            {description && <p>{description}</p>}
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300">
+          <button onClick={onClose} className="adm-modal-close">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -109,71 +614,378 @@ function Modal({ open, onClose, title, description, children }) {
   );
 }
 
-const loginGateStyles = `
-  .adm-wrap{
-    position:relative;min-height:100vh;display:flex;flex-direction:column;
-    align-items:center;justify-content:center;padding:24px 20px;overflow:hidden;
-    font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
-    background:radial-gradient(1200px 600px at 50% -10%, #15365c 0%, transparent 60%),
-               linear-gradient(160deg,#102a4a 0%,#0a1c33 100%);
-  }
-  .adm-orb{position:absolute;border-radius:50%;pointer-events:none;}
-  .adm-brand{position:relative;text-align:center;max-width:460px;margin-bottom:30px;color:#eaf1fb;}
-  .adm-brand h1{
-    font-size:40px;font-weight:900;letter-spacing:-1.5px;margin:14px 0 10px;
-    color:#ffffff;text-shadow:0 10px 30px rgba(0,0,0,.4), 0 0 20px rgba(59,130,246,.2);
-  }
-  .adm-brand p{font-size:14px;line-height:1.55;color:rgba(214,228,247,.62);margin:0;}
+/* ---------- Sincronização (logs + agendamento) ---------- */
 
-  .adm-card{
-    position:relative;width:100%;max-width:380px;padding:30px 30px 26px;border-radius:18px;
-    background:linear-gradient(180deg,#16335a 0%,#102a4d 100%);
-    border:1.5px solid rgba(96,165,250,.4);
-    box-shadow:0 25px 60px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08);
-  }
-  .adm-head{text-align:center;margin-bottom:22px;}
-  .adm-head h2{font-size:21px;font-weight:700;color:#f3f7fd;margin:0 0 5px;}
-  .adm-head p{font-size:13px;color:rgba(214,228,247,.58);margin:0;}
+const SYNC_MODULE_LABELS = { vendas: 'Vendas', mercadologico: 'Mercadológico', setores: 'Setores' };
+const SYNC_MODULE_TONE = { vendas: 'amber', mercadologico: 'violet', setores: 'brown' };
 
-  .adm-field{margin-bottom:15px;}
-  .adm-label{display:block;font-size:12.5px;font-weight:600;color:#dbe6f5;margin-bottom:7px;}
-  .adm-input{
-    display:flex;align-items:center;gap:10px;width:100%;padding:11px 13px;border-radius:10px;
-    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);
-    color:rgba(214,228,247,.6);box-sizing:border-box;transition:.16s;
-  }
-  .adm-input:focus-within{
-    border-color:#3b82f6;color:#3b82f6;background:rgba(59,130,246,.08);
-    box-shadow:0 0 0 3px rgba(59,130,246,.18);
-  }
-  .adm-input input{
-    flex:1;border:none;outline:none;background:transparent;font-size:14px;color:#f3f7fd;
-  }
-  .adm-input input::placeholder{color:rgba(214,228,247,.4);}
-  .adm-input input:-webkit-autofill,
-  .adm-input input:-webkit-autofill:hover,
-  .adm-input input:-webkit-autofill:focus{
-    -webkit-text-fill-color:#f3f7fd;
-    -webkit-box-shadow:0 0 0 1000px transparent inset;
-    transition:background-color 9999s ease-in-out 0s;
-    caret-color:#f3f7fd;
-  }
-  .adm-eye{border:none;background:none;cursor:pointer;padding:0;display:flex;color:rgba(214,228,247,.55);}
-  .adm-eye:hover{color:#cfe0f7;}
+function SyncPanel({ token }) {
+  const [subView, setSubView] = useState('logs');
+  const [clients, setClients] = useState([]); // [{ clientId, name }] das empresas com client_id configurado
 
-  .adm-btn{
-    width:100%;padding:12px;border-radius:10px;background:#2563eb;color:#fff;border:none;
-    font-weight:600;font-size:15px;cursor:pointer;margin-top:4px;transition:.16s;
-    display:flex;align-items:center;justify-content:center;gap:8px;
-  }
-  .adm-btn:hover:not(:disabled){background:#1d4ed8;}
-  .adm-btn:disabled{opacity:.7;cursor:default;}
+  useEffect(() => {
+    const loadClients = async () => {
+      try {
+        const res = await fetch('/api/superadmin/companies', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (res.ok) {
+          const data = await res.json();
+          setClients((data.companies || []).filter((c) => c.client_id).map((c) => ({ clientId: c.client_id, name: c.name })));
+        }
+      } catch (err) {
+        console.error('Erro ao carregar lista de clientes:', err);
+      }
+    };
+    loadClients();
+  }, [token]);
 
-  .adm-foot{margin-top:18px;text-align:center;font-size:11.5px;color:rgba(214,228,247,.45);}
-  .adm-err{margin-bottom:16px;padding:10px 14px;border-radius:8px;font-size:13px;
-    background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.35);color:#fca5a5;
-    display:flex;align-items:center;gap:8px;}
-`;
+  return (
+    <>
+      <div className="adm-subtabs-row">
+        <div className="adm-tabs">
+          <button className={`adm-tab ${subView === 'logs' ? 'active' : ''}`} onClick={() => setSubView('logs')}>Logs de sincronização</button>
+          <button className={`adm-tab ${subView === 'schedules' ? 'active' : ''}`} onClick={() => setSubView('schedules')}>Agendamento</button>
+        </div>
+      </div>
+      {subView === 'logs' ? <SyncLogsPanel token={token} clients={clients} /> : <SyncSchedulesPanel token={token} clients={clients} />}
+    </>
+  );
+}
+
+function SyncLogsPanel({ token, clients }) {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState({ module: '', status: '', clientId: '', dateFrom: '', dateTo: '' });
+
+  const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
+
+  const loadLogs = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filters.module) params.set('module', filters.module);
+      if (filters.status) params.set('status', filters.status);
+      if (filters.clientId) params.set('clientId', filters.clientId);
+      if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+      if (filters.dateTo) params.set('dateTo', filters.dateTo);
+      params.set('limit', '150');
+
+      const res = await fetch(`/api/superadmin/sync/logs?${params.toString()}`, { headers: authHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setLogs(data.logs || []);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar logs de sincronização:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadLogs(); }, [filters.module, filters.status, filters.clientId, filters.dateFrom, filters.dateTo]);
+
+  return (
+    <div className="adm-panel">
+      <div className="adm-panel-head">
+        <div>
+          <h2>Logs de sincronização</h2>
+          <p>Histórico de execução dos jobs de vendas, mercadológico e setores por cliente</p>
+        </div>
+        <span className="adm-count-pill">{logs.length} {logs.length === 1 ? 'registro' : 'registros'}</span>
+      </div>
+      <div className="adm-panel-body">
+        <div className="adm-filters" style={{ marginBottom: 16 }}>
+          <select className="adm-input" value={filters.module} onChange={(e) => setFilters({ ...filters, module: e.target.value })}>
+            <option value="">Todos os módulos</option>
+            <option value="vendas">Vendas</option>
+            <option value="mercadologico">Mercadológico</option>
+            <option value="setores">Setores</option>
+          </select>
+          <select className="adm-input" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+            <option value="">Todos os status</option>
+            <option value="success">Sucesso</option>
+            <option value="error">Erro</option>
+          </select>
+          <select className="adm-input" value={filters.clientId} onChange={(e) => setFilters({ ...filters, clientId: e.target.value })}>
+            <option value="">Todos os clientes</option>
+            {clients.map((c) => (
+              <option key={c.clientId} value={c.clientId}>{c.name} · {c.clientId}</option>
+            ))}
+          </select>
+          <input
+            type="date"
+            className="adm-input"
+            value={filters.dateFrom}
+            onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
+            title="Data inicial"
+          />
+          <input
+            type="date"
+            className="adm-input"
+            value={filters.dateTo}
+            onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+            title="Data final"
+          />
+          <Button variant="outline" className="sm" onClick={loadLogs}>Atualizar</Button>
+          <Button
+            variant="ghost"
+            className="sm"
+            onClick={() => setFilters({ module: '', status: '', clientId: '', dateFrom: '', dateTo: '' })}
+            disabled={!filters.module && !filters.status && !filters.clientId && !filters.dateFrom && !filters.dateTo}
+          >
+            Limpar filtros
+          </Button>
+        </div>
+
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '6px 4px' }}>
+            {[1, 2, 3].map((i) => <div key={i} className="adm-skel" />)}
+          </div>
+        ) : logs.length === 0 ? (
+          <p className="adm-empty">Nenhum registro de sincronização ainda.</p>
+        ) : (
+          <div className="adm-table-wrap">
+            <table className="adm-table">
+              <thead>
+                <tr>
+                  <th>Módulo</th>
+                  <th>Status</th>
+                  <th>Cliente</th>
+                  <th>Task</th>
+                  <th>ID Consulta</th>
+                  <th className="adm-right">Quando</th>
+                </tr>
+              </thead>
+              <tbody>
+                {logs.map((log) => (
+                  <tr key={log.id} className="adm-row-static">
+                    <td style={{ fontWeight: 500, fontSize: 12.5, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--muted)' }}>{SYNC_MODULE_LABELS[log.module] || log.module}</td>
+                    <td><Badge tone={log.status === 'error' ? 'red' : 'green'}>{log.status === 'error' ? 'Erro' : 'Sucesso'}</Badge></td>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{log.client_id}</div>
+                      {log.company_name && <div style={{ fontSize: 11.5, color: 'var(--faint)' }}>{log.company_name}</div>}
+                    </td>
+                    <td><code>{log.task_id}</code></td>
+                    <td style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {log.status === 'error'
+                        ? <span style={{ color: '#ffb3bf' }} title={log.message}>{log.message}</span>
+                        : log.consulta_id
+                          ? <code className="adm-mono" title={log.consulta_id}>{log.consulta_id.slice(0, 8)}</code>
+                          : <span style={{ color: 'var(--faint)' }}>—</span>}
+                    </td>
+                    <td className="adm-right" style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                      {new Date(log.created_at).toLocaleString('pt-BR')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SyncSchedulesPanel({ token, clients }) {
+  const [schedules, setSchedules] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [drafts, setDrafts] = useState({});
+  const [statusByModule, setStatusByModule] = useState({}); // module -> 'saving' | 'saved' | null
+  const [error, setError] = useState('');
+  const [pickerOpenModule, setPickerOpenModule] = useState(null);
+  const [selectedClients, setSelectedClients] = useState({}); // module -> [clientId, ...] (vazio = todos)
+
+  const authHeaders = () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` });
+
+  const loadSchedules = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/superadmin/sync/schedules', { headers: authHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setSchedules(data.schedules || []);
+        const nextDrafts = {};
+        (data.schedules || []).forEach((s) => { nextDrafts[s.module] = s.cron_expression; });
+        setDrafts(nextDrafts);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar agendamentos:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadSchedules(); }, []);
+
+  // Acompanha se algum módulo está executando agora (disparo manual ou
+  // cron), pra desabilitar o botão de disparo manual enquanto isso — sem
+  // sobrescrever o que o usuário estiver digitando no campo de cron.
+  const pollRunning = async () => {
+    try {
+      const res = await fetch('/api/superadmin/sync/schedules', { headers: authHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setSchedules((prev) => prev.map((s) => {
+          const fresh = (data.schedules || []).find((f) => f.module === s.module);
+          return fresh ? { ...s, running: fresh.running } : s;
+        }));
+      }
+    } catch (err) {
+      // silencioso — é só um polling de status
+    }
+  };
+
+  useEffect(() => {
+    const interval = setInterval(pollRunning, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const triggerRun = async (module) => {
+    setError('');
+    setPickerOpenModule(null);
+    setSchedules((prev) => prev.map((s) => (s.module === module ? { ...s, running: true } : s)));
+    try {
+      const res = await fetch(`/api/superadmin/sync/run/${module}`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ clientIds: selectedClients[module] || [] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao disparar sincronização');
+    } catch (err) {
+      setError(err.message);
+      setSchedules((prev) => prev.map((s) => (s.module === module ? { ...s, running: false } : s)));
+    }
+  };
+
+  const toggleClientSelection = (module, clientId) => {
+    setSelectedClients((prev) => {
+      const current = prev[module] || [];
+      const next = current.includes(clientId)
+        ? current.filter((id) => id !== clientId)
+        : [...current, clientId];
+      return { ...prev, [module]: next };
+    });
+  };
+
+  // Salva automaticamente — sem botão "Salvar": ativar/desativar salva na
+  // hora, e o horário salva ao sair do campo (blur) ou apertar Enter.
+  const saveSchedule = async (module, cronExpression, enabled) => {
+    setStatusByModule((prev) => ({ ...prev, [module]: 'saving' }));
+    setError('');
+    try {
+      const res = await fetch(`/api/superadmin/sync/schedules/${module}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ cronExpression, enabled }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao salvar agendamento');
+      setSchedules((prev) => prev.map((s) => (s.module === module ? { ...s, cron_expression: cronExpression, enabled } : s)));
+      setStatusByModule((prev) => ({ ...prev, [module]: 'saved' }));
+      setTimeout(() => setStatusByModule((prev) => ({ ...prev, [module]: null })), 2500);
+    } catch (err) {
+      setError(err.message);
+      setStatusByModule((prev) => ({ ...prev, [module]: null }));
+    }
+  };
+
+  const handleCronBlur = (s) => {
+    const value = (drafts[s.module] || '').trim();
+    if (value && value !== s.cron_expression) {
+      saveSchedule(s.module, value, s.enabled);
+    }
+  };
+
+  return (
+    <div className="adm-panel auto">
+      <div className="adm-panel-head">
+        <div>
+          <h2>Agendamento de sincronização</h2>
+          <p>Horário (formato cron) em que cada job roda pra todos os clientes — salva automaticamente</p>
+        </div>
+      </div>
+      <div className="adm-panel-body">
+        {error && <Alert variant="destructive">{error}</Alert>}
+
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '6px 4px' }}>
+            {[1, 2, 3].map((i) => <div key={i} className="adm-skel" />)}
+          </div>
+        ) : (
+          <div className="adm-sched-grid">
+            {schedules.map((s) => (
+              <div key={s.module} className="adm-sched-card">
+                <div className="adm-sched-head">
+                  <h4>{SYNC_MODULE_LABELS[s.module] || s.module}</h4>
+                  <button
+                    className={`adm-toggle ${s.enabled ? 'on' : ''}`}
+                    onClick={() => saveSchedule(s.module, drafts[s.module] || s.cron_expression, !s.enabled)}
+                    disabled={statusByModule[s.module] === 'saving'}
+                    title={s.enabled ? 'Ativado — clique pra desativar' : 'Desativado — clique pra ativar'}
+                  />
+                </div>
+                <Input
+                  className="mini"
+                  style={{ width: '100%' }}
+                  value={drafts[s.module] ?? ''}
+                  onChange={(e) => setDrafts({ ...drafts, [s.module]: e.target.value })}
+                  onBlur={() => handleCronBlur(s)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                  placeholder="0 6 * * *"
+                />
+                <p className="adm-sched-hint">Formato cron: minuto hora dia mês dia-da-semana. Ex.: <code>0 6 * * *</code> = 6h todo dia.</p>
+                <p className={`adm-sched-status ${statusByModule[s.module] || ''}`}>
+                  {statusByModule[s.module] === 'saving' && <><Loader2 className="h-3 w-3 adm-spin" /> Salvando...</>}
+                  {statusByModule[s.module] === 'saved' && <><Check className="h-3 w-3" /> Salvo</>}
+                </p>
+                <div className="adm-sched-target">
+                  <button
+                    type="button"
+                    className="adm-sched-target-btn"
+                    onClick={() => setPickerOpenModule(pickerOpenModule === s.module ? null : s.module)}
+                    disabled={s.running}
+                  >
+                    {(selectedClients[s.module]?.length || 0) > 0
+                      ? `${selectedClients[s.module].length} cliente(s) selecionado(s)`
+                      : 'Todos os clientes'}
+                    {pickerOpenModule === s.module ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
+                  {pickerOpenModule === s.module && (
+                    <div className="adm-sched-target-list">
+                      {clients.length === 0 && <p className="adm-sched-hint" style={{ padding: '8px 0' }}>Nenhum cliente com client_id configurado.</p>}
+                      {clients.map((c) => (
+                        <label key={c.clientId} className="adm-sched-target-item">
+                          <input
+                            type="checkbox"
+                            checked={(selectedClients[s.module] || []).includes(c.clientId)}
+                            onChange={() => toggleClientSelection(s.module, c.clientId)}
+                          />
+                          {c.name} <span style={{ color: 'var(--faint)' }}>· {c.clientId}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  className="sm block"
+                  onClick={() => triggerRun(s.module)}
+                  disabled={s.running}
+                >
+                  {s.running ? <Loader2 className="h-4 w-4 adm-spin" /> : <Play className="h-4 w-4" />}
+                  {s.running ? 'Executando...' : 'Disparar agora'}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Tela de login ---------- */
 
 function LoginGate({ onLogin }) {
   const [form, setForm] = useState({ email: '', password: '' });
@@ -194,7 +1006,8 @@ function LoginGate({ onLogin }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao autenticar');
       localStorage.setItem(TOKEN_KEY, data.token);
-      onLogin(data.token);
+      localStorage.setItem(DEPT_KEY, data.admin?.department || '');
+      onLogin(data.token, data.admin?.department || '');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -203,59 +1016,60 @@ function LoginGate({ onLogin }) {
   };
 
   return (
-    <div className="adm-wrap">
-      <style>{loginGateStyles}</style>
-
-      <div className="adm-orb" style={{ top: '4%', left: '14%', width: 280, height: 280, background: 'rgba(56,135,235,.2)', filter: 'blur(100px)' }} />
-      <div className="adm-orb" style={{ bottom: '4%', right: '14%', width: 320, height: 320, background: 'rgba(45,160,200,.15)', filter: 'blur(110px)' }} />
-
-      <div className="adm-brand">
-        <Shield className="h-12 w-12 mx-auto text-sky-400" />
-        <h1>Painel Administrativo</h1>
-        <p>Contagil — acesso restrito à equipe interna, para gestão das empresas clientes do Escalágil.</p>
-      </div>
-
-      <div className="adm-card">
-        <div className="adm-head">
-          <h2>Acessar conta</h2>
-          <p>Restrito à equipe Contagil</p>
+    <div className="adm-gate">
+      <div className="adm-gate-inner">
+        <div className="adm-brand">
+          <span className="adm-eyebrow"><span className="dot" />Acesso restrito</span>
+          <div>
+            <span className="adm-brand-ico"><Shield className="h-7 w-7" /></span>
+          </div>
+          <h1>Painel Administrativo</h1>
+          <p>Contagil — acesso restrito à equipe interna, para gestão das empresas clientes do Escalágil.</p>
         </div>
 
-        {error && <div className="adm-err"><AlertCircle className="h-4 w-4 shrink-0" />{error}</div>}
-
-        <form onSubmit={handleSubmit}>
-          <div className="adm-field">
-            <label className="adm-label">Email</label>
-            <div className="adm-input">
-              <input type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required placeholder="Digite seu email" />
-            </div>
+        <div className="adm-card glow adm-gate-card">
+          <div className="adm-gate-head">
+            <h2>Acessar conta</h2>
+            <p>Restrito à equipe Contagil</p>
           </div>
 
-          <div className="adm-field">
-            <label className="adm-label">Senha</label>
-            <div className="adm-input">
-              <input type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required placeholder="Digite sua senha" />
-              <button type="button" className="adm-eye" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
+          {error && <div className="adm-alert err"><AlertCircle className="h-4 w-4" />{error}</div>}
+
+          <form onSubmit={handleSubmit}>
+            <div className="adm-field">
+              <label className="adm-field-label">Email</label>
+              <div className="adm-inputbox">
+                <input type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required placeholder="Digite seu email" />
+              </div>
             </div>
-          </div>
 
-          <button type="submit" className="adm-btn" disabled={loading}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
-            {loading ? 'Entrando...' : 'Acessar'}
-          </button>
-        </form>
+            <div className="adm-field">
+              <label className="adm-field-label">Senha</label>
+              <div className="adm-inputbox">
+                <input type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required placeholder="Digite sua senha" />
+                <button type="button" className="adm-eye" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
 
-        <p className="adm-foot">© 2026 Escalágil · Painel Contagil</p>
+            <button type="submit" className="adm-btn primary block" disabled={loading}>
+              {loading ? <Loader2 className="h-4 w-4 adm-spin" /> : <Lock className="h-4 w-4" />}
+              {loading ? 'Entrando...' : 'Acessar'}
+            </button>
+          </form>
+
+          <p className="adm-gate-foot">© 2026 Escalágil · Painel Contagil</p>
+        </div>
       </div>
     </div>
   );
 }
 
-const EMPTY_USER_FORM = { name: '', email: '', password: '', isAdmin: false };
+/* ---------- Painel de empresas ---------- */
 
-function CompaniesPanel({ token, onLogout }) {
+function CompaniesPanel({ token, department, onLogout }) {
+  const [activeView, setActiveView] = useState('companies');
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -504,110 +1318,104 @@ function CompaniesPanel({ token, onLogout }) {
     }
   };
 
+  const totalUsers = companies.reduce((sum, c) => sum + c.user_count, 0);
+
   return (
-    <div style={{ background: '#0a0e1a', height: '100vh', overflow: 'hidden' }}>
-      <nav className="navbar-gradient" style={{
-        background: '#0d171e',
-        padding: '16px 24px',
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 1000,
-        height: '76px',
-        display: 'flex',
-        alignItems: 'center'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '100%', width: '100%' }}>
-          <div className="flex items-center gap-3">
-            <Shield className="h-6 w-6 text-sky-400" />
+    <div className="adm-app">
+      <nav className="adm-nav">
+        <div className="adm-nav-row">
+          <div className="adm-nav-brand">
+            <span className="adm-nav-ico"><Shield className="h-5 w-5" /></span>
             <div>
-              <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#e8eef5' }}>Painel Administrativo Contagil</h1>
-              <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>Gerenciamento de empresas clientes</p>
+              <h1>Painel Administrativo Contagil</h1>
+              <p>Gerenciamento de empresas clientes</p>
             </div>
           </div>
-          <button
-            onClick={onLogout}
-            style={{
-              padding: '8px 14px',
-              background: 'rgba(59,130,246,0.15)',
-              color: '#0ea5e9',
-              border: '1px solid rgba(59,130,246,0.3)',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '12px',
-              fontWeight: 600,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
+          <button onClick={onLogout} className="adm-logout">
             <LogOut className="h-4 w-4" /> Sair
           </button>
         </div>
       </nav>
 
-      <main
-        className="max-w-6xl mx-auto px-4 py-6 w-full"
-        style={{ marginTop: '76px', height: 'calc(100vh - 76px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
-      >
-        <div className="space-y-4 shrink-0">
+      <main className="adm-main">
+        {department === 'NPD' && (
+          <div className="adm-view-tabs">
+            <div className="adm-tabs">
+              <button className={`adm-tab ${activeView === 'companies' ? 'active' : ''}`} onClick={() => setActiveView('companies')}>Empresas</button>
+              <button className={`adm-tab ${activeView === 'sync' ? 'active' : ''}`} onClick={() => setActiveView('sync')}>Sincronização</button>
+            </div>
+          </div>
+        )}
+        {activeView === 'sync' && department === 'NPD' ? (
+          <SyncPanel token={token} />
+        ) : (
+        <>
+        <div className="adm-stack">
           {error && <Alert variant="destructive">{error}</Alert>}
           {success && <Alert>{success}</Alert>}
 
           {/* KPIs */}
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card className="p-5">
-              <p className="text-sm font-medium text-slate-400 mb-2">Empresas Cadastradas</p>
-              <div className="flex items-center gap-2">
-                <Building2 className="h-8 w-8 text-sky-400" />
-                <span className="text-3xl font-bold text-slate-100">{companies.length}</span>
+          <div className="adm-kpis">
+            <div className="adm-kpi" style={{ '--kpi-accent': '#4c9dff' }}>
+              <div className="adm-kpi-top">
+                <span className="adm-kpi-ico"><Building2 className="h-5 w-5" /></span>
+                <p className="adm-kpi-label">Empresas cadastradas</p>
               </div>
-            </Card>
-            <Card className="p-5">
-              <p className="text-sm font-medium text-slate-400 mb-2">Usuários Totais</p>
-              <div className="flex items-center gap-2">
-                <Users className="h-8 w-8 text-emerald-400" />
-                <span className="text-3xl font-bold text-slate-100">
-                  {companies.reduce((sum, c) => sum + c.user_count, 0)}
-                </span>
+              <div className="adm-kpi-value">{companies.length}</div>
+              <p className="adm-kpi-sub">empresas clientes na plataforma</p>
+            </div>
+
+            <div className="adm-kpi" style={{ '--kpi-accent': '#37d39a' }}>
+              <div className="adm-kpi-top">
+                <span className="adm-kpi-ico"><Users className="h-5 w-5" /></span>
+                <p className="adm-kpi-label">Usuários totais</p>
               </div>
-            </Card>
-            <Card className="p-5 flex items-center">
-              <Button className="w-full" onClick={() => setIsModalOpen(true)}>
+              <div className="adm-kpi-value">{totalUsers}</div>
+              <p className="adm-kpi-sub">contas ativas e inativas somadas</p>
+            </div>
+
+            <div className="adm-cta">
+              <div>
+                <p className="adm-cta-title">Adicionar empresa</p>
+                <p className="adm-cta-desc">Cadastre uma nova empresa cliente junto do seu primeiro usuário administrador.</p>
+              </div>
+              <Button className="block" onClick={() => setIsModalOpen(true)}>
                 <Plus className="h-4 w-4" /> Nova Empresa
               </Button>
-            </Card>
+            </div>
           </div>
         </div>
 
         {/* Companies Table */}
-        <Card className="mt-6 flex flex-col overflow-hidden" style={{ minHeight: 0, flex: 1 }}>
-          <div className="p-5 border-b border-white/[0.08] shrink-0">
-            <h2 className="text-base font-bold text-slate-100">Empresas Cadastradas</h2>
-            <p className="text-sm text-slate-400 mt-0.5">Empresas clientes e status de integração com o agente</p>
+        <div className="adm-panel">
+          <div className="adm-panel-head">
+            <div>
+              <h2>Empresas cadastradas</h2>
+              <p>Empresas clientes e status de integração com o agente</p>
+            </div>
+            {!loading && companies.length > 0 && (
+              <span className="adm-count-pill">{companies.length} {companies.length === 1 ? 'empresa' : 'empresas'}</span>
+            )}
           </div>
-          <div className="p-5 overflow-y-auto" style={{ minHeight: 0 }}>
+          <div className="adm-panel-body">
             {loading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-12 rounded-md bg-slate-800/60 animate-pulse" />
-                ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '6px 4px' }}>
+                {[1, 2, 3].map((i) => <div key={i} className="adm-skel" />)}
               </div>
             ) : companies.length === 0 ? (
-              <p className="text-center text-slate-400 py-8">Nenhuma empresa cadastrada</p>
+              <p className="adm-empty">Nenhuma empresa cadastrada</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div className="adm-table-wrap">
+                <table className="adm-table">
                   <thead>
-                    <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-white/[0.08]">
-                      <th className="pb-2 pr-4 font-medium w-8"></th>
-                      <th className="pb-2 pr-4 font-medium">#</th>
-                      <th className="pb-2 pr-4 font-medium">Empresa</th>
-                      <th className="pb-2 pr-4 font-medium">client_id</th>
-                      <th className="pb-2 pr-4 font-medium">Usuários</th>
-                      <th className="pb-2 font-medium">Criada em</th>
-                      <th className="pb-2 font-medium text-right">Ações</th>
+                    <tr>
+                      <th style={{ width: 32 }}></th>
+                      <th>#</th>
+                      <th>Empresa</th>
+                      <th>client_id</th>
+                      <th>Usuários</th>
+                      <th>Criada em</th>
+                      <th className="adm-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -616,155 +1424,118 @@ function CompaniesPanel({ token, onLogout }) {
                       const users = companyUsers[comp.id] || [];
                       return (
                         <Fragment key={comp.id}>
-                          <tr
-                            className="border-b border-white/[0.06] hover:bg-white/[0.03] cursor-pointer"
-                            onClick={() => toggleExpand(comp.id)}
-                          >
-                            <td className="py-3 pl-1 text-slate-500">
-                              {loadingUsersId === comp.id
-                                ? <Loader2 className="h-4 w-4 animate-spin" />
-                                : isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          <tr className="adm-row" onClick={() => toggleExpand(comp.id)}>
+                            <td>
+                              <span className="adm-chevron">
+                                {loadingUsersId === comp.id
+                                  ? <Loader2 className="h-4 w-4 adm-spin" />
+                                  : isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </span>
                             </td>
-                            <td className="py-3 pr-4 font-mono text-xs text-slate-500">#{comp.id}</td>
-                            <td className="py-3 pr-4 font-medium text-slate-100">{comp.name}</td>
-                            <td className="py-3 pr-4">
+                            <td className="adm-mono">#{comp.id}</td>
+                            <td>
+                              <div className="adm-company-cell">
+                                <Avatar name={comp.name} tone="blue" />
+                                <span className="adm-td-name">{comp.name}</span>
+                              </div>
+                            </td>
+                            <td>
                               {editingClientId === comp.id ? (
-                                <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                <div className="adm-clientid-edit" onClick={(e) => e.stopPropagation()}>
                                   <Input
                                     autoFocus
                                     value={clientIdDraft}
                                     onChange={(e) => setClientIdDraft(toSlug(e.target.value))}
-                                    className="!py-1 !px-2 text-xs w-32"
+                                    className="mini"
                                   />
-                                  <button
-                                    onClick={() => saveClientId(comp.id)}
-                                    disabled={savingClientId}
-                                    className="text-emerald-400 hover:text-emerald-300"
-                                    title="Salvar"
-                                  >
-                                    {savingClientId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                                  <button onClick={() => saveClientId(comp.id)} disabled={savingClientId} className="adm-iconbtn ok" title="Salvar">
+                                    {savingClientId ? <Loader2 className="h-4 w-4 adm-spin" /> : <Check className="h-4 w-4" />}
                                   </button>
-                                  <button onClick={() => setEditingClientId(null)} className="text-slate-500 hover:text-slate-300" title="Cancelar">
+                                  <button onClick={() => setEditingClientId(null)} className="adm-iconbtn mut" title="Cancelar">
                                     <X className="h-4 w-4" />
                                   </button>
                                 </div>
                               ) : (
-                                <div className="flex items-center gap-1.5 group">
+                                <div className="adm-clientid-view">
                                   {comp.client_id
                                     ? <Badge tone="sky"><code>{comp.client_id}</code></Badge>
                                     : <Badge>não configurado</Badge>}
-                                  <button
-                                    onClick={(e) => startEditClientId(comp, e)}
-                                    className="
-                                      appearance-none
-                                      border-0
-                                      bg-transparent
-                                      p-0
-                                      text-slate-500
-                                      hover:text-sky-400
-                                      opacity-60
-                                      hover:opacity-100
-                                    "
-                                    title="Editar client_id"
-                                  >
+                                  <button onClick={(e) => startEditClientId(comp, e)} className="adm-iconbtn edit dim" title="Editar client_id">
                                     <Pencil className="h-3.5 w-3.5" />
                                   </button>
                                 </div>
                               )}
                             </td>
-                            <td className="py-3 pr-4 text-slate-300">{comp.user_count}</td>
-                            <td className="py-3 text-slate-400">{new Date(comp.created_at).toLocaleDateString('pt-BR')}</td>
-                            <td className="py-3 text-right">
+                            <td>
+                              <span className="adm-users-pill"><Users className="h-3.5 w-3.5" />{comp.user_count}</span>
+                            </td>
+                            <td className="adm-td-muted">{new Date(comp.created_at).toLocaleDateString('pt-BR')}</td>
+                            <td className="adm-right">
                               <button
                                 title="Excluir empresa"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDeleteCompanyTarget(comp);
-                                }}
-                                className="
-                                  appearance-none
-                                  border-0
-                                  bg-transparent
-                                  p-0
-                                  text-slate-400
-                                  hover:text-red-400
-                                "
+                                onClick={(e) => { e.stopPropagation(); setDeleteCompanyTarget(comp); }}
+                                className="adm-iconbtn del"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
                             </td>
                           </tr>
                           {isExpanded && (
-                            <tr key={`${comp.id}-expanded`} className="border-b border-white/[0.06] bg-black/[0.15]">
-                              <td colSpan={7} className="p-4">
-                                <div className="flex items-center justify-between mb-3">
-                                  <h4 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                                    <Users className="h-4 w-4" /> Usuários de {comp.name}
-                                  </h4>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      variant="outline"
-                                      className="!py-1.5 !px-3 text-xs"
-                                      onClick={(e) => { e.stopPropagation(); openLogs(comp); }}
-                                    >
-                                      <ScrollText className="h-3.5 w-3.5" /> Logs
-                                    </Button>
-                                    <Button
-                                      variant="outline"
-                                      className="!py-1.5 !px-3 text-xs"
-                                      onClick={(e) => { e.stopPropagation(); setNewUserCompanyId(comp.id); setUserForm(EMPTY_USER_FORM); }}
-                                    >
-                                      <UserPlus className="h-3.5 w-3.5" /> Novo Usuário
-                                    </Button>
+                            <tr key={`${comp.id}-expanded`} className="adm-expand">
+                              <td colSpan={7}>
+                                <div className="adm-expand-inner">
+                                  <div className="adm-expand-head">
+                                    <h4><Users className="h-4 w-4" /> Usuários de {comp.name}</h4>
+                                    <div className="adm-expand-actions">
+                                      <Button variant="outline" className="sm" onClick={(e) => { e.stopPropagation(); openLogs(comp); }}>
+                                        <ScrollText className="h-3.5 w-3.5" /> Logs
+                                      </Button>
+                                      <Button variant="outline" className="sm" onClick={(e) => { e.stopPropagation(); setNewUserCompanyId(comp.id); setUserForm(EMPTY_USER_FORM); }}>
+                                        <UserPlus className="h-3.5 w-3.5" /> Novo Usuário
+                                      </Button>
+                                    </div>
                                   </div>
-                                </div>
-                                {users.length === 0 ? (
-                                  <p className="text-sm text-slate-500 text-center py-4">Nenhum usuário cadastrado</p>
-                                ) : (
-                                  <table className="w-full text-sm">
-                                    <thead>
-                                      <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-white/[0.08]">
-                                        <th className="pb-2 pr-4 font-medium">Nome</th>
-                                        <th className="pb-2 pr-4 font-medium">Email</th>
-                                        <th className="pb-2 pr-4 font-medium">Tipo</th>
-                                        <th className="pb-2 pr-4 font-medium">Status</th>
-                                        <th className="pb-2 font-medium text-right">Ações</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {users.map((u) => (
-                                        <tr key={u.id} className="border-b border-white/[0.05]">
-                                          <td className="py-2.5 pr-4 font-medium text-slate-100">{u.name}</td>
-                                          <td className="py-2.5 pr-4 text-slate-300">{u.email}</td>
-                                          <td className="py-2.5 pr-4">
-                                            <Badge tone={u.is_admin ? 'sky' : 'slate'}>{u.is_admin ? 'Admin' : 'Usuário'}</Badge>
-                                          </td>
-                                          <td className="py-2.5 pr-4">
-                                            <Badge tone={u.ativo ? 'sky' : 'slate'}>{u.ativo ? 'Ativo' : 'Inativo'}</Badge>
-                                          </td>
-                                          <td className="py-2.5 text-right">
-                                            <button
-                                              title={u.ativo ? 'Desativar' : 'Ativar'}
-                                              onClick={() => handleToggleUserAtivo(u.id, comp.id)}
-                                              className="text-slate-400 hover:text-slate-100"
-                                            >
-                                              {u.ativo
-                                                ? <ToggleRight className="h-5 w-5 text-emerald-400" />
-                                                : <ToggleLeft className="h-5 w-5" />}
-                                            </button>
-                                            <button
-                                              title="Excluir usuário"
-                                              onClick={() => setDeleteUserTarget({ user: u, companyId: comp.id })}
-                                              className="ml-3 p-0 border-0 bg-transparent text-slate-400 hover:text-red-400 inline-flex items-center justify-center"
-                                            >
-                                              <Trash2 className="h-4 w-4" />
-                                            </button>
-                                          </td>
+                                  {users.length === 0 ? (
+                                    <p className="adm-empty" style={{ padding: '16px 0' }}>Nenhum usuário cadastrado</p>
+                                  ) : (
+                                    <table className="adm-table adm-subtable">
+                                      <thead>
+                                        <tr>
+                                          <th>Nome</th>
+                                          <th>Email</th>
+                                          <th>Tipo</th>
+                                          <th>Status</th>
+                                          <th className="adm-right">Ações</th>
                                         </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                )}
+                                      </thead>
+                                      <tbody>
+                                        {users.map((u) => (
+                                          <tr key={u.id}>
+                                            <td>
+                                              <div className="adm-user-cell">
+                                                <Avatar name={u.name} tone={u.is_admin ? 'blue' : 'green'} size="sm" />
+                                                <span className="adm-td-name">{u.name}</span>
+                                              </div>
+                                            </td>
+                                            <td className="adm-td-muted">{u.email}</td>
+                                            <td><Badge tone={u.is_admin ? 'sky' : 'slate'}>{u.is_admin ? 'Admin' : 'Usuário'}</Badge></td>
+                                            <td><Badge tone={u.ativo ? 'green' : 'slate'}>{u.ativo ? 'Ativo' : 'Inativo'}</Badge></td>
+                                            <td className="adm-right">
+                                              <button title={u.ativo ? 'Desativar' : 'Ativar'} onClick={() => handleToggleUserAtivo(u.id, comp.id)} className="adm-iconbtn mut">
+                                                {u.ativo
+                                                  ? <ToggleRight className="h-5 w-5" style={{ color: '#37d39a' }} />
+                                                  : <ToggleLeft className="h-5 w-5" />}
+                                              </button>
+                                              <button title="Excluir usuário" onClick={() => setDeleteUserTarget({ user: u, companyId: comp.id })} className="adm-iconbtn del" style={{ marginLeft: 6 }}>
+                                                <Trash2 className="h-4 w-4" />
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           )}
@@ -776,7 +1547,9 @@ function CompaniesPanel({ token, onLogout }) {
               </div>
             )}
           </div>
-        </Card>
+        </div>
+        </>
+        )}
       </main>
 
       <Modal
@@ -785,30 +1558,22 @@ function CompaniesPanel({ token, onLogout }) {
         title="Cadastrar Nova Empresa"
         description="Crie a empresa e o primeiro usuário administrador dela"
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-3 p-4 rounded-lg bg-black/[0.2] border border-white/[0.08]">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
-              <Building2 className="h-4 w-4" /> Dados da Empresa
-            </div>
+        <form onSubmit={handleSubmit} className="adm-form">
+          <div className="adm-fieldset">
+            <div className="adm-fieldset-title"><Building2 className="h-4 w-4" /> Dados da Empresa</div>
             <div>
               <Label>Nome da Empresa</Label>
               <Input placeholder="Ex: Mercado Feirão" value={form.companyName} onChange={(e) => handleChange('companyName', e.target.value)} required />
             </div>
             <div>
               <Label>client_id (usado pelo agente do cliente)</Label>
-              <Input
-                placeholder="ex: mercado-feirao"
-                value={form.clientId}
-                onChange={(e) => handleChange('clientId', toSlug(e.target.value))}
-              />
-              <p className="text-xs text-slate-500 mt-1">Opcional aqui — pode deixar em branco e configurar depois. Só letras minúsculas, números e hífen.</p>
+              <Input placeholder="ex: mercado-feirao" value={form.clientId} onChange={(e) => handleChange('clientId', toSlug(e.target.value))} />
+              <p className="adm-hint">Opcional aqui — pode deixar em branco e configurar depois. Só letras minúsculas, números e hífen.</p>
             </div>
           </div>
 
-          <div className="space-y-3 p-4 rounded-lg bg-black/[0.2] border border-white/[0.08]">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
-              <Users className="h-4 w-4" /> Primeiro Usuário (Administrador)
-            </div>
+          <div className="adm-fieldset">
+            <div className="adm-fieldset-title"><Users className="h-4 w-4" /> Primeiro Usuário (Administrador)</div>
             <div>
               <Label>Nome</Label>
               <Input name="new-admin-name" placeholder="Nome de quem vai acessar" value={form.adminName} onChange={(e) => handleChange('adminName', e.target.value)} required />
@@ -823,10 +1588,10 @@ function CompaniesPanel({ token, onLogout }) {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="adm-modal-actions">
             <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              {submitting ? <Loader2 className="h-4 w-4 adm-spin" /> : <Check className="h-4 w-4" />}
               {submitting ? 'Cadastrando...' : 'Cadastrar Empresa'}
             </Button>
           </div>
@@ -838,8 +1603,9 @@ function CompaniesPanel({ token, onLogout }) {
         onClose={() => setNewUserCompanyId(null)}
         title="Novo Usuário"
         description="Crie um novo usuário para esta empresa"
+        size="sm"
       >
-        <form onSubmit={handleCreateUser} className="space-y-4">
+        <form onSubmit={handleCreateUser} className="adm-form">
           <div>
             <Label>Nome</Label>
             <Input name="new-user-name" placeholder="Nome do usuário" value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value })} required />
@@ -852,14 +1618,14 @@ function CompaniesPanel({ token, onLogout }) {
             <Label>Senha inicial</Label>
             <Input type="password" name="new-user-password" autoComplete="new-password" placeholder="Senha temporária" value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} required />
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-200 cursor-pointer">
+          <label className="adm-check">
             <input type="checkbox" checked={userForm.isAdmin} onChange={(e) => setUserForm({ ...userForm, isAdmin: e.target.checked })} />
             Administrador (acessa Implantação e cria outros usuários)
           </label>
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="adm-modal-actions">
             <Button type="button" variant="outline" onClick={() => setNewUserCompanyId(null)}>Cancelar</Button>
             <Button type="submit" disabled={creatingUser}>
-              {creatingUser ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+              {creatingUser ? <Loader2 className="h-4 w-4 adm-spin" /> : <UserPlus className="h-4 w-4" />}
               {creatingUser ? 'Criando...' : 'Criar Usuário'}
             </Button>
           </div>
@@ -873,21 +1639,19 @@ function CompaniesPanel({ token, onLogout }) {
         description={logsCompany ? `Eventos de autenticação de ${logsCompany.name}` : ''}
       >
         {loadingLogs ? (
-          <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
+          <div className="adm-loading-center"><Loader2 className="h-6 w-6 adm-spin" /></div>
         ) : logs.length === 0 ? (
-          <p className="text-sm text-slate-500 text-center py-8">Nenhum evento registrado ainda.</p>
+          <p className="adm-empty">Nenhum evento registrado ainda.</p>
         ) : (
-          <div className="space-y-2 max-h-96 overflow-y-auto">
+          <div className="adm-logs">
             {logs.map((log) => (
-              <div key={log.id} className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06]">
-                <div className="flex items-center justify-between mb-1">
-                  <Badge tone={log.event_type.includes('failed') || log.event_type.includes('blocked') || log.event_type === 'user_deactivated' ? 'sky' : 'sky'}>
-                    {EVENT_LABELS[log.event_type] || log.event_type}
-                  </Badge>
-                  <span className="text-xs text-slate-500">{new Date(log.created_at).toLocaleString('pt-BR')}</span>
+              <div key={log.id} className="adm-log">
+                <div className="adm-log-top">
+                  <Badge tone="sky">{EVENT_LABELS[log.event_type] || log.event_type}</Badge>
+                  <span className="adm-log-time">{new Date(log.created_at).toLocaleString('pt-BR')}</span>
                 </div>
-                <p className="text-sm text-slate-200">{log.description}</p>
-                <p className="text-xs text-slate-500 mt-1">por {log.performed_by}</p>
+                <p className="adm-log-desc">{log.description}</p>
+                <p className="adm-log-by">por {log.performed_by}</p>
               </div>
             ))}
           </div>
@@ -899,48 +1663,28 @@ function CompaniesPanel({ token, onLogout }) {
         onClose={() => setDeleteUserTarget(null)}
         title="Excluir usuário?"
         description={deleteUserTarget ? `Isso vai excluir permanentemente ${deleteUserTarget.user.name} (${deleteUserTarget.user.email}). Essa ação não pode ser desfeita.` : ''}
+        size="sm"
       >
-        <div className="flex justify-end gap-2">
+        <div className="adm-modal-actions">
           <Button variant="outline" onClick={() => setDeleteUserTarget(null)}>Cancelar</Button>
-          <Button
-            onClick={handleDeleteUser}
-            disabled={deletingUser}
-            className="!bg-red-600 hover:!bg-red-500 !text-white"
-          >
-            {deletingUser ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+          <Button variant="danger" onClick={handleDeleteUser} disabled={deletingUser}>
+            {deletingUser ? <Loader2 className="h-4 w-4 adm-spin" /> : <Trash2 className="h-4 w-4" />}
             {deletingUser ? 'Excluindo...' : 'Excluir'}
           </Button>
         </div>
       </Modal>
+
       <Modal
         open={deleteCompanyTarget !== null}
         onClose={() => setDeleteCompanyTarget(null)}
         title="Excluir empresa?"
-        description={
-          deleteCompanyTarget
-            ? `Excluir ${deleteCompanyTarget.name} removerá a empresa e seus usuários.`
-            : ''
-        }
+        description={deleteCompanyTarget ? `Excluir ${deleteCompanyTarget.name} removerá a empresa e seus usuários.` : ''}
+        size="sm"
       >
-        <div className="flex justify-end gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setDeleteCompanyTarget(null)}
-          >
-            Cancelar
-          </Button>
-
-          <Button
-            onClick={handleDeleteCompany}
-            disabled={deletingCompany}
-            className="!bg-red-600 hover:!bg-red-500 !text-white"
-          >
-            {deletingCompany ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4" />
-            )}
-
+        <div className="adm-modal-actions">
+          <Button variant="outline" onClick={() => setDeleteCompanyTarget(null)}>Cancelar</Button>
+          <Button variant="danger" onClick={handleDeleteCompany} disabled={deletingCompany}>
+            {deletingCompany ? <Loader2 className="h-4 w-4 adm-spin" /> : <Trash2 className="h-4 w-4" />}
             {deletingCompany ? 'Excluindo...' : 'Excluir Empresa'}
           </Button>
         </div>
@@ -949,41 +1693,26 @@ function CompaniesPanel({ token, onLogout }) {
   );
 }
 
-const EVENT_LABELS = {
-  login_success: 'Login',
-  login_failed: 'Login falhou',
-  login_blocked: 'Login bloqueado',
-  user_created: 'Usuário criado',
-  user_activated: 'Usuário ativado',
-  user_deactivated: 'Usuário desativado',
-  password_changed: 'Senha alterada',
-};
-
-// Neutraliza o fundo branco que o Chrome/Edge aplicam em campos preenchidos
-// por autofill/gerenciador de senhas, mantendo o tema escuro da página.
-const autofillFixStyles = `
-  .admin-input:-webkit-autofill,
-  .admin-input:-webkit-autofill:hover,
-  .admin-input:-webkit-autofill:focus {
-    -webkit-text-fill-color: #f1f5f9;
-    -webkit-box-shadow: 0 0 0 1000px #020617 inset;
-    transition: background-color 9999s ease-in-out 0s;
-    caret-color: #f1f5f9;
-  }
-`;
-
 export default function AdminPlatform() {
   const [token, setToken] = useState(localStorage.getItem(TOKEN_KEY));
+  const [department, setDepartment] = useState(localStorage.getItem(DEPT_KEY) || '');
 
   const handleLogout = () => {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(DEPT_KEY);
     setToken(null);
+    setDepartment('');
+  };
+
+  const handleLogin = (newToken, newDepartment) => {
+    setToken(newToken);
+    setDepartment(newDepartment);
   };
 
   return (
-    <>
-      <style>{autofillFixStyles}</style>
-      {token ? <CompaniesPanel token={token} onLogout={handleLogout} /> : <LoginGate onLogin={setToken} />}
-    </>
+    <div className="adm-scope">
+      <style>{STYLES}</style>
+      {token ? <CompaniesPanel token={token} department={department} onLogout={handleLogout} /> : <LoginGate onLogin={handleLogin} />}
+    </div>
   );
 }

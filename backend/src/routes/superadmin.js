@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const pool = require('../db/postgres');
 const { logActivity } = require('../services/activityLog');
+const { listSchedules, updateSchedule, triggerNow } = require('../services/syncScheduler');
 
 const router = express.Router();
 
@@ -28,6 +29,15 @@ async function requireSuperAdmin(req, res, next) {
 }
 
 router.use(requireSuperAdmin);
+
+// A tela de Sincronização (logs + agendamento) é restrita ao setor NPD
+// dentro da própria equipe Contagil — nem todo platform_admin deve ver.
+function requireNpd(req, res, next) {
+  if (req.user.department !== 'NPD') {
+    return res.status(403).json({ error: 'Acesso restrito ao setor NPD.' });
+  }
+  next();
+}
 
 // client_id precisa ser um slug: minúsculas, dígitos e hífens, sem espaço,
 // sem ser puramente numérico (pra não ser confundido com o id da empresa).
@@ -343,6 +353,108 @@ router.get('/companies/:id/logs', async (req, res) => {
   } catch (err) {
     console.error('Erro ao listar logs:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ===== SINCRONIZAÇÃO: LOGS E AGENDAMENTO =====
+// Restrito ao setor NPD, além do requireSuperAdmin já aplicado a todo o router.
+router.use('/sync', requireNpd);
+
+// GET /api/superadmin/sync/logs - Histórico de execuções dos jobs de
+// sincronização (vendas, mercadologico, setores), com filtros opcionais.
+router.get('/sync/logs', async (req, res) => {
+  try {
+    const { module, clientId, status, dateFrom, dateTo, limit } = req.query;
+    const conditions = [];
+    const params = [];
+
+    if (module) {
+      params.push(module);
+      conditions.push(`stl.module = $${params.length}`);
+    }
+    if (clientId) {
+      params.push(clientId);
+      conditions.push(`stl.client_id = $${params.length}`);
+    }
+    if (status) {
+      params.push(status);
+      conditions.push(`stl.status = $${params.length}`);
+    }
+    if (dateFrom) {
+      params.push(dateFrom);
+      conditions.push(`stl.created_at >= $${params.length}::date`);
+    }
+    if (dateTo) {
+      params.push(dateTo);
+      conditions.push(`stl.created_at < ($${params.length}::date + interval '1 day')`);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 500);
+
+    const result = await pool.query(
+      `SELECT stl.id, stl.module, stl.client_id, stl.company_id, c.name AS company_name,
+              stl.task_id, stl.status, stl.consulta_id, stl.message, stl.created_at
+       FROM sync_task_logs stl
+       LEFT JOIN companies c ON c.id = stl.company_id
+       ${where}
+       ORDER BY stl.created_at DESC
+       LIMIT ${safeLimit}`,
+      params
+    );
+
+    res.json({ logs: result.rows });
+  } catch (err) {
+    console.error('Erro ao listar logs de sincronização:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/superadmin/sync/schedules - Agendamento atual de cada módulo
+router.get('/sync/schedules', async (req, res) => {
+  try {
+    const schedules = await listSchedules();
+    res.json({ schedules });
+  } catch (err) {
+    console.error('Erro ao listar agendamentos:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/superadmin/sync/schedules/:module - Atualiza o cron de um módulo
+// e já reagenda o job em tempo real, sem precisar reiniciar o servidor.
+router.put('/sync/schedules/:module', async (req, res) => {
+  try {
+    const { module } = req.params;
+    const { cronExpression, enabled } = req.body;
+
+    if (!cronExpression) {
+      return res.status(400).json({ error: 'cronExpression é obrigatório.' });
+    }
+
+    await updateSchedule(module, cronExpression, enabled !== false);
+    res.json({ message: 'Agendamento atualizado com sucesso.' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// POST /api/superadmin/sync/run/:module - Disparo manual, fora do horário
+// agendado. Bloqueia se já houver uma execução desse módulo em andamento
+// (seja do cron, seja de outro disparo manual). Body opcional:
+// { clientIds: ['cliente-a', 'cliente-b'] } — se omitido/vazio, roda pra
+// todos os clientes.
+router.post('/sync/run/:module', async (req, res) => {
+  try {
+    const { module } = req.params;
+    const { clientIds } = req.body || {};
+    triggerNow(module, Array.isArray(clientIds) ? clientIds : null);
+    res.json({ message: 'Sincronização disparada. Acompanhe em Logs de sincronização.' });
+  } catch (err) {
+    if (err.code === 'ALREADY_RUNNING') {
+      return res.status(409).json({ error: err.message });
+    }
+    res.status(400).json({ error: err.message });
   }
 });
 

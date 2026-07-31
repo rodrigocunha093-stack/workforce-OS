@@ -20,8 +20,12 @@ pool.on('error', (err) => {
   console.error('Details:', err);
 });
 
+let loggedFirstConnection = false;
 pool.on('connect', () => {
-  console.log('✅ Conexão com PostgreSQL estabelecida!');
+  if (!loggedFirstConnection) {
+    console.log('✅ Conexão com PostgreSQL estabelecida!');
+    loggedFirstConnection = true;
+  }
 });
 
 module.exports = pool;

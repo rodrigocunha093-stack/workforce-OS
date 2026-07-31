@@ -1,5 +1,8 @@
 const axios = require('axios');
 const pool = require('../db/postgres');
+const { runLimited, waitForConsulta } = require('./syncQueue');
+const { logStart, logSuccess, logError, logSummary, shortId, formatAxiosError } = require('./syncLogger');
+const { recordTaskLog } = require('./syncPersist');
 
 const ORCHESTRATOR_URL = 'http://10.0.100.204:8040/api/v1/consultas';
 const API_KEY = process.env.API_KEY_VENDAS;
@@ -17,12 +20,12 @@ async function getLastIndex(companyId) {
     );
     return result.rows[0]?.max ?? 0;
   } catch (err) {
-    console.error(`[syncVendas] Erro ao consultar indices_vendas (company=${companyId}):`, err.message);
+    logError('vendas', String(companyId), `erro ao consultar indices_vendas: ${err.message}`);
     return 0;
   }
 }
 
-async function dispatchJob(clientId, taskId, params = {}) {
+async function dispatchJob(clientId, companyId, taskId, params = {}) {
   try {
     const payload = {
       client_id: clientId,
@@ -33,54 +36,57 @@ async function dispatchJob(clientId, taskId, params = {}) {
       payload.params = params;
     }
 
-    const res = await axios.post(ORCHESTRATOR_URL, payload, {
-      headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      timeout: 10000,
+    const data = await runLimited(clientId, async () => {
+      const res = await axios.post(ORCHESTRATOR_URL, payload, {
+        headers: {
+          'Authorization': `Bearer ${API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000,
+      });
+
+      // Só libera a vaga desse cliente quando o agente terminar de fato
+      // (callback com o resultado), não quando o disparo é só "aceito".
+      await waitForConsulta(res.data?.consulta_id);
+      return res.data;
     });
 
-    console.log(`[syncVendas] Job ${taskId} despachado pra ${clientId}:`, res.data);
-    return res.data;
+    logSuccess('vendas', clientId, `${taskId} · ${shortId(data?.consulta_id)}`);
+    await recordTaskLog({ module: 'vendas', clientId, companyId, taskId, status: 'success', consultaId: data?.consulta_id });
+    return data;
   } catch (err) {
-    console.error(`[syncVendas] Erro ao despachar job ${taskId} (${clientId}):`, {
-      status: err.response?.status,
-      statusText: err.response?.statusText,
-      data: err.response?.data,
-      message: err.message,
-    });
+    const message = formatAxiosError(err);
+    logError('vendas', clientId, `${taskId} — ${message}`);
+    await recordTaskLog({ module: 'vendas', clientId, companyId, taskId, status: 'error', message });
     throw err;
   }
 }
 
 async function syncClientVendas(companyId, clientId) {
   try {
-    console.log(`[syncVendas] Iniciando sincronização: empresa=${companyId}, client_id=${clientId}`);
-
-    // Passo 1: Consultar último índice
     const idInicio = await getLastIndex(companyId);
-    console.log(`[syncVendas] id_inicio para ${clientId}: ${idInicio}`);
+    logStart('vendas', clientId, `iniciando (empresa=${companyId}, id_inicio=${idInicio})`);
 
-    // Passo 2: Despachar ambas as tarefas
     await Promise.all([
-      dispatchJob(clientId, 'venda', { id_inicio: idInicio }),
-      dispatchJob(clientId, 'indices-escala-vendas'),
+      dispatchJob(clientId, companyId, 'venda', { id_inicio: idInicio }),
+      dispatchJob(clientId, companyId, 'indices-escala-vendas'),
     ]);
-
-    console.log(`[syncVendas] Tarefas despachadas com sucesso para ${clientId}`);
   } catch (err) {
-    console.error(`[syncVendas] Erro na sincronização de ${clientId}:`, err.message);
+    logError('vendas', clientId, `falha na sincronização: ${err.message}`);
   }
 }
 
-async function syncAllCompanies() {
+// `clientIds`: opcional — se vier com itens, roda só pra esses clientes
+// (disparo manual filtrado); se vier vazio/undefined, roda pra todos (cron
+// e disparo manual "todos os clientes").
+async function syncAllCompanies(clientIds = null) {
   try {
-    console.log('[syncVendas] Iniciando sincronização de todas as empresas...');
-    const result = await pool.query('SELECT id, client_id FROM companies WHERE client_id IS NOT NULL');
+    const result = (clientIds && clientIds.length > 0)
+      ? await pool.query('SELECT id, client_id FROM companies WHERE client_id = ANY($1)', [clientIds])
+      : await pool.query('SELECT id, client_id FROM companies WHERE client_id IS NOT NULL');
 
     if (result.rows.length === 0) {
-      console.log('[syncVendas] Nenhuma empresa com client_id encontrada.');
+      logSummary('vendas', 'nenhuma empresa com client_id encontrada.');
       return;
     }
 
@@ -91,9 +97,9 @@ async function syncAllCompanies() {
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
-    console.log('[syncVendas] Sincronização completada.');
+    logSummary('vendas', `concluído (${result.rows.length} empresa(s))`);
   } catch (err) {
-    console.error('[syncVendas] Erro ao sincronizar empresas:', err.message);
+    logSummary('vendas', `erro ao sincronizar empresas: ${err.message}`);
   }
 }
 

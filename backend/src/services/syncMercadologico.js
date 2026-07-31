@@ -1,5 +1,8 @@
 const axios = require('axios');
 const pool = require('../db/postgres');
+const { runLimited, waitForConsulta } = require('./syncQueue');
+const { logStart, logSuccess, logError, logSummary, shortId, formatAxiosError } = require('./syncLogger');
+const { recordTaskLog } = require('./syncPersist');
 
 const ORCHESTRATOR_URL = 'http://10.0.100.204:8040/api/v1/consultas';
 const API_KEY = process.env.API_KEY_MERCADOLOGICO;
@@ -9,7 +12,7 @@ console.log('[syncMercadologico] Inicialização:', {
   API_KEY: API_KEY ? `${API_KEY.substring(0, 10)}...` : 'NÃO DEFINIDA',
 });
 
-async function dispatchJob(clientId, taskId, params = {}) {
+async function dispatchJob(clientId, companyId, taskId, params = {}) {
   try {
     const payload = {
       client_id: clientId,
@@ -20,55 +23,54 @@ async function dispatchJob(clientId, taskId, params = {}) {
       payload.params = params;
     }
 
-    const res = await axios.post(ORCHESTRATOR_URL, payload, {
-      headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      timeout: 10000,
+    const data = await runLimited(clientId, async () => {
+      const res = await axios.post(ORCHESTRATOR_URL, payload, {
+        headers: {
+          'Authorization': `Bearer ${API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000,
+      });
+
+      await waitForConsulta(res.data?.consulta_id);
+      return res.data;
     });
 
-    console.log(`[syncMercadologico] Job ${taskId} despachado pra ${clientId}:`, res.data);
-    return res.data;
+    logSuccess('mercadologico', clientId, `${taskId} · ${shortId(data?.consulta_id)}`);
+    await recordTaskLog({ module: 'mercadologico', clientId, companyId, taskId, status: 'success', consultaId: data?.consulta_id });
+    return data;
   } catch (err) {
-    console.error(`[syncMercadologico] Erro ao despachar job ${taskId} (${clientId}):`, {
-      status: err.response?.status,
-      statusText: err.response?.statusText,
-      data: err.response?.data,
-      message: err.message,
-    });
+    const message = formatAxiosError(err);
+    logError('mercadologico', clientId, `${taskId} — ${message}`);
+    await recordTaskLog({ module: 'mercadologico', clientId, companyId, taskId, status: 'error', message });
     throw err;
   }
 }
 
 async function syncClientMercadologico(companyId, clientId) {
   try {
-    console.log(`[syncMercadologico] Iniciando sincronização: empresa=${companyId}, client_id=${clientId}`);
-
     // Pega o maior erp_id já sincronizado
     const result = await pool.query(
       'SELECT MAX(erp_id) AS max FROM mercadologicos WHERE company_id = $1',
       [companyId]
     );
     const idInicio = result.rows[0]?.max ?? 0;
-    console.log(`[syncMercadologico] id_inicio para ${clientId}: ${idInicio}`);
+    logStart('mercadologico', clientId, `iniciando (empresa=${companyId}, id_inicio=${idInicio})`);
 
-    // Dispara a tarefa
-    await dispatchJob(clientId, 'mercadologico', { id_inicio: idInicio });
-
-    console.log(`[syncMercadologico] Tarefa despachada com sucesso para ${clientId}`);
+    await dispatchJob(clientId, companyId, 'mercadologico', { id_inicio: idInicio });
   } catch (err) {
-    console.error(`[syncMercadologico] Erro na sincronização de ${clientId}:`, err.message);
+    logError('mercadologico', clientId, `falha na sincronização: ${err.message}`);
   }
 }
 
-async function syncAllCompanies() {
+async function syncAllCompanies(clientIds = null) {
   try {
-    console.log('[syncMercadologico] Iniciando sincronização de todas as empresas...');
-    const result = await pool.query('SELECT id, client_id FROM companies WHERE client_id IS NOT NULL');
+    const result = (clientIds && clientIds.length > 0)
+      ? await pool.query('SELECT id, client_id FROM companies WHERE client_id = ANY($1)', [clientIds])
+      : await pool.query('SELECT id, client_id FROM companies WHERE client_id IS NOT NULL');
 
     if (result.rows.length === 0) {
-      console.log('[syncMercadologico] Nenhuma empresa com client_id encontrada.');
+      logSummary('mercadologico', 'nenhuma empresa com client_id encontrada.');
       return;
     }
 
@@ -77,9 +79,9 @@ async function syncAllCompanies() {
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
-    console.log('[syncMercadologico] Sincronização completada.');
+    logSummary('mercadologico', `concluído (${result.rows.length} empresa(s))`);
   } catch (err) {
-    console.error('[syncMercadologico] Erro ao sincronizar empresas:', err.message);
+    logSummary('mercadologico', `erro ao sincronizar empresas: ${err.message}`);
   }
 }
 
