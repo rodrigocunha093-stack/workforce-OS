@@ -122,7 +122,7 @@ export default function Logs() {
     const info = EVENT_LABELS[eventType] || { label: eventType, tone: 'sky' };
     const t = tones[info.tone];
     return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '4px 11px', borderRadius: '999px', fontSize: '11px', fontWeight: 600, background: t.bg, color: t.color, border: `1px solid ${t.border}` }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '4px 11px', borderRadius: '999px', fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap', background: t.bg, color: t.color, border: `1px solid ${t.border}` }}>
         <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: t.color, boxShadow: `0 0 8px ${t.color}` }} />
         {info.label}
       </span>

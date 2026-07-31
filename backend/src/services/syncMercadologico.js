@@ -71,6 +71,13 @@ async function syncAllCompanies(clientIds = null) {
 
     if (result.rows.length === 0) {
       logSummary('mercadologico', 'nenhuma empresa com client_id encontrada.');
+      await recordTaskLog({
+        module: 'mercadologico',
+        clientId: (clientIds && clientIds.length > 0) ? clientIds.join(',') : 'todos',
+        taskId: 'mercadologico',
+        status: 'error',
+        message: 'Nenhuma empresa ativa com client_id cadastrado para sincronizar.',
+      });
       return;
     }
 

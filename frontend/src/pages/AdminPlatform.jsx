@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import {
   Shield, Building2, AlertCircle, Loader2, Check, Lock, LogOut, Plus, Users, X,
   ChevronDown, ChevronUp, ToggleLeft, ToggleRight, UserPlus, Eye, EyeOff, ScrollText, Pencil, Trash2, Play, Mail
@@ -42,6 +42,18 @@ function toSlug(value) {
 // no começo/fim, já que o texto está "fechado".
 function finalizeSlug(value) {
   return toSlug(value).replace(/-$/, '');
+}
+
+// Padroniza nomes de empresa/pessoa (Title Case), evitando que o mesmo
+// dado fique com grafias diferentes dependendo de quem cadastrou
+// (TUDO MAIÚSCULO, tudo minúsculo, etc).
+function toTitleCase(value) {
+  return value.replace(/\p{L}+/gu, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+}
+
+// Padroniza email: sempre minúsculo e sem espaços.
+function toEmail(value) {
+  return value.toLowerCase().replace(/\s+/g, '');
 }
 
 // Iniciais para avatar (até 2 letras).
@@ -441,6 +453,12 @@ const STYLES = `
 .adm-sched-status { margin: 0; font-size: 11.5px; font-weight: 600; height: 15px; display: flex; align-items: center; gap: 5px; }
 .adm-sched-status.saving { color: var(--muted); }
 .adm-sched-status.saved { color: var(--green); }
+.adm-sched-result {
+  margin: 8px 0 0; padding: 8px 10px; border-radius: 9px; font-size: 12px; font-weight: 600;
+  display: flex; align-items: center; gap: 6px; line-height: 1.4;
+}
+.adm-sched-result.success { color: var(--green); background: rgba(55,211,154,0.1); border: 1px solid rgba(55,211,154,0.3); }
+.adm-sched-result.error { color: var(--red); background: rgba(242,101,122,0.1); border: 1px solid rgba(242,101,122,0.3); }
 
 /* Painéis que não devem esticar até o fim da tela (conteúdo curto) */
 .adm-panel.auto { flex: none; }
@@ -671,8 +689,23 @@ function SyncLogsPanel({ token, clients }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ module: '', status: '', clientId: '', dateFrom: '', dateTo: '' });
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
+
+  const handleClearLogs = async () => {
+    setClearing(true);
+    try {
+      await fetch('/api/superadmin/sync/logs', { method: 'DELETE', headers: authHeaders() });
+      setConfirmClear(false);
+      await loadLogs();
+    } catch (err) {
+      console.error('Erro ao limpar logs de sincronização:', err);
+    } finally {
+      setClearing(false);
+    }
+  };
 
   const loadLogs = async () => {
     setLoading(true);
@@ -706,7 +739,12 @@ function SyncLogsPanel({ token, clients }) {
           <h2>Logs de sincronização</h2>
           <p>Histórico de execução dos jobs de vendas, mercadológico e setores por cliente</p>
         </div>
-        <span className="adm-count-pill">{logs.length} {logs.length === 1 ? 'registro' : 'registros'}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span className="adm-count-pill">{logs.length} {logs.length === 1 ? 'registro' : 'registros'}</span>
+          <Button variant="danger" className="sm" onClick={() => setConfirmClear(true)} disabled={logs.length === 0}>
+            <Trash2 className="h-4 w-4" /> Limpar histórico
+          </Button>
+        </div>
       </div>
       <div className="adm-panel-body">
         <div className="adm-filters" style={{ marginBottom: 16 }}>
@@ -798,6 +836,22 @@ function SyncLogsPanel({ token, clients }) {
           </div>
         )}
       </div>
+
+      <Modal
+        open={confirmClear}
+        onClose={() => setConfirmClear(false)}
+        title="Limpar histórico de sincronização?"
+        description="Isso vai apagar permanentemente todos os registros de logs de sincronização (vendas, mercadológico e setores). Essa ação não pode ser desfeita."
+        size="sm"
+      >
+        <div className="adm-modal-actions">
+          <Button variant="outline" onClick={() => setConfirmClear(false)}>Cancelar</Button>
+          <Button variant="danger" onClick={handleClearLogs} disabled={clearing}>
+            {clearing ? <Loader2 className="h-4 w-4 adm-spin" /> : <Trash2 className="h-4 w-4" />}
+            {clearing ? 'Limpando...' : 'Limpar histórico'}
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -810,6 +864,8 @@ function SyncSchedulesPanel({ token, clients }) {
   const [error, setError] = useState('');
   const [pickerOpenModule, setPickerOpenModule] = useState(null);
   const [selectedClients, setSelectedClients] = useState({}); // module -> [clientId, ...] (vazio = todos)
+  const [runResult, setRunResult] = useState({}); // module -> { status: 'success'|'error', message }
+  const triggerTimeRef = useRef({}); // module -> timestamp ISO de quando o disparo manual começou
 
   const authHeaders = () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` });
 
@@ -836,6 +892,31 @@ function SyncSchedulesPanel({ token, clients }) {
   // Acompanha se algum módulo está executando agora (disparo manual ou
   // cron), pra desabilitar o botão de disparo manual enquanto isso — sem
   // sobrescrever o que o usuário estiver digitando no campo de cron.
+  // Busca os logs gravados desde o disparo manual daquele módulo pra saber
+  // se terminou com sucesso ou erro (o disparo em si é fire-and-forget, só
+  // dá pra saber o resultado consultando o que foi de fato registrado).
+  const checkRunResult = async (module) => {
+    const since = triggerTimeRef.current[module];
+    try {
+      const res = await fetch(`/api/superadmin/sync/logs?module=${module}&limit=20`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      const relevant = since
+        ? (data.logs || []).filter((l) => new Date(l.created_at).getTime() >= since)
+        : (data.logs || []);
+      const hasError = relevant.some((l) => l.status === 'error');
+      setRunResult((prev) => ({
+        ...prev,
+        [module]: hasError
+          ? { status: 'error', message: relevant.find((l) => l.status === 'error')?.message || 'Erro na sincronização.' }
+          : { status: 'success', message: 'Sincronização concluída com sucesso.' },
+      }));
+      setTimeout(() => setRunResult((prev) => ({ ...prev, [module]: null })), 6000);
+    } catch (err) {
+      // silencioso — resultado é só um complemento visual
+    }
+  };
+
   const pollRunning = async () => {
     try {
       const res = await fetch('/api/superadmin/sync/schedules', { headers: authHeaders() });
@@ -843,7 +924,9 @@ function SyncSchedulesPanel({ token, clients }) {
         const data = await res.json();
         setSchedules((prev) => prev.map((s) => {
           const fresh = (data.schedules || []).find((f) => f.module === s.module);
-          return fresh ? { ...s, running: fresh.running } : s;
+          if (!fresh) return s;
+          if (s.running && !fresh.running) checkRunResult(s.module);
+          return { ...s, running: fresh.running };
         }));
       }
     } catch (err) {
@@ -858,6 +941,8 @@ function SyncSchedulesPanel({ token, clients }) {
 
   const triggerRun = async (module) => {
     setError('');
+    setRunResult((prev) => ({ ...prev, [module]: null }));
+    triggerTimeRef.current[module] = Date.now();
     setPickerOpenModule(null);
     setSchedules((prev) => prev.map((s) => (s.module === module ? { ...s, running: true } : s)));
     try {
@@ -992,6 +1077,14 @@ function SyncSchedulesPanel({ token, clients }) {
                   {s.running ? <Loader2 className="h-4 w-4 adm-spin" /> : <Play className="h-4 w-4" />}
                   {s.running ? 'Executando...' : 'Disparar agora'}
                 </Button>
+                {runResult[s.module] && (
+                  <p className={`adm-sched-result ${runResult[s.module].status}`}>
+                    {runResult[s.module].status === 'error'
+                      ? <AlertCircle className="h-3.5 w-3.5" />
+                      : <Check className="h-3.5 w-3.5" />}
+                    {runResult[s.module].message}
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -1119,6 +1212,12 @@ function CompaniesPanel({ token, department, onLogout }) {
   const [deleteUserTarget, setDeleteUserTarget] = useState(null);
   const [deletingUser, setDeletingUser] = useState(false);
 
+  // Redefinir senha de um usuário (uso do time Contagil quando o cliente esquece a senha)
+  const [resetPasswordTarget, setResetPasswordTarget] = useState(null);
+  const [newPasswordDraft, setNewPasswordDraft] = useState('');
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [resetPasswordError, setResetPasswordError] = useState('');
+
   // Excluir empresa
   const [deleteCompanyTarget, setDeleteCompanyTarget] = useState(null);
   const [deletingCompany, setDeletingCompany] = useState(false);
@@ -1210,6 +1309,33 @@ function CompaniesPanel({ token, department, onLogout }) {
       setError(err.message);
     } finally {
       setDeletingUser(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    if (!resetPasswordTarget) return;
+    if (newPasswordDraft.length < 6) {
+      setResetPasswordError('A nova senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+    setResettingPassword(true);
+    setResetPasswordError('');
+    try {
+      const res = await fetch(`/api/superadmin/users/${resetPasswordTarget.user.id}/password`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({ newPassword: newPasswordDraft }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao redefinir senha');
+      setSuccess(`Senha de "${resetPasswordTarget.user.name}" redefinida com sucesso.`);
+      setResetPasswordTarget(null);
+      setNewPasswordDraft('');
+    } catch (err) {
+      setResetPasswordError(err.message);
+    } finally {
+      setResettingPassword(false);
     }
   };
 
@@ -1555,6 +1681,9 @@ function CompaniesPanel({ token, department, onLogout }) {
                                                   ? <ToggleRight className="h-5 w-5" style={{ color: '#37d39a' }} />
                                                   : <ToggleLeft className="h-5 w-5" />}
                                               </button>
+                                              <button title="Redefinir senha" onClick={() => { setResetPasswordTarget({ user: u, companyId: comp.id }); setNewPasswordDraft(''); }} className="adm-iconbtn mut" style={{ marginLeft: 6 }}>
+                                                <Lock className="h-4 w-4" />
+                                              </button>
                                               <button title="Excluir usuário" onClick={() => setDeleteUserTarget({ user: u, companyId: comp.id })} className="adm-iconbtn del" style={{ marginLeft: 6 }}>
                                                 <Trash2 className="h-4 w-4" />
                                               </button>
@@ -1592,7 +1721,7 @@ function CompaniesPanel({ token, department, onLogout }) {
             <div className="adm-fieldset-title"><Building2 className="h-4 w-4" /> Dados da Empresa</div>
             <div>
               <Label>Nome da Empresa</Label>
-              <Input placeholder="Ex: Mercado Feirão" value={form.companyName} onChange={(e) => handleChange('companyName', e.target.value)} required />
+              <Input placeholder="Ex: Mercado Feirão" value={form.companyName} onChange={(e) => handleChange('companyName', toTitleCase(e.target.value))} required />
             </div>
             <div>
               <Label>client_id (usado pelo agente do cliente)</Label>
@@ -1605,11 +1734,11 @@ function CompaniesPanel({ token, department, onLogout }) {
             <div className="adm-fieldset-title"><Users className="h-4 w-4" /> Primeiro Usuário (Administrador)</div>
             <div>
               <Label>Nome</Label>
-              <Input name="new-admin-name" placeholder="Nome de quem vai acessar" value={form.adminName} onChange={(e) => handleChange('adminName', e.target.value)} required />
+              <Input name="new-admin-name" placeholder="Nome de quem vai acessar" value={form.adminName} onChange={(e) => handleChange('adminName', toTitleCase(e.target.value))} required />
             </div>
             <div>
               <Label>Email</Label>
-              <Input type="email" name="new-admin-email" placeholder="email@cliente.com" value={form.adminEmail} onChange={(e) => handleChange('adminEmail', e.target.value)} required />
+              <Input type="email" name="new-admin-email" placeholder="email@cliente.com" value={form.adminEmail} onChange={(e) => handleChange('adminEmail', toEmail(e.target.value))} required />
             </div>
             <div>
               <Label>Senha inicial</Label>
@@ -1673,11 +1802,11 @@ Senha: ${credentialsInfo.adminPassword}`}</pre>
         <form onSubmit={handleCreateUser} className="adm-form">
           <div>
             <Label>Nome</Label>
-            <Input name="new-user-name" placeholder="Nome do usuário" value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value })} required />
+            <Input name="new-user-name" placeholder="Nome do usuário" value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: toTitleCase(e.target.value) })} required />
           </div>
           <div>
             <Label>Email</Label>
-            <Input type="email" name="new-user-email" placeholder="email@cliente.com" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} required />
+            <Input type="email" name="new-user-email" placeholder="email@cliente.com" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: toEmail(e.target.value) })} required />
           </div>
           <div>
             <Label>Senha inicial</Label>
@@ -1737,6 +1866,35 @@ Senha: ${credentialsInfo.adminPassword}`}</pre>
             {deletingUser ? 'Excluindo...' : 'Excluir'}
           </Button>
         </div>
+      </Modal>
+
+      <Modal
+        open={resetPasswordTarget !== null}
+        onClose={() => { setResetPasswordTarget(null); setResetPasswordError(''); }}
+        title="Redefinir senha"
+        description={resetPasswordTarget ? `Defina uma nova senha para ${resetPasswordTarget.user.name} (${resetPasswordTarget.user.email}).` : ''}
+        size="sm"
+      >
+        <form onSubmit={handleResetPassword} className="adm-form">
+          {resetPasswordError && <Alert variant="destructive">{resetPasswordError}</Alert>}
+          <div>
+            <Label>Nova senha</Label>
+            <Input
+              type="text"
+              placeholder="Senha temporária"
+              value={newPasswordDraft}
+              onChange={(e) => setNewPasswordDraft(e.target.value)}
+              required
+            />
+          </div>
+          <div className="adm-modal-actions">
+            <Button type="button" variant="outline" onClick={() => { setResetPasswordTarget(null); setResetPasswordError(''); }}>Cancelar</Button>
+            <Button type="submit" disabled={resettingPassword}>
+              {resettingPassword ? <Loader2 className="h-4 w-4 adm-spin" /> : <Lock className="h-4 w-4" />}
+              {resettingPassword ? 'Salvando...' : 'Redefinir senha'}
+            </Button>
+          </div>
+        </form>
       </Modal>
 
       <Modal

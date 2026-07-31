@@ -340,6 +340,45 @@ router.patch('/users/:id/toggle-ativo', async (req, res) => {
   }
 });
 
+// PATCH /api/superadmin/users/:id/password - Redefine a senha de um usuário
+// de qualquer empresa. Uso interno da equipe Contagil quando o cliente
+// esquece a senha e pede reset (não exige a senha atual, diferente do
+// autoatendimento em /api/me).
+router.patch('/users/:id/password', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'A nova senha deve ter pelo menos 6 caracteres.' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const result = await pool.query(
+      'UPDATE users SET password_hash = $1 WHERE id = $2 RETURNING id, name, email, company_id',
+      [hashedPassword, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+
+    const updatedUser = result.rows[0];
+    await logActivity({
+      companyId: updatedUser.company_id,
+      userId: updatedUser.id,
+      eventType: 'password_changed',
+      description: `${req.platformAdminName} (Contagil) redefiniu a senha do usuário ${updatedUser.name} (${updatedUser.email})`,
+      performedBy: req.platformAdminName,
+    });
+
+    res.json({ message: 'Senha redefinida com sucesso.' });
+  } catch (err) {
+    console.error('Erro ao redefinir senha do usuário:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/superadmin/companies/:id/logs - Logs de auditoria de qualquer
 // empresa (a equipe Contagil pode ver de todas).
 router.get('/companies/:id/logs', async (req, res) => {
@@ -406,6 +445,19 @@ router.get('/sync/logs', async (req, res) => {
     res.json({ logs: result.rows });
   } catch (err) {
     console.error('Erro ao listar logs de sincronização:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/superadmin/sync/logs - Limpa todo o histórico de logs de
+// sincronização. Ação destrutiva e irreversível, restrita ao setor NPD
+// (já garantido pelo router.use('/sync', requireNpd) acima).
+router.delete('/sync/logs', async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM sync_task_logs');
+    res.json({ message: 'Logs de sincronização limpos com sucesso.', deleted: result.rowCount });
+  } catch (err) {
+    console.error('Erro ao limpar logs de sincronização:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
