@@ -255,35 +255,49 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
   return (
     <div className="esc-container">
       <style>{`
+        @keyframes esc-dot {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%      { opacity: .4; transform: scale(.75); }
+        }
+
         .esc-container{
-          --esc-accent:#2563eb;
-          --esc-accent-2:#3b82f6;
-          --esc-accent-3:#7cb0f5;
-          --esc-text:#eef2f8;
-          --esc-muted:rgba(203,213,225,.62);
-          --esc-faint:rgba(203,213,225,.4);
-          --esc-line:rgba(148,163,184,.14);
-          --esc-card:linear-gradient(180deg,#16233a 0%,#111c2e 100%);
-          --esc-surface:rgba(148,163,184,.06);
+          --esc-accent:#4aa8ff;
+          --esc-accent-2:#6cc0ff;
+          --esc-accent-3:#bcd8ff;
+          --esc-text:#e8eef5;
+          --esc-muted:#94a3b8;
+          --esc-faint:rgba(148,163,184,.55);
+          --esc-line:rgba(255,255,255,.09);
+          --esc-card:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+          --esc-surface:rgba(255,255,255,.04);
+          --esc-grad:linear-gradient(135deg,#6cc0ff,#3a7bff);
+          --esc-glow:0 12px 28px -12px rgba(74,168,255,.7), inset 0 1px 0 rgba(255,255,255,.4);
           position:relative;display:flex;flex-direction:column;gap:18px;
-          padding:24px;border-radius:20px;color:var(--esc-text);
-          font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
-          background:radial-gradient(1200px 600px at 50% -10%, #15365c 0%, transparent 60%),
-                     linear-gradient(160deg,#102a4a 0%,#0a1c33 100%);
+          color:var(--esc-text);
+          font-family:inherit;
+          /* container transparente: evita "card dentro de card" */
+          background:transparent;
         }
 
         /* ---------- Section Head ---------- */
         .esc-section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;}
-        .esc-eyebrow{margin:0 0 8px;color:var(--esc-accent-3);font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;}
-        .esc-section-head h2{margin:0;font-size:25px;line-height:1.2;font-weight:800;letter-spacing:-.5px;color:var(--esc-text);max-width:850px;text-shadow:0 8px 24px rgba(0,0,0,.35);}
+        .esc-eyebrow{display:inline-flex;align-items:center;gap:8px;margin:0 0 12px;padding:5px 12px;border-radius:999px;
+          background:rgba(74,168,255,.08);border:1px solid rgba(74,168,255,.22);
+          color:#bcd8ff;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;}
+        .esc-eyebrow::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--esc-accent);
+          box-shadow:0 0 10px var(--esc-accent);animation:esc-dot 1.8s ease-in-out infinite;}
+        .esc-section-head h2{margin:0;font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-.02em;max-width:850px;
+          background:linear-gradient(180deg,#ffffff 0%,#b9d4ff 100%);
+          -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
         .esc-soft-pill{padding:7px 14px;border-radius:999px;font-size:12.5px;font-weight:600;color:#cfe0f7;
           background:var(--esc-surface);border:1px solid var(--esc-line);}
 
-        /* ---------- Generic Panel ---------- */
+        /* ---------- Generic Panel (glass) ---------- */
         .esc-panel{
-          position:relative;padding:18px;border-radius:16px;background:var(--esc-card);
+          position:relative;padding:20px;border-radius:18px;background:var(--esc-card);
           border:1px solid var(--esc-line);
-          box-shadow:0 20px 50px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04);
+          box-shadow:0 30px 80px -40px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.06);
+          backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
         }
 
         /* ---------- Week Selector ---------- */
@@ -294,28 +308,28 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
           background:var(--esc-surface);border:1px solid var(--esc-line);color:var(--esc-text);
           outline:none;transition:.16s;
         }
-        .esc-select:focus{border-color:var(--esc-accent-2);box-shadow:0 0 0 3px rgba(59,130,246,.18);}
-        .esc-select option{
-          background:#16233a;color:#eef2f8;padding:8px;border:none;
-        }
-        .esc-select option:checked{
-          background:var(--esc-accent);color:#fff;
-        }
+        .esc-select:focus{border-color:var(--esc-accent);box-shadow:0 0 0 3px rgba(74,168,255,.18);}
+        .esc-select option{background:#0f1b33;color:#eef2f8;padding:8px;border:none;}
+        .esc-select option:checked{background:var(--esc-accent);color:#fff;}
         .esc-week-hint{min-width:200px;font-size:12.5px;color:var(--esc-muted);}
 
         /* ---------- Scenario Cards ---------- */
         .esc-scenario-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;}
         .esc-scenario-card{
-          padding:18px;border-radius:14px;background:var(--esc-surface);
+          position:relative;overflow:hidden;padding:18px;border-radius:14px;background:var(--esc-surface);
           border:1px solid var(--esc-line);transition:.18s;
         }
-        .esc-scenario-card:hover{border-color:rgba(96,165,250,.4);transform:translateY(-2px);}
+        .esc-scenario-card::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;
+          background:var(--esc-grad);opacity:.85;}
+        .esc-scenario-card:hover{border-color:rgba(74,168,255,.4);transform:translateY(-2px);
+          box-shadow:0 18px 40px -24px rgba(74,168,255,.5);}
         .esc-scenario-tag{color:var(--esc-faint);font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;}
         .esc-scenario-card h3{margin:12px 0 18px;font-size:17px;font-weight:700;color:var(--esc-text);}
         .esc-scenario-rows{font-size:12.5px;color:var(--esc-muted);line-height:2;}
         .esc-scenario-rows strong{color:#dbe6f5;font-weight:600;}
         .esc-scenario-rows span{float:right;color:var(--esc-text);font-weight:600;}
-        .esc-empty{grid-column:1 / -1;padding:32px;text-align:center;color:var(--esc-muted);font-size:14px;}
+        .esc-empty{grid-column:1 / -1;padding:32px;text-align:center;color:var(--esc-muted);font-size:14px;
+          background:var(--esc-surface);border:1px dashed var(--esc-line);border-radius:14px;}
 
         /* ---------- Panel Head ---------- */
         .esc-panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
@@ -324,14 +338,16 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
         .esc-panel-head p{margin:0;font-size:12.5px;color:var(--esc-muted);}
 
         /* ---------- Buttons ---------- */
-        .esc-btn{padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;
-          border:none;background:var(--esc-accent);color:#fff;transition:.16s;}
-        .esc-btn:hover{background:#1d4ed8;}
+        .esc-btn{padding:10px 16px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;
+          border:none;background:var(--esc-grad);color:#fff;box-shadow:var(--esc-glow);transition:.16s;}
+        .esc-btn:hover{filter:brightness(1.08);}
+        .esc-btn:active{transform:translateY(1px);}
+        .esc-btn:disabled{opacity:.55;cursor:not-allowed;filter:none;box-shadow:none;}
         .esc-ghost{padding:5px 11px;border-radius:9px;font-size:11px;font-weight:600;cursor:pointer;
           color:#c4ccd8;background:var(--esc-surface);border:1px solid var(--esc-line);transition:.16s;}
-        .esc-ghost:hover{background:rgba(148,163,184,.12);border-color:rgba(148,163,184,.28);color:var(--esc-text);}
-        .esc-ghost.is-active{background:var(--esc-accent);border-color:var(--esc-accent);color:#fff;
-          box-shadow:0 4px 14px rgba(37,99,235,.4);}
+        .esc-ghost:hover{background:rgba(74,168,255,.1);border-color:rgba(74,168,255,.32);color:var(--esc-text);}
+        .esc-ghost.is-active{background:var(--esc-grad);border-color:transparent;color:#fff;
+          box-shadow:0 8px 22px -8px rgba(74,168,255,.7), inset 0 1px 0 rgba(255,255,255,.4);}
 
         .esc-audit-summary{padding:6px 12px;border-radius:999px;font-size:12px;font-weight:600;
           color:#86efac;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.3);}
@@ -356,7 +372,8 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
         /* ---------- Week Comparison ---------- */
         .esc-week-comparison{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px;}
         .esc-wc-card{padding:14px;border-radius:12px;background:var(--esc-surface);border:1px solid var(--esc-line);
-          display:flex;flex-direction:column;gap:5px;}
+          display:flex;flex-direction:column;gap:5px;transition:.16s;}
+        .esc-wc-card:hover{border-color:rgba(74,168,255,.3);}
         .esc-wc-card small{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--esc-faint);}
         .esc-wc-card strong{font-size:18px;font-weight:700;color:var(--esc-text);}
         .esc-wc-detail{font-size:11.5px;color:var(--esc-muted);}
@@ -367,10 +384,10 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
           background:var(--esc-surface);border:1px solid var(--esc-line);}
         .esc-week-nav-btn{padding:7px 14px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;
           color:#cfe0f7;background:rgba(255,255,255,.04);border:1px solid var(--esc-line);transition:.16s;}
-        .esc-week-nav-btn:hover{background:rgba(59,130,246,.18);border-color:rgba(96,165,250,.4);}
+        .esc-week-nav-btn:hover{background:rgba(74,168,255,.16);border-color:rgba(74,168,255,.4);}
         .esc-week-nav-label{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--esc-text);}
         .esc-today-tag{padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;text-transform:uppercase;
-          color:#fff;background:var(--esc-accent-2);}
+          color:#fff;background:var(--esc-grad);box-shadow:0 4px 12px -4px rgba(74,168,255,.7);}
 
         /* ---------- Weekly Grid ---------- */
         .esc-weekly-grid{display:flex;flex-direction:column;gap:8px;overflow-x:auto;}
@@ -378,7 +395,8 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
         .esc-weekly-head{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
           padding:10px 6px;border-radius:10px;font-size:12px;font-weight:700;color:var(--esc-muted);
           background:rgba(255,255,255,.03);border:1px solid var(--esc-line);text-align:center;}
-        .esc-weekly-head.is-today{color:var(--esc-accent-3);border-color:rgba(96,165,250,.45);background:rgba(59,130,246,.1);}
+        .esc-weekly-head.is-today{color:#fff;border-color:rgba(74,168,255,.5);
+          background:linear-gradient(180deg,rgba(74,168,255,.18),rgba(74,168,255,.06));}
         .esc-head-date{font-size:10px;font-weight:500;color:var(--esc-faint);}
         .esc-weekly-head .esc-today-tag{margin-top:2px;}
 
@@ -389,8 +407,10 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
 
         .esc-weekly-shift{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
           min-height:46px;padding:6px;border-radius:10px;font-size:12px;font-weight:600;color:var(--esc-text);
-          background:var(--esc-surface);border:1px solid var(--esc-line);text-align:center;}
-        .esc-weekly-shift.is-today{background:rgba(37,99,235,.16);border-color:rgba(96,165,250,.5);box-shadow:inset 0 0 0 1px rgba(96,165,250,.25);}
+          background:var(--esc-surface);border:1px solid var(--esc-line);text-align:center;transition:outline .16s;}
+        .esc-weekly-shift:hover{outline:2px solid rgba(108,192,255,.5);outline-offset:-2px;}
+        .esc-weekly-shift.is-today{background:linear-gradient(180deg,rgba(74,168,255,.2),rgba(74,168,255,.08));
+          border-color:rgba(108,192,255,.55);box-shadow:inset 0 0 0 1px rgba(108,192,255,.3);}
         .esc-weekly-off{background:rgba(255,255,255,.03);border-color:var(--esc-line);color:var(--esc-faint);}
         .esc-shift-main{font-size:12px;}
         .esc-shift-icons{display:flex;gap:4px;font-size:11px;}
@@ -403,32 +423,31 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
         .esc-status-valid{color:#86efac;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.3);}
         .esc-status-invalid{color:#fcd34d;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);}
 
+        .esc-forecast-row{border-bottom:2px solid rgba(74,168,255,.15);padding-bottom:6px;margin-bottom:2px;}
         .esc-forecast-row .esc-weekly-shift{min-height:42px;font-size:10px;color:var(--esc-muted);}
-        .esc-forecast-label strong{font-size:13px;color:var(--esc-text);}
+        .esc-forecast-label strong{font-size:13px;color:var(--esc-accent-3);}
         .esc-forecast-label small{font-size:10.5px;color:var(--esc-muted);}
 
         /* ---------- Placeholder / Heatmap ---------- */
         .esc-subtle-panel{padding:16px;border-radius:12px;margin-bottom:14px;
           background:var(--esc-surface);border:1px solid var(--esc-line);}
-        .esc-placeholder{min-height:200px;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--esc-muted);}
+        .esc-placeholder{min-height:200px;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--esc-muted);
+          background:radial-gradient(600px 200px at 50% 0%, rgba(74,168,255,.08), transparent 70%);}
         .esc-placeholder small{color:var(--esc-faint);}
         .esc-subtle-panel > p{margin:0 0 12px;font-size:12.5px;font-weight:700;color:var(--esc-text);}
         .esc-load-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;}
         .esc-load-cell{padding:10px 6px;border-radius:8px;text-align:center;
-          background:rgba(255,255,255,.03);border:1px solid var(--esc-line);}
+          background:rgba(255,255,255,.03);border:1px solid var(--esc-line);transition:.16s;}
+        .esc-load-cell:hover{border-color:rgba(74,168,255,.35);background:rgba(74,168,255,.06);}
         .esc-load-cell span{font-size:11px;color:var(--esc-muted);}
-        .esc-load-cell strong{display:block;margin-top:5px;font-size:14px;color:var(--esc-accent-3);}
+        .esc-load-cell strong{display:block;margin-top:5px;font-size:14px;color:var(--esc-accent-2);}
 
         .esc-toolbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
       `}</style>
 
-      {/* Section Head */}
-      <div className="esc-section-head">
-        <div>
-          <p className="esc-eyebrow">Comparativo de cenários</p>
-          <h2>Impacto da jornada na capacidade da equipe</h2>
-        </div>
-        <span className="esc-soft-pill">{employees.length} colaboradores</span>
+      {/* Contador de colaboradores */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px', fontSize: '13px', color: 'var(--esc-muted)' }}>
+        <span>{employees.length} colaboradores</span>
       </div>
 
       {/* Week Selector Panel */}
@@ -762,8 +781,8 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
         <div className="esc-subtle-panel">
           <p>Carga do caixa por hora</p>
           <div className="esc-load-grid">
-            {['08h', '10h', '12h', '14h', '16h', '18h', '20h', 'Média'].map((hora) => (
-              <div key={hora} className="esc-load-cell">
+            {['08h', '10h', '12h', '14h', '16h', '20h', '20h', 'Média'].map((hora, i) => (
+              <div key={i} className="esc-load-cell">
                 <span>{hora}</span>
                 <strong>{Math.floor(Math.random() * 100)}%</strong>
               </div>
