@@ -54,7 +54,7 @@ async function syncClientMercadologico(companyId, clientId) {
       'SELECT MAX(erp_id) AS max FROM mercadologicos WHERE company_id = $1',
       [companyId]
     );
-    const idInicio = result.rows[0]?.max ?? 0;
+    const idInicio = result.rows[0]?.max ?? -1;
     logStart('mercadologico', clientId, `iniciando (empresa=${companyId}, id_inicio=${idInicio})`);
 
     await dispatchJob(clientId, companyId, 'mercadologico', { id_inicio: idInicio });

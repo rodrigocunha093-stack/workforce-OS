@@ -18,10 +18,10 @@ async function getLastIndex(companyId) {
       'SELECT MAX(ultimo_id) AS max FROM indices_vendas WHERE company_id = $1',
       [companyId]
     );
-    return result.rows[0]?.max ?? 0;
+    return result.rows[0]?.max ?? -1;
   } catch (err) {
     logError('vendas', String(companyId), `erro ao consultar indices_vendas: ${err.message}`);
-    return 0;
+    return -1;
   }
 }
 

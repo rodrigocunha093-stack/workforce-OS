@@ -54,7 +54,7 @@ async function syncClientSetores(companyId, clientId) {
       'SELECT MAX(erp_id) AS max FROM setores WHERE company_id = $1',
       [companyId]
     );
-    const idInicio = result.rows[0]?.max ?? 0;
+    const idInicio = result.rows[0]?.max ?? -1;
     logStart('setores', clientId, `iniciando (empresa=${companyId}, id_inicio=${idInicio})`);
 
     await dispatchJob(clientId, companyId, 'setores', { id_inicio: idInicio });
