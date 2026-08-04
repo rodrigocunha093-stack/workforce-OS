@@ -6,8 +6,10 @@
 const TIME_BLOCK_RE = /(\d{2}):(\d{2})-(\d{2}):(\d{2})/g;
 
 function isOperadorCaixa(emp) {
+  // "operador" sozinho é ambíguo demais (Operador de Loja, Operador de
+  // Frios não são caixa) — só "caixa" no cargo/setor é sinal confiável.
   const combined = `${emp.cargo || ''} ${emp.setor || ''}`.toLowerCase();
-  return combined.includes('caixa') || combined.includes('operador');
+  return combined.includes('caixa');
 }
 
 // Retorna os blocos de horário trabalhados de um turno (ex.:

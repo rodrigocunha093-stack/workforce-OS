@@ -3,6 +3,7 @@ import axios from 'axios';
 import Login from './pages/Login';
 import Escala from './pages/Escala';
 import Controlador from './pages/Controlador';
+import Mercadologico from './pages/Mercadologico';
 import Implantacao from './pages/Implantacao';
 import Usuarios from './pages/Usuarios';
 import Logs from './pages/Logs';
@@ -134,9 +135,12 @@ const SHELL_STYLES = `
 `;
 
 export default function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    const stored = localStorage.getItem('user');
+    return stored ? JSON.parse(stored) : null;
+  });
   const [token, setToken] = useState(localStorage.getItem('token'));
-  const [activeTab, setActiveTab] = useState('escala');
+  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('activeTab') || 'escala');
   const [loading, setLoading] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [sidebarExpanded, setSidebarExpanded] = useState(window.innerWidth >= 768);
@@ -200,11 +204,15 @@ export default function App() {
 
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
+    localStorage.setItem('activeTab', tabId);
   };
 
   useEffect(() => {
     const handleCustomTabChange = (e) => {
-      if (e.detail) setActiveTab(e.detail);
+      if (e.detail) {
+        setActiveTab(e.detail);
+        localStorage.setItem('activeTab', e.detail);
+      }
     };
     window.addEventListener('changeTab', handleCustomTabChange);
     return () => window.removeEventListener('changeTab', handleCustomTabChange);
@@ -262,6 +270,7 @@ export default function App() {
         <main>
           {activeTab === 'escala' && <Escala token={token} />}
           {activeTab === 'controlador' && user?.is_admin && <Controlador />}
+          {activeTab === 'mercadologico' && user?.is_admin && <Mercadologico />}
           {activeTab === 'implantacao' && user?.is_admin && <Implantacao />}
           {activeTab === 'usuarios' && user?.is_admin && <Usuarios />}
           {activeTab === 'logs' && user?.is_admin && <Logs />}

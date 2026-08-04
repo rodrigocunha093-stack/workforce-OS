@@ -115,7 +115,7 @@ export default function Logs() {
     backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
   };
 
-  const th = { textAlign: 'left', padding: '13px 16px', fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '0.07em', color: c.muted, borderBottom: '1px solid rgba(255,255,255,0.09)', whiteSpace: 'nowrap' };
+  const th = { textAlign: 'left', padding: '13px 16px', fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '0.07em', color: c.muted, borderBottom: '1px solid rgba(255,255,255,0.09)', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: '#0d1220', zIndex: 1 };
   const td = { padding: '14px 16px', fontSize: '13px', color: c.text, borderBottom: '1px solid rgba(255,255,255,0.05)' };
 
   const badge = (eventType) => {
@@ -148,7 +148,7 @@ export default function Logs() {
           ) : logs.length === 0 ? (
             <p style={{ color: c.muted, fontSize: 13, textAlign: 'center', padding: '48px 0' }}>Nenhum evento registrado ainda.</p>
           ) : (
-            <div className="logs-scroll" style={{ overflowX: 'auto' }}>
+            <div className="logs-scroll" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '520px' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>

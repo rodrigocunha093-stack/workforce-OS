@@ -41,6 +41,14 @@ const STATUS_INFO = {
 };
 
 const styles = `
+  /* Ícones nativos de calendário/relógio vêm pretos por padrão — invisíveis
+     no fundo escuro. Inverte pra ficarem claros. */
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(1.6);
+    cursor: pointer;
+  }
+
   @keyframes ctl-fade-up {
     from { opacity: 0; transform: translateY(14px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -93,6 +101,25 @@ const styles = `
   @media (max-width: 900px) { .ctl-ferias-grid { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 520px) { .ctl-ferias-grid { grid-template-columns: 1fr; } }
 
+  @keyframes ctl-bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+  .ctl-callout {
+    position: absolute; top: -18px; right: 28px; z-index: 5;
+    animation: ctl-bounce 2.2s ease-in-out infinite;
+  }
+  .ctl-callout-bubble {
+    padding: 7px 13px; border-radius: 12px; font-size: 12px; font-weight: 700; white-space: nowrap;
+    color: #2a1a02; background: linear-gradient(180deg, #fde68a, #fbbf24);
+    box-shadow: 0 10px 24px -8px rgba(251,191,36,0.6);
+  }
+  .ctl-callout-tail {
+    width: 14px; height: 14px; margin: -6px auto 0; margin-right: 22px;
+    background: #fbbf24; transform: rotate(45deg);
+    box-shadow: 3px 3px 6px -3px rgba(251,191,36,0.5);
+  }
+
   .ctl-daytab {
     padding: 7px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 600; cursor: pointer;
     background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); color: #94a3b8;
@@ -122,7 +149,6 @@ export default function Controlador() {
   const [eventos, setEventos] = useState([]);
   const [eventMap, setEventMap] = useState({});
   const [loadingEventos, setLoadingEventos] = useState(true);
-  const [showAutoEventos, setShowAutoEventos] = useState(false);
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
@@ -177,6 +203,8 @@ export default function Controlador() {
 
   useEffect(() => { loadForecast(); loadEventos(); }, []);
   useEffect(() => { loadCaixa(caixaDow); }, [caixaDow]);
+
+  const precisaConfigImplantacao = !loadingCaixa && caixaHoras.length === 0 && caixaMsg.toLowerCase().includes('implantação');
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -308,7 +336,11 @@ export default function Controlador() {
               {forecastMsg || 'Sem histórico de vendas suficiente para gerar a previsão ainda.'}
             </p>
           ) : (
-            <div className="ctl-scroll" style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
+            // overflowX:auto força overflowY a virar 'auto' também (regra do
+            // CSS), então o hover (translateY -4px + box-shadow) do
+            // ctl-daycard era cortado em cima — dá folga com paddingTop pra
+            // esse espaço ficar dentro da área "visível" do scroll.
+            <div className="ctl-scroll" style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingTop: 16, paddingBottom: 4 }}>
               {forecast.dias.map((dia) => {
                 const isHoje = dia.data === hoje;
                 const ev = dia.evento;
@@ -449,19 +481,11 @@ export default function Controlador() {
             </div>
           )}
 
-          <button
-            type="button"
-            className="ctl-toggle"
-            onClick={() => setShowAutoEventos(!showAutoEventos)}
-            style={{
-              border: 'none', background: 'transparent', color: c.faint, cursor: 'pointer',
-              fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', padding: '8px 4px', display: 'flex', alignItems: 'center', gap: 6,
-            }}
-          >
-            {showAutoEventos ? '▾' : '▸'} {showAutoEventos ? 'Ocultar' : 'Mostrar'} feriados nacionais automáticos ({autoEventos.length})
-          </button>
+          <p style={{ margin: '4px 0 8px', fontSize: 12.5, fontWeight: 600, color: c.faint }}>
+            Feriados nacionais automáticos ({autoEventos.filter((ev) => ev.tipo === 'feriado').length})
+          </p>
 
-          {showAutoEventos && (
+          {(
             <div className="ctl-ferias-grid" style={{ marginTop: 8, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
               {autoEventos
                 .filter((ev) => ev.tipo === 'feriado')
@@ -490,6 +514,12 @@ export default function Controlador() {
 
         {/* ---- Controller de Frente de Caixa ---- */}
         <div className="ctl-fade ctl-panel" style={{ ...panelStyle, animationDelay: '.15s', marginBottom: 0, marginTop: 24 }}>
+          {precisaConfigImplantacao && (
+            <div className="ctl-callout">
+              <div className="ctl-callout-bubble">⚠ Configure a Implantação</div>
+              <div className="ctl-callout-tail" />
+            </div>
+          )}
           <div style={panelHeadStyle}>
             <div>
               <h3 style={{ margin: '0 0 4px', fontSize: '17px', fontWeight: 700 }}>Controller de Frente de Caixa</h3>

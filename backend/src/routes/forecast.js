@@ -26,7 +26,7 @@ router.get('/7dias', requireAdmin, async (req, res) => {
     const salesResult = await pool.query(
       `SELECT data, SUM(valor_total) AS valor_total
        FROM sales_data
-       WHERE company_id = $1
+       WHERE company_id = $1 AND data <= CURRENT_DATE
        GROUP BY data
        ORDER BY data ASC`,
       [companyId]

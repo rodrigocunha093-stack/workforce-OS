@@ -296,6 +296,9 @@ app.use('/api/forecast', forecastRouter);
 const controllerCaixaRouter = require('./routes/controllerCaixa');
 app.use('/api/controller-caixa', controllerCaixaRouter);
 
+const mercadologicoRouter = require('./routes/mercadologico');
+app.use('/api/mercadologico', mercadologicoRouter);
+
 // ===== ROTAS DE SINCRONIZAÇÃO =====
 
 const syncVendasRouter = require('./routes/syncVendas');
@@ -430,11 +433,309 @@ app.get('/api/employees', requireAdmin, async (req, res) => {
     const companyId = userResult.rows[0]?.company_id;
 
     const result = await pool.query(
-      'SELECT * FROM employees WHERE company_id = $1',
+      `SELECT e.*, m.nome AS setor, m.zona_mapa AS zona_mapa
+       FROM employees e
+       LEFT JOIN mercadologicos m ON m.id = e.id_mercadologico
+       WHERE e.company_id = $1`,
       [companyId]
     );
 
     res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Um cargo que contenha "caixa" ou "operador" já identifica a pessoa como
+// operador de frente de caixa (mesma regra do isOperadorCaixa do backend
+// de agendamento) — nesse caso o setor é preenchido automaticamente como
+// "Caixa", sem o admin precisar criar ou escolher esse setor manualmente.
+function isCargoCaixa(cargo) {
+  // "operador" sozinho é ambíguo demais (Operador de Loja, Operador de
+  // Frios não são caixa) — só "caixa" no cargo é sinal confiável.
+  return /caixa/i.test(cargo || '');
+}
+
+// Garante que existe um mercadológico "Caixa" pra essa empresa (criado sob
+// demanda, com erp_id nulo — igual a qualquer setor manual) e devolve o id.
+async function ensureCaixaSetor(companyId) {
+  const existing = await pool.query(
+    "SELECT id FROM mercadologicos WHERE company_id = $1 AND LOWER(nome) = 'caixa'",
+    [companyId]
+  );
+  if (existing.rows[0]) return existing.rows[0].id;
+
+  const created = await pool.query(
+    "INSERT INTO mercadologicos (company_id, nome) VALUES ($1, 'CAIXA') RETURNING id",
+    [companyId]
+  );
+  return created.rows[0].id;
+}
+
+function normalizeKeyServer(value) {
+  return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+// Cargo -> palavra-chave a procurar no nome do mercadológico do cliente.
+// Só entram aqui cargos que já identificam um departamento específico sem
+// ambiguidade (ex: "Açougueiro" só pode ser Açougue). Cargos genéricos como
+// "Repositor" sozinho, sem dizer de quê, ficam de fora de propósito — não
+// tem como saber se é Mercearia Doce, Salgada, Seca, Bebidas etc.
+const SETOR_KEYWORD_MAP = [
+  [/a[cç]ougueiro|a[cç]ougue/i, 'acougue'],
+  [/padeiro|padaria/i, 'padaria'],
+  [/hortifruti/i, 'hortifruti'],
+  [/bebidas/i, 'bebidas'],
+  [/confeiteiro|confeitaria/i, 'confeitaria'],
+  [/peixeiro|peixaria/i, 'peixaria'],
+  [/frios/i, 'frios'],
+  [/laticin/i, 'laticin'],
+  [/limpeza/i, 'limpeza'],
+  [/bazar/i, 'bazar'],
+  [/perfumaria/i, 'perfumaria'],
+  [/higien/i, 'higien'],
+  [/rotisser/i, 'rotisser'],
+];
+
+// Tenta inferir o setor a partir do cargo: primeiro checa se é operador de
+// caixa (regra própria, sempre resolve pra "Caixa"); senão procura uma
+// palavra-chave de departamento específico no cargo e busca, entre os
+// mercadológicos reais do cliente, um único que bata — se achar mais de um
+// (ex: cargo "Repositor" batendo em várias mercearias) ou nenhum, não
+// vincula automaticamente, pra não adivinhar errado.
+async function inferSetorIdFromCargo(companyId, cargo) {
+  if (isCargoCaixa(cargo)) return ensureCaixaSetor(companyId);
+
+  const match = SETOR_KEYWORD_MAP.find(([re]) => re.test(cargo || ''));
+  if (!match) return null;
+  const keyword = match[1];
+
+  const all = await pool.query('SELECT id, nome FROM mercadologicos WHERE company_id = $1', [companyId]);
+  const candidates = all.rows.filter((m) => normalizeKeyServer(m.nome).includes(keyword));
+  return candidates.length === 1 ? candidates[0].id : null;
+}
+
+// Importação de equipe via CSV feita pelo próprio admin na tela de
+// Implantação (diferente do /api/employees/batch, que é usado pelo agente
+// interno com autenticação por client_id). Aceita um array de linhas já
+// parseadas no front e insere todas de uma vez.
+app.post('/api/employees/import', requireAdmin, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+    const companyId = userResult.rows[0]?.company_id;
+
+    const { rows } = req.body;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: 'Nenhuma linha para importar.' });
+    }
+
+    const inserted = [];
+    for (const row of rows) {
+      if (!row.nome) continue;
+      const idMercadologico = await inferSetorIdFromCargo(companyId, row.cargo);
+      const result = await pool.query(
+        `INSERT INTO employees (company_id, name, cpf, sexo, cargo, horas_semanais, salario, id_mercadologico)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        [companyId, row.nome, row.cpf || null, row.sexo || null, row.cargo || null, row.horas_semanais || null, row.salario || null, idMercadologico]
+      );
+      inserted.push(result.rows[0]);
+    }
+
+    res.json({ inserted: inserted.length, employees: inserted });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Lista os mercadológicos (departamentos) reais do cliente, sincronizados
+// do ERP dele — usada pra montar o seletor de setor em Gerenciar Dados
+// Importados, em vez de deixar o texto livre bater errado com o catálogo.
+app.get('/api/mercadologicos', requireAdmin, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+    const companyId = userResult.rows[0]?.company_id;
+
+    const result = await pool.query(
+      'SELECT id, nome, erp_id, zona_mapa FROM mercadologicos WHERE company_id = $1 ORDER BY nome',
+      [companyId]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Zonas válidas do mapa 3D (StoreFloorMap) — usadas tanto pra validar a
+// escolha do admin quanto pro fallback heurístico continuar funcionando
+// quando o mercadológico ainda não tem zona_mapa configurada.
+const ZONAS_MAPA_VALIDAS = ['acougue', 'padaria', 'hortifruti', 'frios', 'loja', 'recebimento', 'escritorio', 'comercial', 'checkout'];
+
+// Admin escolhe explicitamente em qual "prédio" do mapa 3D aquele
+// mercadológico conta — substitui a adivinhação por palavra-chave.
+app.put('/api/mercadologicos/:id/zona', requireAdmin, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+    const companyId = userResult.rows[0]?.company_id;
+
+    const zona = req.body.zona_mapa || null;
+    if (zona !== null && !ZONAS_MAPA_VALIDAS.includes(zona)) {
+      return res.status(400).json({ error: `Zona inválida. Use uma de: ${ZONAS_MAPA_VALIDAS.join(', ')}.` });
+    }
+
+    const result = await pool.query(
+      'UPDATE mercadologicos SET zona_mapa = $1 WHERE id = $2 AND company_id = $3 RETURNING id, nome, zona_mapa',
+      [zona, req.params.id, companyId]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: 'Setor não encontrado.' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Permite ao admin cadastrar manualmente um setor que não existe no
+// catálogo sincronizado do ERP (ex: "Caixa", que é função operacional, não
+// departamento de produto, então nunca vem do sync de mercadológico).
+// erp_id fica null pra diferenciar de um mercadológico sincronizado.
+app.post('/api/mercadologicos', requireAdmin, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+    const companyId = userResult.rows[0]?.company_id;
+
+    const nome = String(req.body.nome || '').trim();
+    if (!nome) return res.status(400).json({ error: 'Informe o nome do setor.' });
+
+    const existing = await pool.query(
+      'SELECT id, nome, erp_id FROM mercadologicos WHERE company_id = $1 AND LOWER(nome) = LOWER($2)',
+      [companyId, nome]
+    );
+    if (existing.rows[0]) return res.json(existing.rows[0]);
+
+    const result = await pool.query(
+      'INSERT INTO mercadologicos (company_id, nome) VALUES ($1, $2) RETURNING id, nome, erp_id',
+      [companyId, nome]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Só permite apagar setores cadastrados manualmente pelo admin (erp_id
+// nulo) — nunca um mercadológico sincronizado do ERP, que é fonte de
+// verdade externa e seria recriado no próximo sync mesmo assim.
+app.delete('/api/mercadologicos/:id', requireAdmin, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+    const companyId = userResult.rows[0]?.company_id;
+
+    const check = await pool.query(
+      'SELECT id, erp_id FROM mercadologicos WHERE id = $1 AND company_id = $2',
+      [req.params.id, companyId]
+    );
+    if (!check.rows[0]) return res.status(404).json({ error: 'Setor não encontrado.' });
+    if (check.rows[0].erp_id !== null) {
+      return res.status(403).json({ error: 'Esse setor vem do seu sistema de vendas e não pode ser removido por aqui.' });
+    }
+
+    await pool.query('UPDATE employees SET id_mercadologico = NULL WHERE id_mercadologico = $1', [req.params.id]);
+    await pool.query('DELETE FROM mercadologicos WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/employees/:id', requireAdmin, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+    const companyId = userResult.rows[0]?.company_id;
+
+    const {
+      name, nome, cpf, sexo, cargo, id_mercadologico, horas_semanais, salario,
+      turno, papel_operacional, proficiencia, setores_aptos, restricoes, folga_preferencial, pode_domingo,
+    } = req.body;
+
+    // Se o cargo (novo ou já existente) indicar operador de caixa e essa
+    // requisição não escolheu um setor explicitamente, atribui "Caixa"
+    // automaticamente — o admin não precisa lembrar de fazer isso na mão.
+    // `id_mercadologico` distingue "não veio no body" (undefined, mantém o
+    // valor atual) de "veio null" (o admin escolheu 'Sem setor' de propósito
+    // e o valor deve ser limpo de verdade) — por isso não usa COALESCE aqui.
+    const current = await pool.query('SELECT id_mercadologico, cargo, setores_aptos FROM employees WHERE id = $1 AND company_id = $2', [req.params.id, companyId]);
+    if (!current.rows[0]) return res.status(404).json({ error: 'Colaborador não encontrado.' });
+
+    let finalIdMercadologico = id_mercadologico;
+    if (id_mercadologico === undefined) {
+      const cargoEfetivo = cargo ?? current.rows[0].cargo;
+      const inferido = await inferSetorIdFromCargo(companyId, cargoEfetivo);
+      finalIdMercadologico = inferido ?? current.rows[0].id_mercadologico;
+    }
+
+    // "Setores aptos" nasce incluindo o próprio setor recém-atribuído — o
+    // resto (cross-training) o gestor adiciona manualmente depois.
+    let finalSetoresAptos = setores_aptos;
+    if (setores_aptos === undefined && finalIdMercadologico && finalIdMercadologico !== current.rows[0].id_mercadologico) {
+      const setorRow = await pool.query('SELECT nome FROM mercadologicos WHERE id = $1', [finalIdMercadologico]);
+      const nomeSetor = setorRow.rows[0]?.nome;
+      const existentes = current.rows[0].setores_aptos || [];
+      finalSetoresAptos = nomeSetor && !existentes.includes(nomeSetor) ? [...existentes, nomeSetor] : existentes;
+    }
+
+    // proficiência não tem default: só grava quando vier explicitamente no
+    // body (mesmo vazio, pra permitir limpar de propósito) — por isso usa
+    // um CASE com flag em vez de COALESCE (que trataria null como "não
+    // informado" e nunca deixaria limpar o campo).
+    const proficienciaProvided = proficiencia !== undefined;
+    const proficienciaFinal = proficiencia || null;
+
+    const result = await pool.query(
+      `UPDATE employees SET
+         name = COALESCE($1, name),
+         cpf = COALESCE($2, cpf),
+         sexo = COALESCE($3, sexo),
+         cargo = COALESCE($4, cargo),
+         id_mercadologico = $5,
+         horas_semanais = COALESCE($6, horas_semanais),
+         salario = COALESCE($7, salario),
+         turno = COALESCE($8, turno),
+         papel_operacional = COALESCE($9, papel_operacional),
+         proficiencia = CASE WHEN $10 THEN $11 ELSE proficiencia END,
+         setores_aptos = COALESCE($12, setores_aptos),
+         restricoes = COALESCE($13, restricoes),
+         folga_preferencial = COALESCE($14, folga_preferencial),
+         pode_domingo = COALESCE($15, pode_domingo)
+       WHERE id = $16 AND company_id = $17
+       RETURNING *`,
+      [
+        name || nome, cpf, sexo, cargo, finalIdMercadologico ?? null, horas_semanais, salario,
+        turno, papel_operacional, proficienciaProvided, proficienciaFinal, finalSetoresAptos, restricoes, folga_preferencial, pode_domingo,
+        req.params.id, companyId,
+      ]
+    );
+
+    if (!result.rows[0]) return res.status(404).json({ error: 'Colaborador não encontrado.' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/employees/:id', requireAdmin, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const userResult = await pool.query('SELECT company_id FROM users WHERE id = $1', [userId]);
+    const companyId = userResult.rows[0]?.company_id;
+
+    await pool.query('DELETE FROM employees WHERE id = $1 AND company_id = $2', [req.params.id, companyId]);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -948,6 +1249,101 @@ app.post('/api/setores/batch', async (req, res) => {
   }
 });
 
+// ---- POST /api/vendas-mercadologico/batch ----
+// Body esperado: array de objetos
+// [{ data, mercadologico_id, mercadologico_nome, quantidade, venda }, ...]
+// Vem da task "vendas-por-mercadologico" (consulta a tabela venda + produto
+// no VRSoft do cliente, com quantidade física real). Alimenta o dashboard
+// ICOS da aba Setores/Mercadológico. Upsert (não insert simples) porque a
+// venda do dia pode ser corrigida retroativamente — reenviar o mesmo dia
+// deve atualizar, não duplicar.
+app.post('/api/vendas-mercadologico/batch', async (req, res) => {
+  const { type, payload } = extractEnvelope(req.body);
+
+  const clientId = req.body.client_id || payload?.client_id;
+  if (!clientId) {
+    return res.status(400).json({ error: 'client_id não fornecido no envelope.' });
+  }
+
+  const company = await identifyCompanyByClientId(clientId);
+  if (!company) {
+    console.warn(`[vendas-mercadologico/batch] client_id desconhecido, requisição rejeitada: ${clientId}`);
+    return res.status(404).json({ error: `Nenhuma empresa encontrada para o client_id: ${clientId}` });
+  }
+  req.company = company;
+
+  resolveConsulta(req.body.consulta_id || payload?.consulta_id);
+
+  if (type && type.includes('DONE')) {
+    return res.status(200).json({
+      message: 'Execução concluída (recebido).',
+      total_rows: payload?.total_rows,
+    });
+  }
+
+  if (type && type.includes('ERROR')) {
+    console.error('[vendas-mercadologico/batch] Agente reportou erro de execução:', payload?.message);
+    return res.status(200).json({ message: 'Erro do agente registrado nos logs.' });
+  }
+
+  const records = normalizeBatchPayload(payload);
+
+  if (!records) {
+    console.error('[vendas-mercadologico/batch] 400 - formato não reconhecido. payload recebido:', payload);
+    return res.status(400).json({
+      error: 'Formato de payload não reconhecido. Esperado array de objetos ou { columns, rows }.',
+    });
+  }
+
+  if (records.length === 0) {
+    return res.status(200).json({ message: 'Nenhum registro nesta página.', inserted: 0 });
+  }
+
+  const errors = [];
+  records.forEach((r, idx) => {
+    if (!r.data) errors.push(`Item ${idx}: campo "data" é obrigatório.`);
+    if (!r.mercadologico_nome) errors.push(`Item ${idx}: campo "mercadologico_nome" é obrigatório.`);
+    if (r.venda === undefined || r.venda === null) errors.push(`Item ${idx}: campo "venda" é obrigatório.`);
+  });
+
+  if (errors.length > 0) {
+    console.error('[vendas-mercadologico/batch] 400 - registros inválidos:', errors);
+    return res.status(400).json({ error: 'Registros inválidos.', details: errors });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    let inserted = 0;
+    for (const r of records) {
+      await client.query(
+        `INSERT INTO sales_by_mercadologico (company_id, data, erp_mercadologico_id, mercadologico_nome, quantidade, venda)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (company_id, mercadologico_nome, data) DO UPDATE SET
+           venda = $6,
+           quantidade = $5,
+           erp_mercadologico_id = $3`,
+        [req.company.id, r.data, r.mercadologico_id ?? null, r.mercadologico_nome, r.quantidade ?? 0, r.venda]
+      );
+      inserted += 1;
+    }
+
+    await client.query('COMMIT');
+
+    res.status(201).json({
+      message: `${inserted} registro(s) de venda por mercadológico processado(s) com sucesso.`,
+      inserted,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Erro ao inserir venda por mercadológico em lote:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 // ---- POST /api/mercadologicos/batch ----
 // Body esperado: array de objetos [{ nome }, ...]
 app.post('/api/mercadologicos/batch', async (req, res) => {
@@ -1061,11 +1457,11 @@ app.get('/api/config/store-hours', requireAdmin, async (req, res) => {
           loja: null,
           regimeTributario: null,
           corredores: 1,
-          pdvs: 3,
-          weekdayHours: '08:00-20:00',
-          saturdayHours: '07:00-20:00',
-          sundayHours: '09:00-18:00',
-          sundayOperation: 'aberto'
+          pdvs: null,
+          weekdayHours: null,
+          saturdayHours: null,
+          sundayHours: null,
+          sundayOperation: null
         },
         clientId
       });
@@ -1077,11 +1473,11 @@ app.get('/api/config/store-hours', requireAdmin, async (req, res) => {
       loja: setup.loja,
       regimeTributario: setup.regime_tributario,
       corredores: setup.corredores || 1,
-      pdvs: setup.pdvs || 3,
-      weekdayHours: setup.weekday_hours || '08:00-20:00',
-      saturdayHours: setup.saturday_hours || '07:00-20:00',
-      sundayHours: setup.sunday_hours || '09:00-18:00',
-      sundayOperation: setup.sunday_operation || 'aberto'
+      pdvs: setup.pdvs || null,
+      weekdayHours: setup.weekday_hours || null,
+      saturdayHours: setup.saturday_hours || null,
+      sundayHours: setup.sunday_hours || null,
+      sundayOperation: setup.sunday_operation || null
     };
 
     res.json({ storeSetup, clientId });

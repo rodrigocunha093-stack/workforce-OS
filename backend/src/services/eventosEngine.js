@@ -4,11 +4,14 @@
 // (promoção, data comemorativa, pagamento) sobrescrevem o fator padrão do
 // tipo quando o usuário informa um fator customizado.
 
-// Feriados nacionais fixos (MM-DD) — recorrentes todo ano.
+// Feriados nacionais fixos (MM-DD) — recorrentes todo ano. Não inclui os
+// móveis (Carnaval, Sexta-feira Santa, Corpus Christi) porque dependem do
+// cálculo da Páscoa — ainda não implementado aqui.
 const FERIADOS_FIXOS = {
   '01-01': 'Ano Novo', '04-21': 'Tiradentes', '05-01': 'Dia do Trabalho',
   '09-07': 'Independência', '10-12': 'N.S. Aparecida', '11-02': 'Finados',
-  '11-15': 'Proclamação da República', '12-25': 'Natal',
+  '11-15': 'Proclamação da República', '11-20': 'Consciência Negra',
+  '12-25': 'Natal',
 };
 
 // Fator padrão de ajuste de demanda por tipo de evento.

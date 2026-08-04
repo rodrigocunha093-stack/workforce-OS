@@ -34,10 +34,14 @@ const styles = `
 
 export default function Escala({ token }) {
   const [schedule, setSchedule] = useState(null);
-  const [demand, setDemand] = useState([]);
+  const [demand, setDemand] = useState({});
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Semana exibida na grade (0 = semana atual) — mora aqui porque a busca
+  // dos dados (incluindo a previsão de faturamento real da semana) também
+  // é feita aqui; o EscalaSchedule só lê/altera via prop.
+  const [weekOffset, setWeekOffset] = useState(0);
 
   useEffect(() => {
     if (!token) {
@@ -46,7 +50,8 @@ export default function Escala({ token }) {
       return;
     }
     loadData();
-  }, [token]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, weekOffset]);
 
   const loadData = async () => {
     try {
@@ -60,8 +65,8 @@ export default function Escala({ token }) {
       });
 
       const [scheduleRes, demandRes, employeesRes] = await Promise.all([
-        api.get('/schedule'),
-        api.get('/schedule/demand?day=6'),
+        api.get(`/schedule?weekOffset=${weekOffset}`),
+        api.get('/schedule/demand'),
         api.get('/employees')
       ]);
 
@@ -72,8 +77,8 @@ export default function Escala({ token }) {
     } catch (err) {
       console.error('Erro ao carregar dados:', err.response?.status, err.response?.data);
       const errorMsg = err.response?.data?.error || err.message;
-      if (err.response?.status === 400 || errorMsg.includes('Configure a loja')) {
-        setError('Configure a loja em Implantação antes de gerar a escala');
+      if (err.response?.status === 400 || errorMsg.includes('Configure')) {
+        setError(errorMsg || 'Configure a loja em Implantação antes de gerar a escala');
       } else {
         setError(errorMsg || 'Erro ao carregar dados');
       }
@@ -131,7 +136,12 @@ export default function Escala({ token }) {
   const subtitleStyle = { margin: '0 15px 30px', fontSize: '15px', color: c.muted, lineHeight: 1.5 };
 
   // ---------------- Loading ----------------
-  if (loading) {
+  // Só mostra a tela cheia de carregamento na PRIMEIRA vez (schedule ainda
+  // null). Recarregar por causa da troca de semana não pode desmontar o
+  // <EscalaSchedule> — senão todo o estado local dele (dropdown de semana,
+  // cenário, setor, dia selecionado) reseta pro padrão a cada troca,
+  // dando a impressão de que a tela "recarregou e voltou pro padrão".
+  if (loading && !schedule) {
     return (
       <div style={containerStyle}>
         <style>{styles}</style>
@@ -244,6 +254,16 @@ export default function Escala({ token }) {
               token={token}
               storeHours={schedule.storeHours}
               pdvs={schedule.storeHours?.pdvs}
+              revenueByDay={schedule.revenueByDay}
+              activitySuggestionByDay={schedule.activitySuggestionByDay}
+              scenarioSchedules={schedule.scenarios}
+              storeHoursByDay={schedule.storeHoursByDay}
+              weekOffset={weekOffset}
+              onWeekOffsetChange={setWeekOffset}
+              forecastConfianca={schedule.forecastConfianca}
+              complianceViolations={schedule.complianceViolations}
+              weekStart={schedule.weekStart}
+              onScheduleChanged={loadData}
             />
           </div>
         )}

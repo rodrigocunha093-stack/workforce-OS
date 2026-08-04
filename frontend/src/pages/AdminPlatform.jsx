@@ -78,6 +78,14 @@ const EVENT_LABELS = {
 };
 
 const STYLES = `
+/* Ícones nativos de calendário/relógio vêm pretos por padrão — invisíveis
+   no fundo escuro. Inverte pra ficarem claros. */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.6);
+  cursor: pointer;
+}
+
 .adm-scope select option {
   background-color: #101827;
   color: #e8eef5;

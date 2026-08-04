@@ -1,15 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './StoreFloorMap.responsive.css';
 
-export default function StoreFloorMap({ schedule = {}, demand = {}, employees = [], storeHours = {}, storeConfig = {} }) {
+export default function StoreFloorMap({ schedule = {}, demand = {}, employees = [], storeHours = {}, storeConfig = {}, storeHoursByDay = null }) {
   // Constantes de horário - agora recebe da loja do usuário
   const parseHour = (timeStr) => {
     const [hours] = (timeStr || '08:00').split(':');
     return parseInt(hours);
   };
 
-  const openHour = parseHour(storeHours.openTime || '08:00');
-  const closeHour = parseHour(storeHours.closeTime || '20:00');
+  // Horário real de CADA dia (seg-sex, sábado e domingo têm horários
+  // próprios na Implantação) — antes usava sempre o mesmo storeHours pra
+  // todo dia, então navegar pra "Dom" continuava mostrando 07h-20h mesmo
+  // quando o domingo real é 08h-16h.
+  const getHoursForDay = (day) => {
+    const range = Array.isArray(storeHoursByDay) ? storeHoursByDay[day] : null;
+    if (range) return { open: parseHour(range.openTime), close: parseHour(range.closeTime) };
+    return { open: parseHour(storeHours.openTime || '08:00'), close: parseHour(storeHours.closeTime || '20:00') };
+  };
 
   // Inicializa com horário real arredondado para meia hora
   const getInitialTime = () => {
@@ -18,10 +25,11 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     const minutes = now.getMinutes();
     let roundedHour = minutes >= 30 ? hours + 0.5 : hours;
     const day = (now.getDay() + 6) % 7; // Converte: dom=0 → 6, seg=1 → 0
+    const { open, close } = getHoursForDay(day);
 
     // Valida se loja está aberta - senão começa com horário de abertura
-    if (roundedHour < openHour || roundedHour >= closeHour) {
-      roundedHour = openHour;
+    if (roundedHour < open || roundedHour >= close) {
+      roundedHour = open;
     }
 
     return { hour: roundedHour, day };
@@ -30,6 +38,8 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
   const initialTime = getInitialTime();
   const [floorHour, setFloorHour] = useState(initialTime.hour);
   const [floorDay, setFloorDay] = useState(initialTime.day);
+
+  const { open: openHour, close: closeHour } = getHoursForDay(floorDay);
 
   // Atualiza a cada 30 minutos em tempo real
   useEffect(() => {
@@ -99,14 +109,16 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
       // Sector click listeners
       const texts = svgRef.current.querySelectorAll('text');
       texts.forEach(text => {
-        const sectorName = text.textContent.trim();
-        const sectors = ['ACOUGUE', 'PADARIA', 'FRIOS', 'HORTI', 'LOJA', 'RECEBIMENTO', 'ESCRITORIO', 'COMERCIAL', 'FRENTE DE CAIXA'];
-        if (sectors.includes(sectorName)) {
+        // A chave do prédio agora vem do atributo `data-sector` (fixo),
+        // não mais do texto exibido (que virou dinâmico — nome real do
+        // mercadológico do cliente em vez de um rótulo hardcoded).
+        const sectorKey = text.getAttribute('data-sector');
+        if (sectorKey) {
           text.style.cursor = 'pointer';
           text.style.userSelect = 'none';
           text.onclick = (e) => {
             e.stopPropagation();
-            setSelectedSector(sectorName);
+            setSelectedSector(sectorKey);
           };
         }
       });
@@ -145,6 +157,19 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
   }, [floorHour, floorDay, selectedSector]);
 
   const zoneOf = (employee) => {
+    // Zona expl\u00edcita configurada pelo admin (mercadologicos.zona_mapa)
+    // sempre vence \u2014 a heur\u00edstica por palavra-chave abaixo s\u00f3 roda como
+    // fallback pra setor ainda n\u00e3o configurado.
+    if (employee.zona_mapa) {
+      return employee.zona_mapa === 'loja' ? 'gondola' : employee.zona_mapa;
+    }
+
+    // Sem id_mercadologico vinculado (Implantação mostra "Sem setor") ->
+    // não adivinha por cargo. Antes isso caía no heurístico abaixo e uma
+    // pessoa com cargo "Operador de Loja" (sem setor real nenhum) acabava
+    // contando como Frente de Caixa só por causa da palavra "operador".
+    if (!employee.id_mercadologico) return 'sem-setor';
+
     const setor = (employee.setor || '').toLowerCase();
     const cargo = (employee.cargo || '').toLowerCase();
     const combined = `${setor} ${cargo}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -157,16 +182,59 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     if (combined.includes('administrativo') || combined.includes('admin') || combined.includes('escritorio') || combined.includes('rh') || combined.includes('financeiro') || combined.includes('contabil') || combined.includes('dp') || combined.includes('departamento pessoal')) return 'escritorio';
     if (combined.includes('comercial') || combined.includes('gerente') || combined.includes('fiscal')) return 'comercial';
     if (combined.includes('mercearia') || combined.includes('gondola') || combined.includes('repositor') || combined.includes('repos')) return 'gondola';
-    if (combined.includes('caixa') || combined.includes('frente') || combined.includes('operador')) return 'checkout';
-    if (!combined) return 'checkout';
-    return 'outro';
+    if (combined.includes('caixa') || combined.includes('frente')) return 'checkout';
+    // Qualquer setor real de loja que não seja um "prédio" especial
+    // (Bebidas, Higiene Pessoal, Bazar, Perfumaria, Limpeza, Mercearia
+    // Doce/Salgada/Seca etc.) conta dentro da LOJA — antes caía num
+    // bucket "outro" que não aparecia em lugar nenhum do mapa.
+    return 'gondola';
   };
 
-  const isWorking = (employee) => {
-    const shifts = schedule[employee.name] || [];
-    const dayShift = shifts[floorDay];
-    const ranges = parseRanges(dayShift);
-    return ranges ? ranges.some(r => floorHour >= r.s && floorHour < r.e) : false;
+  // Nome do "prédio" exibido (ex: "LOJA") -> chave de zona interna usada
+  // por zoneOf — pra montar a legenda de setores reais dentro do drill-down.
+  const SECTOR_NAME_TO_ZONE = {
+    ACOUGUE: 'acougue', PADARIA: 'padaria', FRIOS: 'frios', HORTI: 'hortifruti',
+    LOJA: 'gondola', RECEBIMENTO: 'recebimento', ESCRITORIO: 'escritorio',
+    COMERCIAL: 'comercial', 'FRENTE DE CAIXA': 'checkout',
+  };
+
+  // Recebimento/Escritório ficam bem mais à direita do desenho (gx ~13-17)
+  // que o resto da loja (gx 0-12) — com o viewBox fixo de antes, quando o
+  // cliente não tem esses dois prédios (caso comum, como o Super Feirão),
+  // sobrava uma faixa vazia enorme do lado direito e o desenho parecia
+  // "grudado" na esquerda. Calcula a largura real usada e centraliza em
+  // cima dela em vez de sempre assumir o layout completo.
+  const hasExtensao = employees.some((e) => {
+    const z = zoneOf(e);
+    return z === 'recebimento' || z === 'escritorio';
+  });
+  const buildCenteredViewBox = (rightEdge, bottomEdge) => {
+    const leftEdge = 8;
+    const topEdge = -12;
+    const padX = 60, padTop = 50, padBottom = 60;
+    const x = leftEdge - padX;
+    const w = (rightEdge - leftEdge) + padX * 2;
+    const y = topEdge - padTop;
+    const hgt = (bottomEdge - topEdge) + padTop + padBottom;
+    return `${x} ${y} ${w} ${hgt}`;
+  };
+  const mainViewBox = buildCenteredViewBox(hasExtensao ? 880 : 730, hasExtensao ? 400 : 285);
+  // Drill-down de setor sempre desenha só o piso 0-12 (nunca tem a extensão
+  // de Recebimento/Escritório junto) — mesmo cálculo do mapa geral sem
+  // extensão, senão ficava com a mesma sobra de espaço vazio de antes.
+  const sectorViewBox = buildCenteredViewBox(730, 285);
+
+  // Rótulo real do prédio no mapa geral: antes era texto fixo ("ACOUGUE",
+  // "PADARIA"...) não importava o que o cliente realmente chamava aquele
+  // setor. Agora busca o(s) nome(s) reais dos mercadológicos vinculados a
+  // essa zona (via zoneOf) — só cai no nome genérico se ainda não tem
+  // ninguém vinculado ali (não dá pra saber o nome real de um setor vazio).
+  const zoneLabel = (zoneKey, fallback) => {
+    const nomes = new Set();
+    employees.forEach((e) => { if (zoneOf(e) === zoneKey && e.setor) nomes.add(e.setor.toUpperCase()); });
+    if (nomes.size === 0) return fallback;
+    const lista = [...nomes];
+    return lista.length <= 2 ? lista.join(' / ') : `${lista.slice(0, 2).join(' / ')} +${lista.length - 2}`;
   };
 
   const parseRanges = (shift) => {
@@ -196,6 +264,32 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     return floorHour >= ranges[0].e && floorHour < ranges[1].s;
   };
 
+  const isWorking = (employee) => {
+    const shifts = schedule[employee.name] || [];
+    const dayShift = shifts[floorDay];
+    const ranges = parseRanges(dayShift);
+    return ranges ? ranges.some(r => floorHour >= r.s && floorHour < r.e) : false;
+  };
+
+  // Quais setores REAIS (mercadologico) compõem o prédio selecionado —
+  // pra deixar claro o que caiu ali dentro, já que vários setores reais
+  // pequenos (Bebidas, Higiene Pessoal, Bazar...) se agrupam num só prédio.
+  // Conta só quem está de fato trabalhando no dia/hora selecionados (igual
+  // aos bonecos desenhados no SVG) — antes contava TODO mundo vinculado
+  // àquele setor (ex.: 39 pessoas do quadro inteiro de Caixa), então o
+  // número no badge não batia com a quantidade de bonecos na planta.
+  const subSetoresDoZone = selectedSector ? (() => {
+    const zoneKey = SECTOR_NAME_TO_ZONE[selectedSector];
+    const counts = {};
+    employees.forEach((e) => {
+      if (zoneOf(e) !== zoneKey) return;
+      if (!isWorking(e)) return;
+      const nome = e.setor || e.cargo || 'Sem setor';
+      counts[nome] = (counts[nome] || 0) + 1;
+    });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  })() : [];
+
   const TW = 60, TH = 25;
   const ZC = { checkout: '#2563eb', gondola: '#16a34a', acougue: '#dc2626', padaria: '#ea580c', hortifruti: '#65a30d', frios: '#0891b2', bebida: '#1e40af', recebimento: '#7c2d12', escritorio: '#4c1d95', comercial: '#9333ea', outro: '#64748b' };
 
@@ -219,8 +313,13 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     return `<polygon points="${top}" fill="${f}" stroke="${d}" stroke-width="0.5"/><polygon points="${front}" fill="${d}" stroke="${e}" stroke-width="0.3"/><polygon points="${side}" fill="${e}" stroke="${e}" stroke-width="0.3"/>`;
   };
 
-  const isoLabel = (gx, gy, txt, col, sz) => {
-    return `<text x="${isoX(gx, gy)}" y="${isoY(gx, gy)}" text-anchor="middle" fill="${col}" font-size="${sz || 10}" font-weight="500" style="font-family:inherit">${txt}</text>`;
+  // `sectorKey` (opcional) é a chave FIXA do prédio (ex: "ACOUGUE"), usada
+  // só pro clique identificar qual prédio foi clicado — o texto visível
+  // (`txt`) agora pode ser dinâmico (nome real do mercadológico), então
+  // não dá mais pra clique comparar o texto exibido contra uma lista fixa.
+  const isoLabel = (gx, gy, txt, col, sz, sectorKey) => {
+    const attr = sectorKey ? ` data-sector="${sectorKey}"` : '';
+    return `<text x="${isoX(gx, gy)}" y="${isoY(gx, gy)}" text-anchor="middle" fill="${col}" font-size="${sz || 10}" font-weight="500" style="font-family:inherit"${attr}>${txt}</text>`;
   };
 
   const isoStatus = (gx, gy, count, status) => {
@@ -297,6 +396,14 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
       byZone[z].push(e);
     });
 
+    // Existência do prédio: baseada em TODOS os funcionários vinculados
+    // àquela zona (não só quem está trabalhando agora) — senão o prédio
+    // apareceria e desapareceria a cada hora conforme intervalo/folga. Se
+    // o cliente não tem ninguém em "Frios"/"Recebimento"/"Escritório" de
+    // verdade, o prédio simplesmente não deve existir no mapa.
+    const zoneExists = {};
+    employees.forEach(e => { zoneExists[zoneOf(e)] = true; });
+
     // Status dos setores
     const getZoneStatus = (zone, count) => {
       const statusMap = {
@@ -320,50 +427,48 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
       return 'adequate';
     };
 
-    // Zonas principais com isoBox (3D)
-    h += isoBox(0.5, 0.5, 3, 1.5, 12, mtC, mtD, mtE) + isoLabel(2, 1.5, 'ACOUGUE', '#fff', 8) + isoStatus(3.3, 0.5, byZone.acougue?.length || 0, getZoneStatus('acougue', byZone.acougue?.length || 0));
-    h += isoBox(4, 0.5, 3, 1.5, 12, bkC, bkD, bkE) + isoLabel(5.5, 1.5, 'PADARIA', '#fff', 8) + isoStatus(6.8, 0.5, byZone.padaria?.length || 0, getZoneStatus('padaria', byZone.padaria?.length || 0));
-    h += isoBox(7.5, 0.5, 4, 1.2, 14, frC, frD, frE) + isoLabel(9.5, 1.3, 'FRIOS', '#fff', 8) + isoStatus(11.3, 0.5, byZone.frios?.length || 0, getZoneStatus('frios', byZone.frios?.length || 0));
-    h += isoBox(0.3, 2.5, 1.5, 5.5, 10, '#558b2f', '#33691e', '#1b5e20') + isoLabel(0.8, 4.8, 'HORTI', '#fff', 7) + isoStatus(1.6, 2.5, byZone.hortifruti?.length || 0, getZoneStatus('hortifruti', byZone.hortifruti?.length || 0));
+    // Zonas principais com isoBox (3D) — só desenha o prédio se o cliente
+    // de fato tem algum funcionário real vinculado àquele setor.
+    if (zoneExists.acougue) {
+      h += isoBox(0.5, 0.5, 3, 1.5, 12, mtC, mtD, mtE) + isoLabel(2, 1.5, zoneLabel('acougue', 'AÇOUGUE'), '#fff', 8, 'ACOUGUE') + isoStatus(3.3, 0.5, byZone.acougue?.length || 0, getZoneStatus('acougue', byZone.acougue?.length || 0));
+    }
+    if (zoneExists.padaria) {
+      h += isoBox(4, 0.5, 3, 1.5, 12, bkC, bkD, bkE) + isoLabel(5.5, 1.5, zoneLabel('padaria', 'PADARIA'), '#fff', 8, 'PADARIA') + isoStatus(6.8, 0.5, byZone.padaria?.length || 0, getZoneStatus('padaria', byZone.padaria?.length || 0));
+    }
+    if (zoneExists.frios) {
+      h += isoBox(7.5, 0.5, 4, 1.2, 14, frC, frD, frE) + isoLabel(9.5, 1.3, zoneLabel('frios', 'FRIOS'), '#fff', 8, 'FRIOS') + isoStatus(11.3, 0.5, byZone.frios?.length || 0, getZoneStatus('frios', byZone.frios?.length || 0));
+    }
+    if (zoneExists.hortifruti) {
+      h += isoBox(0.3, 2.5, 1.5, 5.5, 10, '#558b2f', '#33691e', '#1b5e20') + isoLabel(0.8, 4.8, zoneLabel('hortifruti', 'HORTI'), '#fff', 7, 'HORTI') + isoStatus(1.6, 2.5, byZone.hortifruti?.length || 0, getZoneStatus('hortifruti', byZone.hortifruti?.length || 0));
+    }
 
     // LOJA com gondolas em boxes 3D (prateleiras)
-    h += isoLabel(9, 5.8, 'LOJA', 'rgb(255, 255, 255)', 8) + isoStatus(9.1, 5.6, byZone.gondola?.length || 0, getZoneStatus('gondola', byZone.gondola?.length || 0));
-    for (let row = 0; row < 3; row++) {
-      for (let col = 0; col < 6; col++) {
-        const gx = 3 + col * 0.9;
-        const gy = 3.4 + row * 2.0;
-        const colors = ['#e57373', '#64b5f6', '#fff176', '#81c784', '#ce93d8', '#ffb74d'];
-        h += isoRect(gx, gy + 0.15, 0.7, 0.5, colors[col], null, 0.6);
+    if (zoneExists.gondola) {
+      h += isoLabel(9, 5.8, zoneLabel('gondola', 'LOJA'), 'rgb(255, 255, 255)', 8, 'LOJA') + isoStatus(9.1, 5.6, byZone.gondola?.length || 0, getZoneStatus('gondola', byZone.gondola?.length || 0));
+      for (let row = 0; row < 3; row++) {
+        for (let col = 0; col < 6; col++) {
+          const gx = 3 + col * 0.9;
+          const gy = 3.4 + row * 2.0;
+          const colors = ['#e57373', '#64b5f6', '#fff176', '#81c784', '#ce93d8', '#ffb74d'];
+          h += isoRect(gx, gy + 0.15, 0.7, 0.5, colors[col], null, 0.6);
+        }
+      }
+
+      // Corredores entre fileiras da LOJA (onde funcionários transitam)
+      for (let row = 0; row < 3; row++) {
+        const corridorY = 3.3+ row * 2.0;
+        h += isoBox(3, corridorY, 5.2, 0.25, 30, '#a8a8a7', '#464646', '#2c2b2b');
       }
     }
 
-    // Corredores entre fileiras da LOJA (onde funcionários transitam)
-    for (let row = 0; row < 3; row++) {
-      const corridorY = 3.3+ row * 2.0;
-      h += isoBox(3, corridorY, 5.2, 0.25, 30, '#a8a8a7', '#464646', '#2c2b2b');
+    // Recebimento (doca) - fora, ao lado do escritório
+    if (zoneExists.recebimento) {
+      h += isoBox(13.5, 5, 3.5, 7.2, 20, rcC, rcD, rcE) + isoLabel(14.75, 7.8, zoneLabel('recebimento', 'RECEBIMENTO'), '#fff', 7, 'RECEBIMENTO') + isoStatus(14.75, 4.8, byZone.recebimento?.length || 0, getZoneStatus('recebimento', byZone.recebimento?.length || 0));
+      h += isoRect(15.8, 5, 0.9, 0.4, '#555', 'rgba(0,0,0,.2)', 0.7);
+      h += `<text x="${isoX(16.3, 5)}" y="${isoY(16.3, 6) - 7}" text-anchor="middle" fill="rgba(255,255,255,.4)" font-size="7" style="font-family:inherit">🚚</text>`;
     }
 
-    // movimento x, movimento y, aumenta diminui x, aumenta diminui y, aumenta diminui altura
-    // Bebidas
-
-    // h += isoBox(10.3, 6.2, 0.7, 4.2, 10, beC, beD, beE) + isoLabel(10.6, 6.8, 'BEBIDAS', '#fff', 7);
-
-    // Recebimento (doca) - fora, ao lado do escritório
-    h += isoBox(13.5, 5, 3.5, 7.2, 20, rcC, rcD, rcE) + isoLabel(14.75, 7.8, 'RECEBIMENTO', '#fff', 7) + isoStatus(14.75, 4.8, byZone.recebimento?.length || 0, getZoneStatus('recebimento', byZone.recebimento?.length || 0));
-    h += isoRect(15.8, 5, 0.9, 0.4, '#555', 'rgba(0,0,0,.2)', 0.7);
-    h += `<text x="${isoX(16.3, 5)}" y="${isoY(16.3, 6) - 7}" text-anchor="middle" fill="rgba(255,255,255,.4)" font-size="7" style="font-family:inherit">🚚</text>`;
-
     // Escritório
-    h += isoBox(13, 0.5, 4, 3.5, 80, ofC, ofD, ofE) + isoLabel(12.3, - 0.4, 'ESCRITORIO', '#fff', 8) + isoStatus(15, 0.3, byZone.escritorio?.length || 0, getZoneStatus('escritorio', byZone.escritorio?.length || 0));
-    // h += `<line x1="${isoX(13, 3)}" y1="${isoY(13, 3) - 7}" x2="${isoX(12.3, 3.2)}" y2="${isoY(12.3, 3.2)}" stroke="rgba(255,255,255,.15)" stroke-width="1" stroke-dasharray="4,3"/>`;
-    h += isoRect(13.5, 1.5, 0.8, 0.5, '#2d2760', null, 0.4);
-    h += isoRect(15.5, 1.5, 0.8, 0.5, '#2d2760', null, 0.4);
-    h += isoRect(14.5, 1.5, 0.8, 0.5, '#2d2760', null, 0.4);
-
-    h += isoRect(13.6, 2.5, 0.8, 0.5, '#2d2760', null, 0.4);
-    h += isoRect(14.6, 2.5, 0.8, 0.5, '#2d2760', null, 0.4);
-    h += isoRect(15.6, 2.5, 0.8, 0.5, '#2d2760', null, 0.4);
-
     const isoDoor = (gx, gy, gw, h, fill) => {
       const pts = [
         `${isoX(gx, gy)},${isoY(gx, gy)}`,
@@ -374,7 +479,18 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
       return `<polygon points="${pts}" fill="${fill}" stroke="#6d6d6da4" stroke-width="0.8"/>`;
     };
 
-    h += isoDoor(13.5, 3.3, 0.3, 28.2, '#6d6d6b31');
+    if (zoneExists.escritorio) {
+      h += isoBox(13, 0.5, 4, 3.5, 80, ofC, ofD, ofE) + isoLabel(12.3, - 0.4, zoneLabel('escritorio', 'ESCRITORIO'), '#fff', 8, 'ESCRITORIO') + isoStatus(15, 0.3, byZone.escritorio?.length || 0, getZoneStatus('escritorio', byZone.escritorio?.length || 0));
+      h += isoRect(13.5, 1.5, 0.8, 0.5, '#2d2760', null, 0.4);
+      h += isoRect(15.5, 1.5, 0.8, 0.5, '#2d2760', null, 0.4);
+      h += isoRect(14.5, 1.5, 0.8, 0.5, '#2d2760', null, 0.4);
+
+      h += isoRect(13.6, 2.5, 0.8, 0.5, '#2d2760', null, 0.4);
+      h += isoRect(14.6, 2.5, 0.8, 0.5, '#2d2760', null, 0.4);
+      h += isoRect(15.6, 2.5, 0.8, 0.5, '#2d2760', null, 0.4);
+
+      h += isoDoor(13.5, 3.3, 0.3, 28.2, '#6d6d6b31');
+    }
 
     // PDVs e colaboradores
     const checkoutWorkers = byZone.checkout || [];
@@ -393,7 +509,7 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
       h += isoLabel(gx + pdvSp * 0.35, 10.7, `PDV ${i + 1}`, act ? '#a5d6a7' : '#555', 6);
     }
 
-    h += isoLabel(6, 11.5, 'FRENTE DE CAIXA', 'rgba(255,255,255,.35)', 9) + isoStatus(6, 11.2, byZone.checkout?.length || 0, getZoneStatus('checkout', byZone.checkout?.length || 0));
+    h += isoLabel(6, 11.5, zoneLabel('checkout', 'FRENTE DE CAIXA'), 'rgba(255,255,255,.35)', 9, 'FRENTE DE CAIXA') + isoStatus(6, 11.2, byZone.checkout?.length || 0, getZoneStatus('checkout', byZone.checkout?.length || 0));
     h += `<text x="${isoX(6, 12)}" y="${isoY(6, 12) + 14}" text-anchor="middle" fill="rgba(255,255,255,.3)" font-size="9" style="font-family:inherit"><tspan style="font-size:14px">↑</tspan> ENTRADA</text>`;
 
     return h;
@@ -404,20 +520,19 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
 
     const sectorConfig = {
       'ACOUGUE': {
-        boxes: [{ x: 0.5, y: 0.5, w: 3, h: 1.5, ht: 12, mtC: '#451a1a', mtD: '#3a1515', mtE: '#2e1010' }],
+        boxes: [{ x: 0, y: 0, w: 12, h: 12, ht: 12, mtC: '#451a1a', mtD: '#3a1515', mtE: '#2e1010' }],
         zone: 'acougue'
       },
       'PADARIA': {
-        boxes: [{ x: 4, y: 0.5, w: 3, h: 1.5, ht: 12, mtC: '#453520', mtD: '#3a2a18', mtE: '#2e2010' }],
+        boxes: [{ x: 0, y: 0, w: 12, h: 12, ht: 12, mtC: '#453520', mtD: '#2e2010', mtE: '#382611' }],
         zone: 'padaria'
       },
       'FRIOS': {
-        boxes: [{ x: 7.5, y: 0.5, w: 4, h: 1.2, ht: 14, mtC: '#1a3545', mtD: '#15303e', mtE: '#102530' }],
+        boxes: [{ x: 0, y: 0, w: 12, h: 12, ht: 12, mtC: '#1a3545', mtD: '#15303e', mtE: '#102530' }],
         zone: 'frios'
       },
       'HORTI': {
-        boxes: [{ x: 0, y: 0, w: 8.5, h: 11.99, ht: 10, mtC: '#558b2f', mtD: '#33691e', mtE: '#1b5e20' },
-                { x: 11, y: 0.1, w: 0.5, h: 11.99, ht: 50, mtC: '#525252', mtD: '#1c1d1b', mtE: '#4c4d4c' }
+        boxes: [{ x: 0, y: 0, w: 12, h: 12, ht: 12, mtC: '#3c7a10', mtD: '#22530f', mtE: '#0f5c14' },
                 ],
         zone: 'hortifruti'
       },
@@ -450,7 +565,7 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
         zone: 'comercial'
       },
       'FRENTE DE CAIXA': {
-        boxes: [{ x: 0.5, y: 0.5, w: 11, h: 11, ht: 20, mtC: '#1a4a2a', mtD: '#144020', mtE: '#0e3018' }],
+        boxes: [{ x: 0, y: 0, w: 12, h: 12, ht: 12, mtC: '#11318a', mtD: '#051731', mtE: '#0a2142' }],
         zone: 'checkout'
       }
     };
@@ -468,7 +583,10 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
     const flA = '#3d3d3d', flB = '#2f2f2f';
     const wC = '#1a2530', wD = '#15202a';
 
-    let h = `<rect width="860" height="480" fill="#1a3a4a"/>`;
+    // Sem retângulo de fundo aqui — o mapa geral (svg()) não tem um, e
+    // este tinha tamanho fixo (860x480) desalinhado do viewBox real do
+    // drill-down ("-120 -1 1100 380"), vazando fora do card arredondado.
+    let h = '';
 
     // Piso e paredes (base)
     for (let gx = 0; gx < 12; gx++) {
@@ -616,8 +734,18 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
             Operação em tempo real
           </span>
           <div style={{ fontSize: '15px', fontWeight: 700, marginTop: '6px', color: C.text }}>
-            {selectedSector ? `Setor: ${selectedSector}` : 'Planta da loja'}
+            {selectedSector ? `Setor: ${zoneLabel(SECTOR_NAME_TO_ZONE[selectedSector], selectedSector)}` : 'Planta da loja'}
           </div>
+          {selectedSector && subSetoresDoZone.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+              {subSetoresDoZone.map(([nome, count]) => (
+                <span key={nome} style={{
+                  fontSize: '10.5px', fontWeight: 600, padding: '3px 9px', borderRadius: '7px',
+                  color: '#bcd8ff', background: 'rgba(74,168,255,.1)', border: '1px solid rgba(74,168,255,.25)',
+                }}>{nome} · {count}</span>
+              ))}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <button
@@ -644,7 +772,14 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
                 <button
                   key={i}
                   className={`sfm-day ${active ? 'is-active' : ''}`}
-                  onClick={() => setFloorDay(i)}
+                  onClick={() => {
+                    setFloorDay(i);
+                    // Recentraliza o horário no de abertura do dia escolhido
+                    // — cada dia pode ter faixa de funcionamento diferente
+                    // (ex.: domingo 08h-16h vs seg-sáb 07h-20h).
+                    const { open, close } = getHoursForDay(i);
+                    setFloorHour((h) => (h < open || h >= close ? open : h));
+                  }}
                   style={{
                     background: active ? C.grad : C.surface,
                     color: active ? '#fff' : 'rgba(203,213,225,.85)',
@@ -670,7 +805,7 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
         position: 'relative', marginBottom: '16px', borderRadius: '14px', overflow: 'hidden',
         background: 'radial-gradient(700px 300px at 50% 0%, rgba(74,168,255,.06), rgba(0,0,0,.28) 70%)',
         border: `1px solid ${C.line}`,
-        height: '500px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexDirection: 'column', padding: '10px',
+        height: '680px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexDirection: 'column', padding: '10px',
       }}>
         {selectedSector && (
           <button className="sfm-back" onClick={() => setSelectedSector(null)} style={{
@@ -680,7 +815,11 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
             ← Voltar para mapa geral
           </button>
         )}
-        <svg ref={svgRef} viewBox="-120 -1 1100 380" style={{ display: 'block', width: '100%', flexGrow: 1 }} dangerouslySetInnerHTML={{ __html: svgSector() }} />
+        {/* Mapa geral: viewBox calculado (mainViewBox) pra centralizar de
+            verdade conforme o cliente tem ou não Recebimento/Escritório.
+            Drill-down de setor: grid fixo 0-12, mantém o enquadramento
+            "-15 -25 910 435" que já ficou bom. */}
+        <svg ref={svgRef} viewBox={selectedSector ? sectorViewBox : mainViewBox} style={{ display: 'block', width: '100%', flexGrow: 1 }} dangerouslySetInnerHTML={{ __html: svgSector() }} />
 
         {/* Custom Worker Tooltip */}
         {hoveredWorker && (
@@ -723,13 +862,19 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
           {/* Progresso preenchido até a hora atual */}
           <div style={{ position: 'absolute', top: '16px', left: 0, width: `${((floorHour - openHour) / (closeHour - openHour)) * 100}%`, height: '4px', background: C.grad, borderRadius: '2px', boxShadow: '0 0 12px rgba(74,168,255,.6)' }}></div>
           {/* Marcas */}
-          {Array.from({ length: closeHour - openHour + 1 }).map((_, i) => {
+          {Array.from({ length: closeHour - openHour + 1 }).map((_, i, arr) => {
             const hr = openHour + i;
             const pct = ((hr - openHour) / (closeHour - openHour)) * 100;
+            // Abertura e fechamento reais (Implantação) sempre ganham
+            // rótulo, mesmo quando caem num índice "ímpar" da alternância —
+            // antes o rótulo alternava por posição, não pela hora, então o
+            // horário de fechamento podia ficar sem o texto (ex: 20h).
+            const isEdge = i === 0 || i === arr.length - 1;
+            const showLabel = isEdge || i % 2 === 0;
             return (
               <div key={i}>
-                <div style={{ position: 'absolute', left: `${pct}%`, top: i % 2 === 0 ? '8px' : '12px', width: '1px', height: i % 2 === 0 ? '20px' : '12px', background: 'rgba(255,255,255,.2)', transform: 'translateX(-0.5px)' }}></div>
-                {i % 2 === 0 && <div style={{ position: 'absolute', left: `${pct}%`, top: '32px', transform: 'translateX(-50%)', fontSize: '10px', color: 'rgba(255,255,255,.4)', whiteSpace: 'nowrap' }}>{String(hr).padStart(2, '0')}h</div>}
+                <div style={{ position: 'absolute', left: `${pct}%`, top: showLabel ? '8px' : '12px', width: '1px', height: showLabel ? '20px' : '12px', background: 'rgba(255,255,255,.2)', transform: 'translateX(-0.5px)' }}></div>
+                {showLabel && <div style={{ position: 'absolute', left: `${pct}%`, top: '32px', transform: 'translateX(-50%)', fontSize: '10px', color: 'rgba(255,255,255,.4)', whiteSpace: 'nowrap' }}>{String(hr).padStart(2, '0')}h</div>}
               </div>
             );
           })}
@@ -803,6 +948,13 @@ export default function StoreFloorMap({ schedule = {}, demand = {}, employees = 
           <p style={metricLabel}>Recebimento</p>
           <p style={metricValue}>{employees.filter(e => zoneOf(e) === 'recebimento' && isWorking(e)).length}</p>
         </div>
+
+        {employees.some(e => zoneOf(e) === 'sem-setor') && (
+          <div className="sfm-metric" style={{ ...metricCard, borderColor: 'rgba(251,191,36,.4)' }}>
+            <p style={{ ...metricLabel, color: '#fbbf24' }}>Sem setor</p>
+            <p style={{ ...metricValue, color: '#fbbf24' }}>{employees.filter(e => zoneOf(e) === 'sem-setor').length}</p>
+          </div>
+        )}
       </div>
     </div>
   );

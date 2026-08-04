@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import axios from 'axios';
 import StoreFloorMap from './StoreFloorMap';
 import './EscalaSchedule.responsive.css';
 
-export default function EscalaSchedule({ schedule, demand, employees, periodo, token, storeHours = {}, pdvs = 3 }) {
+export default function EscalaSchedule({ schedule, demand, employees, periodo, token, storeHours = {}, pdvs = 3, revenueByDay = [], activitySuggestionByDay = [], scenarioSchedules = null, storeHoursByDay = null, weekOffset = 0, onWeekOffsetChange = () => {}, forecastConfianca = null, complianceViolations = [], weekStart = null, onScheduleChanged = () => {} }) {
   const dias = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
   const diasFull = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 
-  const [weekOffset, setWeekOffset] = useState(0);
-  const [selectedWeek, setSelectedWeek] = useState('');
   const [selectedScenario, setSelectedScenario] = useState('atual');
-  const [selectedDay, setSelectedDay] = useState('monday');
+  // dow na convenção SQL (0=domingo..6=sábado), igual /api/controller-caixa
+  // espera — já começa marcado no dia real de hoje, não sempre segunda.
+  const [selectedDay, setSelectedDay] = useState(() => new Date().getDay());
+  const [caixaHoras, setCaixaHoras] = useState([]);
+  const [caixaLoading, setCaixaLoading] = useState(false);
 
   // Workflow state
   const [workflowStatus, setWorkflowStatus] = useState('rascunho');
@@ -20,10 +23,126 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
   const [loading, setLoading] = useState(false);
   const [selectedSector, setSelectedSector] = useState('Geral');
 
+  // Modais da caixa "Escala em conformidade CLT" — réplica do projeto
+  // modelo (Alertas/Bloqueios e Avisos abrem lista real de violações,
+  // Regras CLT/CCT abre form de configuração persistido em store_setup.clt_rules)
+  // Edição manual de turno (réplica do projeto modelo) — clica numa célula
+  // da grade, escolhe um preset ou digita um horário customizado, "Aplicar"
+  // salva em schedule_overrides e recarrega a escala. Só disponível com o
+  // período ainda em rascunho/revisado (publicado é imutável).
+  const [editingCell, setEditingCell] = useState(null); // { name, dayIdx, top, left } | null
+  const [customShiftInput, setCustomShiftInput] = useState('');
+  const [savingOverride, setSavingOverride] = useState(false);
+
+  const SHIFT_PRESETS = ['Folga', '07:00-15:00', '08:00-16:00', '10:00-18:00', '10:00-19:00', '08:00-12:00'];
+
+  const applyShiftOverride = async (shiftText) => {
+    if (!editingCell || !weekStart) return;
+    try {
+      setSavingOverride(true);
+      await api.put('/schedule/override', {
+        employeeName: editingCell.name,
+        weekStart,
+        dayIndex: editingCell.dayIdx,
+        shiftText,
+      });
+      setEditingCell(null);
+      setCustomShiftInput('');
+      await onScheduleChanged();
+    } catch (err) {
+      console.error('Erro ao editar turno:', err);
+      alert(err.response?.data?.error || 'Erro ao editar turno');
+    } finally {
+      setSavingOverride(false);
+    }
+  };
+
+  const restaurarTurnoAutomatico = async () => {
+    if (!editingCell || !weekStart) return;
+    try {
+      setSavingOverride(true);
+      await api.delete('/schedule/override', {
+        data: { employeeName: editingCell.name, weekStart, dayIndex: editingCell.dayIdx },
+      });
+      setEditingCell(null);
+      setCustomShiftInput('');
+      await onScheduleChanged();
+    } catch (err) {
+      console.error('Erro ao restaurar turno:', err);
+      alert(err.response?.data?.error || 'Erro ao restaurar turno');
+    } finally {
+      setSavingOverride(false);
+    }
+  };
+
+  const [cltModal, setCltModal] = useState(null); // 'alertas' | 'avisos' | 'regras' | null
+  const [cltRules, setCltRules] = useState(null);
+  const [cltRulesDraft, setCltRulesDraft] = useState(null);
+  const [cltRulesSaving, setCltRulesSaving] = useState(false);
+
+  const loadCltRules = async () => {
+    try {
+      const res = await api.get('/schedule/clt-rules');
+      setCltRules(res.data.cltRules);
+      setCltRulesDraft(res.data.cltRules);
+    } catch (err) {
+      console.error('Erro ao carregar regras CLT:', err);
+    }
+  };
+
+  const openCltModal = (modal) => {
+    setCltModal(modal);
+    if (modal === 'regras' && !cltRules) loadCltRules();
+  };
+
+  const saveCltRules = async () => {
+    try {
+      setCltRulesSaving(true);
+      const res = await api.put('/schedule/clt-rules', { cltRules: cltRulesDraft });
+      setCltRules(res.data.cltRules);
+      setCltRulesDraft(res.data.cltRules);
+      setCltModal(null);
+    } catch (err) {
+      console.error('Erro ao salvar regras CLT:', err);
+      alert('Erro ao salvar regras CLT');
+    } finally {
+      setCltRulesSaving(false);
+    }
+  };
+
+  const restaurarCltPadrao = async () => {
+    try {
+      const res = await api.get('/schedule/clt-rules');
+      setCltRulesDraft(res.data.defaults);
+    } catch (err) {
+      console.error('Erro ao restaurar padrão CLT:', err);
+    }
+  };
+
   // Carregar períodos fechados ao montar
   useEffect(() => {
     loadClosedPeriods();
   }, []);
+
+  // Carga real do caixa por hora (Erlang-C, mesmo motor do Controlador de
+  // Frente de Caixa) — troca sempre que o dia selecionado no toolbar muda.
+  useEffect(() => {
+    loadCaixaHoras(selectedDay);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDay]);
+
+  const loadCaixaHoras = async (dow) => {
+    try {
+      setCaixaLoading(true);
+      const res = await api.get(`/controller-caixa?dow=${dow}`);
+      setCaixaHoras(res.data.horas || []);
+    } catch (err) {
+      console.error('Erro ao carregar carga do caixa:', err);
+      setCaixaHoras([]);
+    } finally {
+      setCaixaLoading(false);
+    }
+  };
 
   const loadClosedPeriods = async () => {
     try {
@@ -34,22 +153,27 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
     }
   };
 
-  // Mapeamento de setores
+  // Mapeamento de setores — usa o MESMO critério do backend
+  // (scheduleGroupKey em schedule.js), que é quem realmente decide como a
+  // escala é agrupada/gerada. Antes esse componente reconstruía o setor com
+  // sua própria lista de palavras-chave, independente do `id_mercadologico`
+  // real e do agrupamento que efetivamente gerou a escala — podia mostrar
+  // um setor diferente do que foi usado pra calcular abridor/fechador.
   const getSectorFromEmployee = (employee) => {
-    const setor = (employee.setor || '').toLowerCase();
-    const cargo = (employee.cargo || '').toLowerCase();
-    const combined = `${setor} ${cargo}`;
-    if (combined.includes('caixa') || combined.includes('operador')) return 'Caixa';
-    if (combined.includes('açougue') || combined.includes('acougue')) return 'Açougue';
-    if (combined.includes('padaria')) return 'Padaria';
-    if (combined.includes('hortifruti')) return 'Hortifruti';
-    if (combined.includes('frios')) return 'Frios';
-    if (combined.includes('LOJA') || combined.includes('mercearia') || combined.includes('gondola')) return 'Loja';
-    if (combined.includes('recebimento')) return 'Recebimento';
-    if (combined.includes('administrativa') || combined.includes('escritorio')) return 'Escritório';
-    if (combined.includes('comercial') || combined.includes('gerente') || combined.includes('fiscal')) return 'Comercial';
-    return 'Caixa';
+    // Nunca usa o cargo como "setor" de propósito — cargo é função
+    // (ADMINISTRADOR, ANALISTA COMERCIAL...), não mercadológico. Sem
+    // e.setor (id_mercadologico vinculado), a pessoa é "Sem setor" mesmo,
+    // pra aparecer separado na lista em vez de virar um item falso a mais.
+    if (employee.setor) return employee.setor;
+    return 'Sem setor';
   };
+
+  // Split das violações reais (checkComplianceCLT no backend) por
+  // `blocks` — regra marcada como bloqueante vira "Alerta/Bloqueio",
+  // regra marcada como só-aviso vira "Aviso". Nada aqui é estimado no
+  // front: vem pronto do backend, mensagem incluída.
+  const alertasCLT = complianceViolations.filter(v => v.blocks !== false);
+  const avisosCLT = complianceViolations.filter(v => v.blocks === false);
 
   // Obtém lista única de setores dos employees
   const setores = Array.from(new Set(employees.map(getSectorFromEmployee))).sort();
@@ -59,9 +183,17 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
     ? employees
     : employees.filter(e => getSectorFromEmployee(e) === selectedSector);
 
-  // Calcula quantos colaboradores estão conformes (44h + 1 folga)
+  // Escala exibida: a "atual" (prop `schedule`) ou a recalculada de verdade
+  // pro cenário 5x2 selecionado (scenarioSchedules vem do backend, mesma
+  // função generateGroupedSchedule, só com targetHours/targetDaysOff diferentes).
+  const activeScenario = scenarioSchedules?.[selectedScenario];
+  const displaySchedule = activeScenario ? activeScenario.schedule : schedule;
+  const targetHours = activeScenario ? activeScenario.targetHours : 44;
+  const targetDaysOff = activeScenario ? activeScenario.targetDaysOff : 1;
+
+  // Calcula quantos colaboradores estão conformes (jornada-alvo do cenário + folgas)
   const conformesCount = filteredEmployees.filter(emp => {
-    const shifts = schedule[emp.name] || [];
+    const shifts = displaySchedule[emp.name] || [];
     const horas = shifts.reduce((sum, shift) => {
       if (!shift || shift === 'Folga') return sum;
       const blocks = shift.match(/(\d{2}):(\d{2})-(\d{2}):(\d{2})/g) || [];
@@ -78,8 +210,12 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
       return sum + total;
     }, 0);
     const folgas = shifts.filter(s => s === 'Folga').length;
-    return Math.abs(horas - 44) < 0.01 && folgas === 1;
+    // >= e não === : ver comentário equivalente mais abaixo, no cálculo por
+    // linha — folga a mais (rodízio de domingo) não é irregularidade.
+    return Math.abs(horas - targetHours) <= 0.5 && folgas >= targetDaysOff;
   }).length;
+
+  const formatMoney = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 
   // Calcula horas de um turno parseando os horários (ex: "08:00-16:00" → 8h)
   const parseHours = (value) => {
@@ -106,6 +242,35 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
     return totalHours;
   };
 
+  // Detecta se o turno realmente abre ou fecha a loja, comparando com o
+  // horário real de funcionamento (storeHours) — antes isso era feito
+  // checando se a string do turno continha literalmente "08" ou "20", o
+  // que só funcionava por coincidência quando a loja abria às 08h e
+  // fechava às 20h. Pra lojas com outro horário (ex: 07h-19h), ou turnos
+  // que não começam exatamente na hora cheia do texto comparado, o badge
+  // simplesmente não aparecia.
+  const getShiftRole = (shift) => {
+    if (!shift || shift === 'Folga') return null;
+    const blocks = shift.match(/(\d{2}):(\d{2})-(\d{2}):(\d{2})/g) || [];
+    if (!blocks.length) return null;
+    const toHours = (hhmm) => {
+      const [h, m] = hhmm.split(':').map(Number);
+      return h + m / 60;
+    };
+    const first = blocks[0].match(/(\d{2}:\d{2})-(\d{2}:\d{2})/);
+    const last = blocks[blocks.length - 1].match(/(\d{2}:\d{2})-(\d{2}:\d{2})/);
+    const start = toHours(first[1]);
+    const end = toHours(last[2]);
+    const open = storeHours.openTime ? toHours(storeHours.openTime) : null;
+    const close = storeHours.closeTime ? toHours(storeHours.closeTime) : null;
+    const abre = open !== null && start <= open;
+    const fecha = close !== null && end >= close;
+    if (abre && fecha) return 'abertura-fechamento';
+    if (abre) return 'abertura';
+    if (fecha) return 'fechamento';
+    return null;
+  };
+
   // Formata turno de forma legível e profissional
   const formatShift = (shift) => {
     if (!shift || shift === 'Folga') return 'Folga';
@@ -129,12 +294,12 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
       if (match1 && match2) {
         const fimPrimeiro = `${match1[3]}:${match1[4]}`;
         const inicioSegundo = `${match2[1]}:${match2[2]}`;
-        const intervalo = `Intervalo ${fimPrimeiro}-${inicioSegundo}`;
+        const intervalo = `int. ${fimPrimeiro}-${inicioSegundo}`;
 
         return (
           <>
-            <div style={{ fontSize: '11px' }}>{timeBlocks[0]} / {timeBlocks[1]}</div>
-            <div style={{ fontSize: '9px', color: 'var(--esc-muted)', marginTop: '2px' }}>{intervalo}</div>
+            <div style={{ fontSize: '10px' }}>{timeBlocks[0]} / {timeBlocks[1]}</div>
+            <div style={{ fontSize: '8px', color: 'var(--esc-muted)', marginTop: '1px' }}>{intervalo}</div>
           </>
         );
       }
@@ -193,9 +358,20 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
       return;
     }
 
+    // Respeita o filtro de setor selecionado — antes exportava a escala
+    // inteira da empresa mesmo com um setor específico escolhido no filtro.
+    const scheduleParaExportar = selectedSector === 'Geral'
+      ? schedule
+      : Object.fromEntries(
+          Object.entries(schedule).filter(([nome]) => filteredEmployees.some(e => e.name === nome))
+        );
+
     try {
       setLoading(true);
-      const res = await api.post('/schedule/export', { schedule });
+      const res = await api.post('/schedule/export', {
+        schedule: scheduleParaExportar,
+        setor: selectedSector !== 'Geral' ? selectedSector : undefined,
+      });
       const win = window.open('', '_blank');
       win.document.write(res.data);
       win.document.close();
@@ -227,11 +403,13 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
     }
   };
 
-  // Calcular calendário
+  // Calcular calendário — `seg` (segunda-feira exibida) precisa somar o
+  // weekOffset, senão "← Anterior/Próxima →" e o seletor de semana do mês
+  // trocam o número mas a grade continua sempre mostrando a semana atual.
   const hoje = new Date();
   const diaSemana = (hoje.getDay() + 6) % 7;
   const seg = new Date(hoje);
-  seg.setDate(hoje.getDate() - diaSemana);
+  seg.setDate(hoje.getDate() - diaSemana + weekOffset * 7);
 
   const datas = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(seg);
@@ -243,14 +421,24 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
     };
   });
 
-  const todayIdx = diaSemana;
+  // "Hoje" só faz sentido destacar quando a semana exibida é a atual.
+  const todayIdx = weekOffset === 0 ? diaSemana : -1;
   const totalColaboradores = Object.keys(schedule || {}).length;
 
-  const scenarios = !employees.length ? [] : [
-    { id: 'atual', label: 'Atual 6x1 - 44h', hours: 44, pdvs: '—', operators: employees.length, capacity: employees.length * 44 },
-    { id: 'transicao', label: 'Transição 5x2 - 42h', hours: 42, pdvs: '—', operators: employees.length, capacity: employees.length * 42 },
-    { id: 'final', label: 'Final 5x2 - 40h', hours: 40, pdvs: '—', operators: employees.length, capacity: employees.length * 40 }
-  ];
+  const scenarios = !employees.length || !scenarioSchedules ? [] : [
+    { id: 'atual', label: 'Atual 6x1 - 44h' },
+    { id: 'transicao', label: 'Transição 5x2 - 42h' },
+    { id: 'final', label: 'Final 5x2 - 40h' },
+  ].map((s) => {
+    const info = scenarioSchedules[s.id];
+    return {
+      ...s,
+      hours: info?.targetHours ?? '—',
+      pdvs: pdvs ?? '—',
+      operators: employees.length,
+      capacity: info?.targetHours ? info.targetHours * employees.length : '—',
+    };
+  });
 
   return (
     <div className="esc-container">
@@ -368,6 +556,86 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
         .esc-clt-box strong{font-size:13.5px;}
         .esc-clt-box span{font-size:12px;color:#dbe6f5;}
         .esc-clt-box p{font-size:11px;color:var(--esc-faint);margin:6px 0 0;}
+        .esc-clt-tag{font-size:11px;font-weight:600;padding:4px 10px;border-radius:8px;color:#dbe6f5;
+          background:rgba(255,255,255,.04);border:1px solid var(--esc-line);}
+
+        /* ---------- Modais CLT ---------- */
+        .esc-modal-overlay{position:fixed;inset:0;background:rgba(8,12,20,.6);display:flex;align-items:center;
+          justify-content:center;z-index:1000;padding:20px;}
+        .esc-modal{background:#151b28;border:1px solid var(--esc-line);border-radius:14px;padding:20px 22px;
+          width:100%;max-width:480px;max-height:80vh;display:flex;flex-direction:column;gap:4px;
+          box-shadow:0 24px 60px -20px rgba(0,0,0,.6);}
+        .esc-modal-wide{max-width:640px;}
+        .esc-modal-header{display:flex;justify-content:space-between;align-items:center;}
+        .esc-modal-header h3{margin:0;font-size:15px;color:var(--esc-text);}
+        .esc-modal-close{background:none;border:none;color:var(--esc-faint);font-size:20px;cursor:pointer;line-height:1;}
+        .esc-modal-close:hover{color:var(--esc-text);}
+        .esc-modal-subtitle{font-size:12px;color:var(--esc-muted);margin:0 0 8px;}
+        .esc-modal-body{overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding-right:4px;}
+        .esc-modal-empty{font-size:12.5px;color:var(--esc-faint);}
+        .esc-modal-group{padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.03);
+          border:1px solid var(--esc-line);}
+        .esc-modal-group strong{font-size:12.5px;color:#7dd3fc;}
+        .esc-modal-group ul{margin:6px 0 0;padding-left:18px;}
+        .esc-modal-group li{font-size:12px;color:var(--esc-muted);margin-bottom:3px;}
+        .esc-modal-footer{display:flex;justify-content:space-between;align-items:center;gap:8px;
+          margin-top:14px;padding-top:14px;border-top:1px solid var(--esc-line);}
+
+        .esc-clt-rule-card{padding:12px 14px;border-radius:10px;background:rgba(255,255,255,.025);
+          border:1px solid var(--esc-line);}
+        .esc-clt-rule-card-head{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+        .esc-clt-rule-check{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--esc-text);}
+        .esc-clt-rule-artigo{font-size:10.5px;font-weight:600;color:var(--esc-faint);white-space:nowrap;}
+        .esc-clt-rule-desc{font-size:11.5px;color:var(--esc-muted);margin:4px 0 10px;line-height:1.4;}
+        .esc-clt-rule-fields{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;}
+        .esc-clt-field{display:flex;flex-direction:column;gap:4px;min-width:120px;}
+        .esc-clt-field label{font-size:10.5px;color:var(--esc-faint);font-weight:600;}
+        .esc-clt-field-input{display:flex;align-items:center;gap:6px;}
+        .esc-clt-field-input input{width:100%;padding:6px 8px;border-radius:7px;background:var(--esc-surface);
+          border:1px solid var(--esc-line);color:var(--esc-text);font-size:12.5px;}
+        .esc-clt-field-input span{font-size:11px;color:var(--esc-faint);}
+        .esc-clt-field-select{flex:1;min-width:160px;}
+        .esc-clt-field-select select{width:100%;padding:6px 8px;border-radius:7px;background:var(--esc-surface);
+          border:1px solid var(--esc-line);color:var(--esc-text);font-size:12px;}
+        @media (max-width:520px){
+          .esc-clt-rule-fields{flex-direction:column;align-items:stretch;}
+        }
+
+        /* ---------- Editor de turno (clique na célula) ---------- */
+        .esc-shift-editor{position:absolute;top:calc(100% + 4px);left:0;z-index:50;width:264px;
+          background:linear-gradient(180deg, rgba(30,38,56,.98), rgba(19,24,36,.98));
+          border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:14px 16px;
+          box-shadow:0 24px 60px -16px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.05);
+          backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+          text-align:left;cursor:default;}
+        .esc-shift-editor-head{display:flex;justify-content:space-between;align-items:center;gap:8px;
+          margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--esc-line);}
+        .esc-shift-editor-head strong{font-size:12.5px;color:var(--esc-text);font-weight:700;}
+        .esc-shift-editor-label{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+          color:var(--esc-faint);margin:0 0 6px;}
+        .esc-shift-editor-presets{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px;}
+        .esc-shift-editor-presets .esc-preset-btn{
+          padding:7px 8px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;text-align:center;
+          color:#c4ccd8;background:rgba(255,255,255,.03);border:1px solid var(--esc-line);transition:.14s;}
+        .esc-shift-editor-presets .esc-preset-btn:hover{background:rgba(74,168,255,.14);
+          border-color:rgba(74,168,255,.4);color:#fff;}
+        .esc-shift-editor-presets .esc-preset-btn:disabled{opacity:.5;cursor:not-allowed;}
+        .esc-shift-editor-presets .esc-preset-btn.is-folga{grid-column:1 / -1;color:#fca5a5;
+          border-color:rgba(248,113,113,.25);}
+        .esc-shift-editor-presets .esc-preset-btn.is-folga:hover{background:rgba(248,113,113,.12);
+          border-color:rgba(248,113,113,.4);color:#fecaca;}
+        .esc-shift-editor-custom{display:flex;gap:8px;}
+        .esc-shift-editor-custom input{flex:1;min-width:0;padding:8px 10px;border-radius:8px;
+          background:var(--esc-surface);border:1px solid var(--esc-line);color:var(--esc-text);font-size:12px;
+          font-variant-numeric:tabular-nums;outline:none;transition:.16s;}
+        .esc-shift-editor-custom input:focus{border-color:var(--esc-accent);box-shadow:0 0 0 3px rgba(74,168,255,.16);}
+        .esc-shift-editor-custom .esc-btn{padding:8px 14px;font-size:11.5px;white-space:nowrap;}
+        .esc-shift-editor-restore{display:block;width:100%;margin-top:12px;padding-top:10px;
+          border-top:1px solid var(--esc-line);background:none;border-left:none;border-right:none;border-bottom:none;
+          color:var(--esc-faint);font-size:11px;font-weight:600;cursor:pointer;text-align:center;
+          font-family:inherit;transition:.14s;}
+        .esc-shift-editor-restore:hover{color:#fca5a5;}
+        .esc-shift-editor-restore:disabled{opacity:.5;cursor:not-allowed;}
 
         /* ---------- Week Comparison ---------- */
         .esc-week-comparison{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px;}
@@ -390,41 +658,46 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
           color:#fff;background:var(--esc-grad);box-shadow:0 4px 12px -4px rgba(74,168,255,.7);}
 
         /* ---------- Weekly Grid ---------- */
-        .esc-weekly-grid{display:flex;flex-direction:column;gap:8px;overflow-x:auto;}
-        .esc-weekly-row{display:grid;grid-template-columns:1.5fr repeat(7,1fr) 1fr;gap:6px;min-width:780px;}
-        .esc-weekly-head{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-          padding:10px 6px;border-radius:10px;font-size:12px;font-weight:700;color:var(--esc-muted);
+        .esc-weekly-grid{display:flex;flex-direction:column;gap:4px;overflow:auto;max-height:640px;}
+        .esc-weekly-row.esc-head-row{position:sticky;top:0;z-index:5;background:#0d1220;padding-top:3px;padding-bottom:3px;}
+        .esc-weekly-row{display:grid;grid-template-columns:1.5fr repeat(7,1fr) 1fr;gap:4px;min-width:780px;}
+        .esc-weekly-head{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+          padding:6px 4px;border-radius:8px;font-size:11px;font-weight:700;color:var(--esc-muted);
           background:rgba(255,255,255,.03);border:1px solid var(--esc-line);text-align:center;}
         .esc-weekly-head.is-today{color:#fff;border-color:rgba(74,168,255,.5);
           background:linear-gradient(180deg,rgba(74,168,255,.18),rgba(74,168,255,.06));}
-        .esc-head-date{font-size:10px;font-weight:500;color:var(--esc-faint);}
-        .esc-weekly-head .esc-today-tag{margin-top:2px;}
+        .esc-head-date{font-size:9px;font-weight:500;color:var(--esc-faint);}
+        .esc-weekly-head .esc-today-tag{margin-top:1px;}
 
-        .esc-weekly-person{display:flex;flex-direction:column;justify-content:center;gap:3px;padding:10px 12px;
-          border-radius:10px;background:var(--esc-surface);border:1px solid var(--esc-line);}
-        .esc-person-name{font-size:13px;font-weight:600;color:var(--esc-text);}
-        .esc-person-details{font-size:11px;color:var(--esc-muted);}
+        .esc-weekly-person{display:flex;flex-direction:column;justify-content:center;gap:2px;padding:6px 10px;
+          border-radius:8px;background:rgba(0,0,0,.35);border:1px solid var(--esc-line);
+          box-shadow:inset 3px 0 0 rgba(74,168,255,.5);}
+        .esc-person-name{font-size:12px;font-weight:700;color:#fff;}
+        .esc-person-details{font-size:9.5px;color:var(--esc-muted);}
 
-        .esc-weekly-shift{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
-          min-height:46px;padding:6px;border-radius:10px;font-size:12px;font-weight:600;color:var(--esc-text);
+        .esc-weekly-shift{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+          min-height:32px;padding:4px;border-radius:8px;font-size:11px;font-weight:600;color:var(--esc-text);
           background:var(--esc-surface);border:1px solid var(--esc-line);text-align:center;transition:outline .16s;}
         .esc-weekly-shift:hover{outline:2px solid rgba(108,192,255,.5);outline-offset:-2px;}
         .esc-weekly-shift.is-today{background:linear-gradient(180deg,rgba(74,168,255,.2),rgba(74,168,255,.08));
           border-color:rgba(108,192,255,.55);box-shadow:inset 0 0 0 1px rgba(108,192,255,.3);}
         .esc-weekly-off{background:rgba(255,255,255,.03);border-color:var(--esc-line);color:var(--esc-faint);}
-        .esc-shift-main{font-size:12px;}
-        .esc-shift-icons{display:flex;gap:4px;font-size:11px;}
-        .esc-role-badge{padding:2px 5px;border-radius:4px;font-size:7px;font-weight:700;text-transform:uppercase;}
+        .esc-shift-main{font-size:11px;}
+        .esc-shift-icons{display:flex;gap:3px;font-size:10px;}
+        .esc-role-badge{padding:1px 4px;border-radius:3px;font-size:6.5px;font-weight:700;text-transform:uppercase;}
         .esc-role-open{background:rgba(34,197,94,.2);color:#22c55e;border:1px solid rgba(34,197,94,.3);}
         .esc-role-close{background:rgba(251,146,60,.2);color:#fb923c;border:1px solid rgba(251,146,60,.3);}
 
-        .esc-weekly-status{display:flex;align-items:center;justify-content:center;padding:8px;border-radius:10px;
-          font-size:11px;font-weight:700;text-align:center;}
+        .esc-weekly-status{display:flex;align-items:center;justify-content:center;padding:5px;border-radius:8px;
+          font-size:10px;font-weight:700;text-align:center;}
         .esc-status-valid{color:#86efac;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.3);}
         .esc-status-invalid{color:#fcd34d;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);}
 
-        .esc-forecast-row{border-bottom:2px solid rgba(74,168,255,.15);padding-bottom:6px;margin-bottom:2px;}
-        .esc-forecast-row .esc-weekly-shift{min-height:42px;font-size:10px;color:var(--esc-muted);}
+        .esc-forecast-row{border-bottom:2px solid rgba(74,168,255,.15);padding-bottom:4px;margin-bottom:1px;}
+        .esc-forecast-row .esc-weekly-shift{min-height:32px;font-size:9.5px;color:var(--esc-muted);gap:3px;}
+        .esc-atv-badge{font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:6px;white-space:nowrap;}
+        .esc-atv-embalagem{color:#fcd34d;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.3);}
+        .esc-atv-reposicao{color:#93c5fd;background:rgba(74,168,255,.12);border:1px solid rgba(74,168,255,.3);}
         .esc-forecast-label strong{font-size:13px;color:var(--esc-accent-3);}
         .esc-forecast-label small{font-size:10.5px;color:var(--esc-muted);}
 
@@ -444,26 +717,6 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
 
         .esc-toolbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
       `}</style>
-
-      {/* Week Selector Panel */}
-      <div className="esc-panel esc-week-selector">
-        <label>Analisar por semana do mês:</label>
-        <select
-          className="esc-select"
-          value={selectedWeek}
-          onChange={(e) => setSelectedWeek(e.target.value)}
-        >
-          <option value="">Todos os dados importados (padrão)</option>
-          <option value="1">Semana 1 (1-7) - Normal</option>
-          <option value="2">Semana 2 (8-14) - Normal</option>
-          <option value="3">Semana 3 (15-21) - Normal</option>
-          <option value="4">Semana 4 (22-28) - Promoção Iniciando</option>
-          <option value="5">Semana 5 (29-05) - Pico de Promoção</option>
-        </select>
-        <small className="esc-week-hint">
-          {selectedWeek ? `Semana ${selectedWeek} selecionada` : 'Nenhuma semana selecionada'}
-        </small>
-      </div>
 
       {/* Scenario Cards */}
       <div className="esc-scenario-grid">
@@ -487,7 +740,7 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
       </div>
 
       {/* Store Floor Map Panel */}
-      <StoreFloorMap schedule={schedule} demand={demand} employees={employees} storeConfig={{ pdvs }} storeHours={storeHours} />
+      <StoreFloorMap schedule={schedule} demand={demand} employees={employees} storeConfig={{ pdvs }} storeHours={storeHours} storeHoursByDay={storeHoursByDay} />
 
       {/* Weekly Panel - Semana Completa */}
       <div className="esc-panel">
@@ -496,20 +749,9 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
         <div className="esc-panel-head">
           <div>
             <h3>Semana completa por colaboradora</h3>
-            <p>44h semanais + 1 folga a cada 7 dias (conforme CLT)</p>
+            <p>{targetHours}h semanais + {targetDaysOff} folga{targetDaysOff > 1 ? 's' : ''} por semana (conforme CLT)</p>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <select
-              className="esc-select"
-              value={selectedSector}
-              onChange={(e) => setSelectedSector(e.target.value)}
-              style={{ minWidth: '140px' }}
-            >
-              <option value="Geral">Todos os setores</option>
-              {setores.map(setor => (
-                <option key={setor} value={setor}>{setor}</option>
-              ))}
-            </select>
             <span className="esc-audit-summary">{conformesCount}/{filteredEmployees.length} conformes{selectedSector !== 'Geral' && ` (${selectedSector})`}</span>
             <button className="esc-btn" onClick={handleExportar} disabled={loading}>
               {loading ? 'Exportando...' : 'Exportar / Imprimir'}
@@ -552,21 +794,79 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
           </div>
         </div>
 
-        {/* CLT Compliance Box */}
+        {/* CLT Compliance Box — auditoria real (checkComplianceCLT), não
+            mais texto fixo. "Alertas/Bloqueios" = violação de regra dura
+            (interjornada, DSR, máx 44h/semana, máx 10h/dia, máx 6 dias
+            consecutivos); "Avisos" = gente com jornada/folgas fora do
+            alvo do cenário (linhas marcadas "Revisar" na grade). */}
         <div className="esc-clt-box">
-          <strong style={{ color: '#34d399' }}>Escala em conformidade CLT</strong>
-          <span>✓ Interjornada 11h  ✓ DSR  ✓ Máx 44h/semana  ✓ Máx 10h/dia  ✓ Máx 6h contínuas  ✓ 6 dias consecutivos</span>
+          <strong style={{ color: alertasCLT.length === 0 ? '#34d399' : '#fbbf24' }}>
+            {alertasCLT.length === 0 ? 'Escala em conformidade CLT' : `${alertasCLT.length} ponto(s) de atenção na CLT`}
+          </strong>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+            <span
+              className="esc-clt-tag"
+              role="button"
+              tabIndex={0}
+              onClick={() => openCltModal('alertas')}
+              style={{ cursor: 'pointer', borderColor: alertasCLT.length ? 'rgba(248,113,113,.35)' : undefined, color: alertasCLT.length ? '#fca5a5' : undefined }}
+            >
+              Alertas/Bloqueios ({alertasCLT.length})
+            </span>
+            <span
+              className="esc-clt-tag"
+              role="button"
+              tabIndex={0}
+              onClick={() => openCltModal('avisos')}
+              style={{ cursor: 'pointer', borderColor: avisosCLT.length ? 'rgba(251,191,36,.35)' : undefined, color: avisosCLT.length ? '#fcd34d' : undefined }}
+            >
+              Avisos ({avisosCLT.length})
+            </span>
+            <span className="esc-clt-tag" role="button" tabIndex={0} onClick={() => openCltModal('regras')} style={{ cursor: 'pointer' }}>
+              Regras CLT/CCT
+            </span>
+          </div>
           <p>
-            Auditoria baseada na CLT federal. Convenções coletivas locais (CCT dos comerciários) podem ter regras adicionais — valide com seu contador/sindicato.
+            Auditoria baseada na CLT federal (interjornada 11h, DSR, máx 44h/semana, máx 10h/dia, máx 6 dias consecutivos). Convenções coletivas locais (CCT dos comerciários) podem ter regras adicionais — valide com seu contador/sindicato.
           </p>
         </div>
+
+        {cltModal === 'alertas' && createPortal(
+          <CltViolationsModal
+            title="Alertas/Bloqueios"
+            subtitle="Violações de regras que travam a publicação da escala."
+            violations={alertasCLT}
+            onClose={() => setCltModal(null)}
+          />,
+          document.body
+        )}
+        {cltModal === 'avisos' && createPortal(
+          <CltViolationsModal
+            title="Avisos"
+            subtitle="Pontos que não travam a publicação, mas merecem revisão."
+            violations={avisosCLT}
+            onClose={() => setCltModal(null)}
+          />,
+          document.body
+        )}
+        {cltModal === 'regras' && createPortal(
+          <CltRulesModal
+            draft={cltRulesDraft}
+            onChange={setCltRulesDraft}
+            onRestaurarPadrao={restaurarCltPadrao}
+            onSave={saveCltRules}
+            onClose={() => setCltModal(null)}
+            saving={cltRulesSaving}
+          />,
+          document.body
+        )}
 
         {/* Week Comparison Cards */}
         <div className="esc-week-comparison">
           <div className="esc-wc-card">
             <small>Previsão semana</small>
-            <strong>—</strong>
-            <span className="esc-wc-detail">Importe faturamento</span>
+            <strong>{revenueByDay.length ? formatMoney(revenueByDay.reduce((a, b) => a + b, 0)) : '—'}</strong>
+            <span className="esc-wc-detail">{revenueByDay.length ? 'baseado no histórico sincronizado' : 'sem histórico de vendas ainda'}</span>
           </div>
           <div className="esc-wc-card">
             <small>Equipe escalada</small>
@@ -587,22 +887,35 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
 
         {/* Week Navigation */}
         <div className="esc-week-nav">
-          <button className="esc-week-nav-btn" onClick={() => setWeekOffset(weekOffset - 1)}>
+          <button className="esc-week-nav-btn" onClick={() => onWeekOffsetChange(weekOffset - 1)}>
             ← Anterior
           </button>
           <span className="esc-week-nav-label">
             {datas[0].label} — {datas[6].label}
             {weekOffset === 0 && <span className="esc-today-tag">atual</span>}
           </span>
-          <button className="esc-week-nav-btn" onClick={() => setWeekOffset(weekOffset + 1)}>
-            Próxima →
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <select
+              className="esc-select"
+              value={selectedSector}
+              onChange={(e) => setSelectedSector(e.target.value)}
+              style={{ minWidth: '140px' }}
+            >
+              <option value="Geral">Todos os setores</option>
+              {setores.map(setor => (
+                <option key={setor} value={setor}>{setor}</option>
+              ))}
+            </select>
+            <button className="esc-week-nav-btn" onClick={() => onWeekOffsetChange(weekOffset + 1)}>
+              Próxima →
+            </button>
+          </div>
         </div>
 
         {/* Weekly Grid */}
         <div className="esc-weekly-grid">
           {/* Header */}
-          <div className="esc-weekly-row">
+          <div className="esc-weekly-row esc-head-row">
             <div className="esc-weekly-head">Colaborador(a)</div>
             {dias.map((dia, i) => (
               <div
@@ -623,21 +936,33 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
               <strong>Previsão</strong>
               <small>faturamento dia</small>
             </div>
-            {dias.map((_, i) => (
-              <div key={i} className="esc-weekly-shift">
-                Importe faturamento
-              </div>
-            ))}
+            {dias.map((_, i) => {
+              const atv = activitySuggestionByDay[i];
+              return (
+                <div key={i} className="esc-weekly-shift" title={atv ? atv.motivo : undefined}>
+                  <span>{revenueByDay[i] ? formatMoney(revenueByDay[i]) : 'Sem histórico'}</span>
+                  {atv && (
+                    <span className={`esc-atv-badge esc-atv-${atv.atividade}`}>
+                      {atv.atividade === 'embalagem' ? `🛒 ${atv.excedentes} emb` : `📦 ${atv.excedentes} rep`}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
             <div className="esc-weekly-shift" style={{ background: 'transparent', border: 'none' }}></div>
           </div>
 
           {/* Pessoas */}
-          {schedule &&
+          {displaySchedule &&
             filteredEmployees.map((emp, idx) => {
-              const shifts = schedule[emp.name] || [];
+              const shifts = displaySchedule[emp.name] || [];
               const horasTrabalhadas = shifts.reduce((sum, shift) => sum + parseHours(shift), 0);
               const folgas = shifts.filter((s) => s === 'Folga').length;
-              const conforme = Math.abs(horasTrabalhadas - 44) < 0.01 && folgas === 1;
+              // >= e não === : no 6x1 quem cai no rodízio de domingo daquela
+              // semana descansa 2 dias em vez de 1 (folga fixa + domingo) —
+              // isso é folga A MAIS, não uma irregularidade. Com === estrito,
+              // essa pessoa aparecia como "Revisar" sem ter feito nada errado.
+              const conforme = Math.abs(horasTrabalhadas - targetHours) <= 0.5 && folgas >= targetDaysOff;
 
               return (
                 <div key={idx} className="esc-weekly-row">
@@ -653,18 +978,29 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
                       className={`esc-weekly-shift ${
                         shift === 'Folga' ? 'esc-weekly-off' : ''
                       } ${dayIdx === todayIdx ? 'is-today' : ''}`}
+                      style={{ cursor: weekStart && workflowStatus !== 'publicado' ? 'pointer' : undefined }}
+                      onClick={(e) => {
+                        if (!weekStart || workflowStatus === 'publicado') return;
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setCustomShiftInput(shift === 'Folga' ? '' : shift);
+                        setEditingCell({ name: emp.name, dayIdx, top: rect.bottom + 4, left: rect.left });
+                      }}
                     >
                       {shift === 'Folga' ? (
                         <span className="esc-shift-main">Folga</span>
                       ) : (
                         <>
                           <span className="esc-shift-main">{formatShift(shift)}</span>
-                          {shift && (
-                            <div className="esc-shift-icons">
-                              {shift.includes('08') && <span className="esc-role-badge esc-role-open">ABERTURA</span>}
-                              {shift.includes('20') && <span className="esc-role-badge esc-role-close">FECHAMENTO</span>}
-                            </div>
-                          )}
+                          {shift && (() => {
+                            const role = getShiftRole(shift);
+                            if (!role) return null;
+                            return (
+                              <div className="esc-shift-icons">
+                                {(role === 'abertura' || role === 'abertura-fechamento') && <span className="esc-role-badge esc-role-open">ABERTURA</span>}
+                                {(role === 'fechamento' || role === 'abertura-fechamento') && <span className="esc-role-badge esc-role-close">FECHAMENTO</span>}
+                              </div>
+                            );
+                          })()}
                         </>
                       )}
                     </div>
@@ -682,6 +1018,50 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
         </div>
 
       </div>
+
+      {/* Editor de turno — portal pra fora do grid com overflow:auto, senão
+          o popup ficava cortado (mesmo problema resolvido antes no
+          Controlador com os cards de previsão). */}
+      {editingCell && createPortal(
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setEditingCell(null)} />
+          <div className="esc-shift-editor" style={{ position: 'fixed', top: editingCell.top, left: editingCell.left }} onClick={(e) => e.stopPropagation()}>
+            <div className="esc-shift-editor-head">
+              <strong>{editingCell.name} · {dias[editingCell.dayIdx]}</strong>
+              <button className="esc-modal-close" onClick={() => setEditingCell(null)}>×</button>
+            </div>
+            <p className="esc-shift-editor-label">Horários rápidos</p>
+            <div className="esc-shift-editor-presets">
+              {SHIFT_PRESETS.map((p) => (
+                <button
+                  key={p}
+                  className={`esc-preset-btn ${p === 'Folga' ? 'is-folga' : ''}`}
+                  disabled={savingOverride}
+                  onClick={() => applyShiftOverride(p)}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+            <p className="esc-shift-editor-label">Horário customizado</p>
+            <div className="esc-shift-editor-custom">
+              <input
+                type="text"
+                placeholder="HH:MM-HH:MM"
+                value={customShiftInput}
+                onChange={(e) => setCustomShiftInput(e.target.value)}
+              />
+              <button className="esc-btn" disabled={savingOverride || !customShiftInput.trim()} onClick={() => applyShiftOverride(customShiftInput.trim())}>
+                Aplicar
+              </button>
+            </div>
+            <button className="esc-shift-editor-restore" disabled={savingOverride} onClick={restaurarTurnoAutomatico}>
+              ↩ Restaurar automático
+            </button>
+          </div>
+        </>,
+        document.body
+      )}
 
       {/* Histórico de Períodos Fechados */}
       {closedPeriods.length > 0 && (
@@ -736,7 +1116,7 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
             <p>Comparação entre demanda de clientes e operadores escalados por hora</p>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <button className="esc-ghost" title="Otimização inteligente">
+            <button className="esc-ghost" disabled style={{ opacity: 0.4, cursor: 'not-allowed' }} title="Ainda não implementado — simulação de otimização automática de turnos">
               Otimização
             </button>
             {scenarios.map((scenario) => (
@@ -744,6 +1124,7 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
                 key={scenario.id}
                 onClick={() => setSelectedScenario(scenario.id)}
                 className={`esc-ghost ${selectedScenario === scenario.id ? 'is-active' : ''}`}
+                title={scenario.id === 'atual' ? 'Regime atual: 6 dias trabalhados, domingo em rodízio' : 'Simulação real: 5 dias trabalhados, domingo fixo de folga'}
               >
                 {scenario.label.split(' - ')[0]}
               </button>
@@ -751,40 +1132,272 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
           </div>
         </div>
 
-        {/* Day Toolbar */}
+        {/* Day Toolbar — diasFull[0]='Segunda' -> dow SQL 1, ..., [6]='Domingo' -> dow 0 */}
         <div className="esc-toolbar">
-          {diasFull.map((dia) => (
+          {diasFull.map((dia, i) => {
+            const dow = i === 6 ? 0 : i + 1;
+            return (
             <button
               key={dia}
-              onClick={() => setSelectedDay(dia.toLowerCase())}
-              className={`esc-ghost ${selectedDay === dia.toLowerCase() ? 'is-active' : ''}`}
+              onClick={() => setSelectedDay(dow)}
+              className={`esc-ghost ${selectedDay === dow ? 'is-active' : ''}`}
             >
               {dia}
             </button>
-          ))}
+            );
+          })}
         </div>
 
-        {/* Heatmap Placeholder */}
-        <div className="esc-subtle-panel esc-placeholder">
-          <div>
-            <p style={{ margin: 0 }}>Heatmap de demanda por hora</p>
-            <small>(Intensidade de demanda ao longo do dia)</small>
-          </div>
+        {/* Heatmap real — intensidade de clientes/hora (Erlang-C), mesmo
+            dado usado pelo Controlador de Frente de Caixa */}
+        <div className="esc-subtle-panel">
+          <p style={{ margin: '0 0 10px' }}>Heatmap de demanda por hora</p>
+          {caixaLoading ? (
+            <small style={{ color: 'var(--esc-muted)' }}>Carregando...</small>
+          ) : caixaHoras.length === 0 ? (
+            <small style={{ color: 'var(--esc-muted)' }}>Sem histórico de vendas suficiente pra esse dia.</small>
+          ) : (
+            <div style={{ display: 'flex', gap: 4 }}>
+              {caixaHoras.map((h, i) => {
+                const maxClientes = Math.max(...caixaHoras.map((x) => x.clientes || 0), 1);
+                const pct = Math.max(6, Math.round(((h.clientes || 0) / maxClientes) * 100));
+                return (
+                  <div key={i} title={`${h.hora} · ${h.clientes} clientes/h`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                    <div style={{ width: '100%', height: 60, display: 'flex', alignItems: 'flex-end' }}>
+                      <div style={{ width: '100%', height: `${pct}%`, borderRadius: 4, background: 'linear-gradient(180deg, rgba(74,168,255,.9), rgba(74,168,255,.25))' }} />
+                    </div>
+                    <small style={{ fontSize: 9, color: 'var(--esc-faint)' }}>{h.hora}</small>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Cashier Load Panel */}
+        {/* Cashier Load Panel — utilização real (Erlang-C): escalados vs
+            necessários, mesmo motor do Controlador de Frente de Caixa. */}
         <div className="esc-subtle-panel">
           <p>Carga do caixa por hora</p>
           <div className="esc-load-grid">
-            {['08h', '10h', '12h', '14h', '16h', '20h', '20h', 'Média'].map((hora, i) => (
-              <div key={i} className="esc-load-cell">
-                <span>{hora}</span>
-                <strong>{Math.floor(Math.random() * 100)}%</strong>
-              </div>
-            ))}
+            {caixaHoras.length === 0 ? (
+              <small style={{ color: 'var(--esc-muted)' }}>{caixaLoading ? 'Carregando...' : 'Sem histórico de vendas suficiente pra esse dia.'}</small>
+            ) : (
+              <>
+                {caixaHoras.map((h, i) => (
+                  <div key={i} className="esc-load-cell" title={`${h.operadoresEscalados} escalado(s) · ${h.operadoresRecomendados} recomendado(s) · ${h.status}`}>
+                    <span>{h.hora}</span>
+                    <strong>{h.utilizacao !== null ? `${h.utilizacao}%` : '—'}</strong>
+                  </div>
+                ))}
+                <div className="esc-load-cell">
+                  <span>Média</span>
+                  <strong>
+                    {Math.round(
+                      caixaHoras.reduce((sum, h) => sum + (h.utilizacao || 0), 0) / caixaHoras.length
+                    )}%
+                  </strong>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
+      </div>
+    </div>
+  );
+}
+
+// Modal de lista — usado tanto pra "Alertas/Bloqueios" quanto "Avisos".
+// Agrupa por funcionário e mostra a mensagem real que veio do backend
+// (checkComplianceCLT), sem inventar nenhum valor (ex: nada de "ajuda de
+// custo de R$X" que a gente não tem configurado de verdade).
+function CltViolationsModal({ title, subtitle, violations, onClose }) {
+  const porFuncionario = {};
+  violations.forEach(v => {
+    if (!porFuncionario[v.name]) porFuncionario[v.name] = [];
+    porFuncionario[v.name].push(v);
+  });
+  const nomes = Object.keys(porFuncionario).sort();
+
+  const icone = title === 'Avisos' ? 'ⓘ' : '🚫';
+  return (
+    <div className="esc-modal-overlay" onClick={onClose}>
+      <div className="esc-modal" onClick={e => e.stopPropagation()}>
+        <div className="esc-modal-header">
+          <h3>{icone} {title}</h3>
+          <button className="esc-modal-close" onClick={onClose}>×</button>
+        </div>
+        <p className="esc-modal-subtitle">{subtitle}</p>
+        <div className="esc-modal-body">
+          {nomes.length === 0 && <p className="esc-modal-empty">Nenhum item nesta categoria.</p>}
+          {nomes.map(nome => (
+            <div key={nome} className="esc-modal-group">
+              <strong>{nome}</strong>
+              <ul>
+                {porFuncionario[nome].map((v, i) => (
+                  <li key={i}>{v.message || v.type}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <div className="esc-modal-footer">
+          <div />
+          <button className="esc-ghost" onClick={onClose}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const CLT_RULE_LABELS = {
+  maxWeeklyHours: {
+    label: 'Limite de jornada semanal', artigo: 'CLT art. 58',
+    descricao: 'Soma das horas trabalhadas na semana (descontado o intervalo) não pode passar do limite.',
+  },
+  interjornada: {
+    label: 'Interjornada (descanso entre turnos)', artigo: 'CLT art. 66',
+    descricao: 'Descanso mínimo entre o fim de uma jornada e o início da próxima.',
+  },
+  intervalo: {
+    label: 'Intervalo dentro da jornada', artigo: 'CLT art. 71',
+    descricao: 'Jornada acima de X horas exige um intervalo mínimo (almoço/descanso).',
+  },
+  dsr: {
+    label: 'Descanso semanal (DSR)', artigo: 'CLT art. 67',
+    descricao: 'Em toda janela de 7 dias deve haver ao menos N folgas.',
+  },
+  maxDailyHours: {
+    label: 'Limite de jornada diária', artigo: 'CLT art. 59',
+    descricao: 'Horas trabalhadas por dia não podem passar do limite (8h + extras).',
+  },
+  maxConsecutiveDays: {
+    label: 'Dias consecutivos trabalhados', artigo: 'Súmula 146 TST',
+    descricao: 'Número máximo de dias seguidos trabalhados sem folga.',
+  },
+};
+
+// Modal de configuração — réplica do projeto modelo: cada regra tem
+// enabled/valor/bloqueia-ou-avisa, persistido em store_setup.clt_rules.
+function CltRulesModal({ draft, onChange, onRestaurarPadrao, onSave, onClose, saving }) {
+  if (!draft) {
+    return (
+      <div className="esc-modal-overlay" onClick={onClose}>
+        <div className="esc-modal" onClick={e => e.stopPropagation()}>
+          <div className="esc-modal-header">
+            <h3>Regras CLT/CCT</h3>
+            <button className="esc-modal-close" onClick={onClose}>×</button>
+          </div>
+          <p className="esc-modal-empty">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const updateRule = (key, field, value) => {
+    onChange({ ...draft, [key]: { ...draft[key], [field]: value } });
+  };
+
+  return (
+    <div className="esc-modal-overlay" onClick={onClose}>
+      <div className="esc-modal esc-modal-wide" onClick={e => e.stopPropagation()}>
+        <div className="esc-modal-header">
+          <h3>⚖ Regras CLT/CCT da empresa</h3>
+          <button className="esc-modal-close" onClick={onClose}>×</button>
+        </div>
+        <p className="esc-modal-subtitle">
+          Ajuste os valores e se cada regra <strong>bloqueia</strong> a publicação ou <strong>só avisa</strong>. Desmarcar = regra desligada. "Restaurar padrão" volta à CLT federal.
+        </p>
+        <div className="esc-modal-body">
+          {Object.keys(CLT_RULE_LABELS).map(key => {
+            const rule = draft[key] || {};
+            const meta = CLT_RULE_LABELS[key];
+            return (
+              <div key={key} className="esc-clt-rule-card">
+                <div className="esc-clt-rule-card-head">
+                  <label className="esc-clt-rule-check">
+                    <input
+                      type="checkbox"
+                      checked={rule.enabled !== false}
+                      onChange={e => updateRule(key, 'enabled', e.target.checked)}
+                    />
+                    <span>{meta.label}</span>
+                  </label>
+                  <span className="esc-clt-rule-artigo">{meta.artigo}</span>
+                </div>
+                <p className="esc-clt-rule-desc">{meta.descricao}</p>
+                <div className="esc-clt-rule-fields">
+                  {key === 'intervalo' ? (
+                    <>
+                      <div className="esc-clt-field">
+                        <label>Intervalo mínimo</label>
+                        <div className="esc-clt-field-input">
+                          <input
+                            type="number"
+                            value={rule.minMinutes ?? ''}
+                            onChange={e => updateRule(key, 'minMinutes', Number(e.target.value))}
+                          />
+                          <span>min</span>
+                        </div>
+                      </div>
+                      <div className="esc-clt-field">
+                        <label>Exigido acima de</label>
+                        <div className="esc-clt-field-input">
+                          <input
+                            type="number"
+                            value={rule.acimaDeHoras ?? ''}
+                            onChange={e => updateRule(key, 'acimaDeHoras', Number(e.target.value))}
+                          />
+                          <span>h</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : key === 'dsr' ? (
+                    <div className="esc-clt-field">
+                      <label>Folgas por semana</label>
+                      <div className="esc-clt-field-input">
+                        <input
+                          type="number"
+                          value={rule.folgasPerWeek ?? ''}
+                          onChange={e => updateRule(key, 'folgasPerWeek', Number(e.target.value))}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="esc-clt-field">
+                      <label>{key === 'maxWeeklyHours' ? 'Máx. horas por semana' : key === 'interjornada' ? 'Mín. horas de descanso' : key === 'maxDailyHours' ? 'Máx. horas por dia' : 'Máx. dias seguidos'}</label>
+                      <div className="esc-clt-field-input">
+                        <input
+                          type="number"
+                          value={rule.value ?? ''}
+                          onChange={e => updateRule(key, 'value', Number(e.target.value))}
+                        />
+                        {key !== 'maxConsecutiveDays' && <span>h</span>}
+                      </div>
+                    </div>
+                  )}
+                  <div className="esc-clt-field esc-clt-field-select">
+                    <label>Quando violada</label>
+                    <select
+                      value={rule.blocks === false ? 'avisa' : 'bloqueia'}
+                      onChange={e => updateRule(key, 'blocks', e.target.value === 'bloqueia')}
+                    >
+                      <option value="bloqueia">Bloqueia publicação</option>
+                      <option value="avisa">Só avisa</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="esc-modal-footer">
+          <button className="esc-ghost" onClick={onRestaurarPadrao} disabled={saving}>Restaurar padrão CLT federal</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="esc-ghost" onClick={onClose} disabled={saving}>Cancelar</button>
+            <button className="esc-btn" onClick={onSave} disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</button>
+          </div>
+        </div>
       </div>
     </div>
   );
