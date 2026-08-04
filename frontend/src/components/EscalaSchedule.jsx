@@ -487,6 +487,15 @@ export default function EscalaSchedule({ schedule, demand, employees, periodo, t
           box-shadow:0 30px 80px -40px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.06);
           backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
         }
+        /* Mesma borda em gradiente diagonal do Perfil/Usuários/Controlador
+           (padrão do produto) — antes só essas páginas tinham esse detalhe. */
+        .esc-panel::before{
+          content:"";position:absolute;inset:0;border-radius:18px;padding:1px;
+          background:linear-gradient(140deg, rgba(74,168,255,.5), transparent 35%, transparent 65%, rgba(124,92,255,.4));
+          -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          -webkit-mask-composite:xor;mask-composite:exclude;
+          pointer-events:none;opacity:.7;
+        }
 
         /* ---------- Week Selector ---------- */
         .esc-week-selector{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}

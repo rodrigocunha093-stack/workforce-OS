@@ -28,6 +28,16 @@ const styles = `
   .logs-row:hover { background: rgba(74,168,255,0.05); }
   .logs-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
   .logs-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+  /* Mesma borda em gradiente diagonal do Perfil/Usuários/Controlador
+     (padrão do produto) — antes só essas páginas tinham esse detalhe. */
+  .logs-panel::before {
+    content: ''; position: absolute; inset: 0; border-radius: 18px; padding: 1px;
+    background: linear-gradient(140deg, rgba(74,168,255,.5), transparent 35%, transparent 65%, rgba(124,92,255,.4));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none; opacity: .7;
+  }
 `;
 
 export default function Logs() {
@@ -142,7 +152,7 @@ export default function Logs() {
           <p style={subtitleStyle}>Acompanhe cada evento de segurança e atividade dos usuários em tempo real.</p>
         </div>
 
-        <div className="logs-fade" style={{ ...panelStyle, animationDelay: '.08s' }}>
+        <div className="logs-fade logs-panel" style={{ ...panelStyle, animationDelay: '.08s' }}>
           {loading ? (
             <p style={{ color: c.muted, fontSize: 13, textAlign: 'center', padding: '40px 0' }}>Carregando...</p>
           ) : logs.length === 0 ? (

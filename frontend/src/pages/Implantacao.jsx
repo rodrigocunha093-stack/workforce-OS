@@ -73,12 +73,24 @@ const globalStyles = `
   .imp-fade { animation: imp-fade-up .6s cubic-bezier(.22,.61,.36,1) both; }
 
   .imp-card {
+    position: relative;
     transition: border-color .25s ease, transform .25s ease, box-shadow .25s ease;
   }
   .imp-card:hover {
     border-color: rgba(74,168,255,0.35);
     transform: translateY(-2px);
     box-shadow: 0 24px 60px -30px rgba(0,0,0,0.9), 0 0 0 1px rgba(74,168,255,0.12);
+  }
+  /* Mesmo efeito de borda em gradiente diagonal usado no Perfil/Usuários/
+     Controlador (.eg-card::before / .ctl-panel::before) — antes só essas
+     3 páginas tinham esse acabamento, deixando o resto do produto (aqui,
+     Escala e Logs) com cara de tela diferente dentro do mesmo produto. */
+  .imp-card::before {
+    content: ''; position: absolute; inset: 0; border-radius: 18px; padding: 1px;
+    background: linear-gradient(140deg, rgba(74,168,255,.5), transparent 35%, transparent 65%, rgba(124,92,255,.4));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none; opacity: .7;
   }
 
   .imp-input:focus {
